@@ -7,24 +7,24 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0a0c0b;
-    --surface: #16191a;
-    --surface2: #1f2325;
-    --surface3: #292e31;
-    --border: rgba(255,255,255,0.14);
-    --border2: rgba(255,255,255,0.24);
-    --text: #ffffff;
-    --text2: #d8dcd4;
-    --text3: #b2b7ae;
-    --text4: #828780;
-    --green: #5fd49a;
-    --green-dim: rgba(95,212,154,0.18);
-    --red: #ff7466;
-    --red-dim: rgba(255,116,102,0.18);
-    --amber: #f0c34f;
-    --amber-dim: rgba(240,195,79,0.18);
-    --blue: #7ab2ff;
-    --blue-dim: rgba(122,178,255,0.18);
+    --bg: #f7f6f1;
+    --surface: #ffffff;
+    --surface2: #efeee8;
+    --surface3: #e3e2db;
+    --border: rgba(0,0,0,0.10);
+    --border2: rgba(0,0,0,0.18);
+    --text: #14150f;
+    --text2: #3b3d36;
+    --text3: #696b62;
+    --text4: #9a9c91;
+    --green: #1e7f56;
+    --green-dim: rgba(30,127,86,0.10);
+    --red: #b8392c;
+    --red-dim: rgba(184,57,44,0.10);
+    --amber: #8a6510;
+    --amber-dim: rgba(138,101,16,0.12);
+    --blue: #1f5fbf;
+    --blue-dim: rgba(31,95,191,0.10);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -40,7 +40,7 @@
   .noise {
     position: fixed; inset: 0; pointer-events: none; z-index: 0;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-    opacity: 0.2;
+    opacity: 0;
   }
 
   .header {
@@ -230,7 +230,7 @@
     padding: 0.65rem 1.1rem;
     background: var(--green-dim);
     color: var(--green);
-    border: 1px solid rgba(76,175,125,0.3);
+    border: 1px solid rgba(30,127,86,0.35);
     border-radius: 8px;
     font-family: 'DM Mono', monospace;
     font-size: 0.7rem;
@@ -242,7 +242,7 @@
   }
 
   .btn:hover {
-    background: rgba(76,175,125,0.2);
+    background: rgba(30,127,86,0.16);
     border-color: var(--green);
   }
 
@@ -256,9 +256,9 @@
   .btn.danger {
     background: var(--red-dim);
     color: var(--red);
-    border-color: rgba(224,90,78,0.3);
+    border-color: rgba(184,57,44,0.35);
   }
-  .btn.danger:hover { background: rgba(224,90,78,0.2); border-color: var(--red); }
+  .btn.danger:hover { background: rgba(184,57,44,0.16); border-color: var(--red); }
 
   .btn.small { padding: 0.4rem 0.7rem; font-size: 0.6rem; }
 
@@ -291,7 +291,7 @@
 
   .table tr:last-child td { border-bottom: none; }
 
-  .table tr:hover td { background: rgba(255,255,255,0.04); }
+  .table tr:hover td { background: rgba(0,0,0,0.035); }
 
   .mono { font-family: 'DM Mono', monospace; font-size: 0.8rem; color: var(--text2); }
   .mono-green { font-family: 'DM Mono', monospace; color: var(--green); }
@@ -348,9 +348,9 @@
     letter-spacing: 0.05em;
   }
 
-  .chip.green { background: var(--green-dim); color: var(--green); border-color: rgba(76,175,125,0.3); }
-  .chip.amber { background: var(--amber-dim); color: var(--amber); border-color: rgba(212,168,67,0.3); }
-  .chip.blue { background: var(--blue-dim); color: var(--blue); border-color: rgba(91,156,246,0.3); }
+  .chip.green { background: var(--green-dim); color: var(--green); border-color: rgba(30,127,86,0.35); }
+  .chip.amber { background: var(--amber-dim); color: var(--amber); border-color: rgba(138,101,16,0.35); }
+  .chip.blue { background: var(--blue-dim); color: var(--blue); border-color: rgba(31,95,191,0.35); }
 
   .qty-input { width: 70px; padding: 0.4rem 0.5rem; font-family: 'DM Mono', monospace; font-size: 0.8rem; }
   .price-input { width: 100px; padding: 0.4rem 0.5rem; font-family: 'DM Mono', monospace; font-size: 0.8rem; }
@@ -408,10 +408,10 @@
     word-break: break-word;
   }
   .status.show { display: block; }
-  .status.ok    { background: var(--green-dim); color: var(--green); border: 1px solid rgba(95,212,154,0.4); }
-  .status.err   { background: var(--red-dim);   color: var(--red);   border: 1px solid rgba(255,116,102,0.4); }
-  .status.warn  { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(240,195,79,0.4); }
-  .status.info  { background: var(--blue-dim);  color: var(--blue);  border: 1px solid rgba(122,178,255,0.4); }
+  .status.ok    { background: var(--green-dim); color: var(--green); border: 1px solid rgba(30,127,86,0.4); }
+  .status.err   { background: var(--red-dim);   color: var(--red);   border: 1px solid rgba(184,57,44,0.4); }
+  .status.warn  { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(138,101,16,0.4); }
+  .status.info  { background: var(--blue-dim);  color: var(--blue);  border: 1px solid rgba(31,95,191,0.4); }
 
   .api-banner {
     margin: 0 2.5rem;
@@ -422,12 +422,12 @@
     letter-spacing: 0.05em;
     color: var(--amber);
     background: var(--amber-dim);
-    border: 1px solid rgba(240,195,79,0.4);
+    border: 1px solid rgba(138,101,16,0.4);
     margin-top: 1rem;
     display: none;
   }
   .api-banner.show { display: block; }
-  .api-banner.ok { color: var(--green); background: var(--green-dim); border-color: rgba(95,212,154,0.4); }
+  .api-banner.ok { color: var(--green); background: var(--green-dim); border-color: rgba(30,127,86,0.4); }
 
   @media print {
     body { background: white; color: black; }
@@ -889,7 +889,7 @@
   function erpChip(item) {
     const s = item.erpStatus || (item.erpId != null ? 'synced' : 'local-only');
     if (s === 'synced')     return `<span class="chip green" title="ERP id: ${esc(item.erpId ?? '—')}">synced</span>`;
-    if (s === 'failed')     return `<span class="chip" style="color:var(--red);background:var(--red-dim);border-color:rgba(255,116,102,0.4);" title="${esc(item.erpError || 'push failed')}">failed</span>`;
+    if (s === 'failed')     return `<span class="chip" style="color:var(--red);background:var(--red-dim);border-color:rgba(184,57,44,0.4);" title="${esc(item.erpError || 'push failed')}">failed</span>`;
     if (s === 'local-only') return '<span class="chip amber">local only</span>';
     return `<span class="chip">${esc(s)}</span>`;
   }
