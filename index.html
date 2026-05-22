@@ -3,16 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Posku — SKUs & Purchase Orders</title>
+<title>Posku — Capture</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #f7f6f1;
     --surface: #ffffff;
     --surface2: #efeee8;
-    --surface3: #e3e2db;
-    --border: rgba(0,0,0,0.10);
-    --border2: rgba(0,0,0,0.18);
+    --border: rgba(0,0,0,0.12);
+    --border2: rgba(0,0,0,0.22);
     --text: #14150f;
     --text2: #3b3d36;
     --text3: #696b62;
@@ -21,10 +20,6 @@
     --green-dim: rgba(30,127,86,0.10);
     --red: #b8392c;
     --red-dim: rgba(184,57,44,0.10);
-    --amber: #8a6510;
-    --amber-dim: rgba(138,101,16,0.12);
-    --blue: #1f5fbf;
-    --blue-dim: rgba(31,95,191,0.10);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -34,25 +29,11 @@
     color: var(--text);
     font-family: 'Syne', sans-serif;
     min-height: 100vh;
-    overflow-x: hidden;
-  }
-
-  .noise {
-    position: fixed; inset: 0; pointer-events: none; z-index: 0;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-    opacity: 0;
   }
 
   .header {
     padding: 2rem 2.5rem 1.5rem;
     border-bottom: 1px solid var(--border);
-    position: relative;
-    z-index: 1;
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 1.5rem;
   }
 
   .eyebrow {
@@ -76,158 +57,85 @@
 
   .sub {
     color: var(--text2);
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     margin-top: 0.75rem;
     max-width: 640px;
   }
 
-  .tabs {
-    display: flex;
-    gap: 0.5rem;
-    padding: 0 2.5rem;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg);
-    position: sticky;
-    top: 0;
-    z-index: 10;
-  }
-
-  .tab {
-    padding: 1rem 1.25rem;
-    font-family: 'DM Mono', monospace;
-    font-size: 0.75rem;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--text3);
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    cursor: pointer;
-    transition: color 0.15s ease, border-color 0.15s ease;
-    margin-bottom: -1px;
-  }
-
-  .tab:hover { color: var(--text); }
-
-  .tab.active {
-    color: var(--text);
-    border-bottom-color: var(--green);
-  }
-
   main {
     padding: 2.5rem;
-    position: relative;
-    z-index: 1;
-    max-width: 1400px;
+    max-width: 980px;
     margin: 0 auto;
-  }
-
-  .panel { display: none; }
-  .panel.active { display: block; }
-
-  .grid-2 {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
-    gap: 1.5rem;
-  }
-  @media (max-width: 960px) {
-    .grid-2 { grid-template-columns: 1fr; }
   }
 
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 14px;
-    padding: 1.5rem;
-    position: relative;
-    overflow: hidden;
+    padding: 1.75rem;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+
+  .card.dragging {
+    border-color: var(--green);
+    background: var(--green-dim);
   }
 
   .card-title {
     font-family: 'DM Serif Display', serif;
-    font-size: 1.25rem;
+    font-size: 1.4rem;
     margin-bottom: 0.25rem;
   }
 
   .card-sub {
     font-family: 'DM Mono', monospace;
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     color: var(--text3);
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    margin-bottom: 1.25rem;
+    margin-bottom: 1.5rem;
   }
 
-  label {
-    display: block;
-    font-family: 'DM Mono', monospace;
-    font-size: 0.65rem;
-    color: var(--text3);
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    margin-bottom: 0.4rem;
-  }
-
-  input, select, textarea {
+  textarea {
     width: 100%;
+    min-height: 360px;
     background: var(--surface2);
     color: var(--text);
-    border: 1px solid var(--border2);
-    border-radius: 8px;
-    padding: 0.65rem 0.85rem;
-    font-family: 'Syne', sans-serif;
-    font-size: 0.9rem;
+    border: 1px dashed var(--border2);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    resize: vertical;
     transition: border-color 0.15s ease, background 0.15s ease;
   }
 
-  input:focus, select:focus, textarea:focus {
+  textarea:focus {
     outline: none;
+    border-style: solid;
     border-color: var(--green);
-    background: var(--surface3);
+    background: #fff;
   }
 
-  textarea { resize: vertical; min-height: 60px; }
+  textarea::placeholder { color: var(--text4); }
 
-  .field { margin-bottom: 1rem; }
-
-  .field-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 1rem;
+    flex-wrap: wrap;
     gap: 0.75rem;
   }
 
-  .preview {
-    background: var(--surface2);
-    border: 1px dashed var(--border2);
-    border-radius: 10px;
-    padding: 1rem;
-    margin: 1rem 0;
-    text-align: center;
-  }
-
-  .preview-label {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.6rem;
-    color: var(--text3);
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    margin-bottom: 0.5rem;
-  }
-
-  .preview-sku {
-    font-family: 'DM Mono', monospace;
-    font-size: 1.3rem;
-    color: var(--green);
-    letter-spacing: 0.05em;
-    word-break: break-all;
-  }
+  .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
   .btn {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
     gap: 0.4rem;
-    padding: 0.65rem 1.1rem;
+    padding: 0.6rem 1rem;
     background: var(--green-dim);
     color: var(--green);
     border: 1px solid rgba(30,127,86,0.35);
@@ -238,13 +146,8 @@
     text-transform: uppercase;
     cursor: pointer;
     transition: background 0.15s ease, border-color 0.15s ease;
-    font-weight: 500;
   }
-
-  .btn:hover {
-    background: rgba(30,127,86,0.16);
-    border-color: var(--green);
-  }
+  .btn:hover { background: rgba(30,127,86,0.16); border-color: var(--green); }
 
   .btn.ghost {
     background: transparent;
@@ -260,1049 +163,181 @@
   }
   .btn.danger:hover { background: rgba(184,57,44,0.16); border-color: var(--red); }
 
-  .btn.small { padding: 0.4rem 0.7rem; font-size: 0.6rem; }
-
-  .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-
-  .table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.85rem;
-  }
-
-  .table th {
-    text-align: left;
-    font-family: 'DM Mono', monospace;
-    font-size: 0.62rem;
-    color: var(--text3);
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    padding: 0.6rem 0.5rem;
-    border-bottom: 1px solid var(--border2);
-    font-weight: 500;
-  }
-
-  .table td {
-    padding: 0.7rem 0.5rem;
-    border-bottom: 1px solid var(--border);
-    color: var(--text);
-    vertical-align: middle;
-  }
-
-  .table tr:last-child td { border-bottom: none; }
-
-  .table tr:hover td { background: rgba(0,0,0,0.035); }
-
-  .mono { font-family: 'DM Mono', monospace; font-size: 0.8rem; color: var(--text2); }
-  .mono-green { font-family: 'DM Mono', monospace; color: var(--green); }
-
-  .empty {
-    text-align: center;
-    padding: 3rem 1rem;
-    color: var(--text3);
-    font-size: 0.9rem;
-  }
-
-  .empty-mono {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.7rem;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--text4);
-    margin-top: 0.5rem;
-  }
-
-  .totals {
-    margin-top: 1.5rem;
-    padding-top: 1.25rem;
-    border-top: 1px solid var(--border2);
-  }
-
-  .totals-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 0.35rem 0;
-    font-size: 0.9rem;
-  }
-
-  .totals-row.grand {
-    font-family: 'DM Serif Display', serif;
-    font-size: 1.3rem;
-    color: var(--green);
-    margin-top: 0.5rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--border);
-  }
-
-  .totals-label { color: var(--text2); }
-
-  .chip {
-    display: inline-block;
-    padding: 0.2rem 0.5rem;
-    background: var(--surface3);
-    border: 1px solid var(--border2);
-    border-radius: 5px;
-    font-family: 'DM Mono', monospace;
-    font-size: 0.65rem;
-    color: var(--text2);
-    letter-spacing: 0.05em;
-  }
-
-  .chip.green { background: var(--green-dim); color: var(--green); border-color: rgba(30,127,86,0.35); }
-  .chip.amber { background: var(--amber-dim); color: var(--amber); border-color: rgba(138,101,16,0.35); }
-  .chip.blue { background: var(--blue-dim); color: var(--blue); border-color: rgba(31,95,191,0.35); }
-
-  .qty-input { width: 70px; padding: 0.4rem 0.5rem; font-family: 'DM Mono', monospace; font-size: 0.8rem; }
-  .price-input { width: 100px; padding: 0.4rem 0.5rem; font-family: 'DM Mono', monospace; font-size: 0.8rem; }
-
-  .po-header {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-  }
-  @media (max-width: 600px) {
-    .po-header { grid-template-columns: 1fr; }
-  }
-
-  .sku-picker {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-  }
-  .sku-picker select { flex: 1; }
-
-  .back-link {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--text3);
-    text-decoration: none;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-  .back-link:hover { color: var(--text); }
-
-  .pattern-hint {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--text3);
-    margin-top: 0.4rem;
-  }
-
-  .pattern-hint code {
-    background: var(--surface2);
-    padding: 0.1rem 0.35rem;
-    border-radius: 4px;
-    color: var(--text2);
-  }
-
-  .status {
-    margin-top: 1rem;
-    padding: 0.6rem 0.85rem;
-    border-radius: 8px;
+  .meta {
     font-family: 'DM Mono', monospace;
     font-size: 0.72rem;
+    color: var(--text3);
     letter-spacing: 0.05em;
-    display: none;
-    line-height: 1.5;
-    word-break: break-word;
   }
-  .status.show { display: block; }
-  .status.ok    { background: var(--green-dim); color: var(--green); border: 1px solid rgba(30,127,86,0.4); }
-  .status.err   { background: var(--red-dim);   color: var(--red);   border: 1px solid rgba(184,57,44,0.4); }
-  .status.warn  { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(138,101,16,0.4); }
-  .status.info  { background: var(--blue-dim);  color: var(--blue);  border: 1px solid rgba(31,95,191,0.4); }
 
-  .api-banner {
-    margin: 0 2.5rem;
-    padding: 0.55rem 0.85rem;
-    border-radius: 8px;
+  .file-list {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .file-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.4rem 0.7rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--text2);
+    width: fit-content;
+    max-width: 100%;
+  }
+  .file-pill .name { color: var(--text); }
+  .file-pill .size { color: var(--text3); }
+
+  .drop-hint {
     font-family: 'DM Mono', monospace;
     font-size: 0.7rem;
+    color: var(--text3);
     letter-spacing: 0.05em;
-    color: var(--amber);
-    background: var(--amber-dim);
-    border: 1px solid rgba(138,101,16,0.4);
-    margin-top: 1rem;
-    display: none;
-  }
-  .api-banner.show { display: block; }
-  .api-banner.ok { color: var(--green); background: var(--green-dim); border-color: rgba(30,127,86,0.4); }
-
-  @media print {
-    body { background: white; color: black; }
-    .header, .tabs, .no-print, .noise { display: none !important; }
-    .card { border: 1px solid #ccc; background: white; color: black; }
-    .mono, .mono-green, .preview-sku { color: black; }
-    main { padding: 0; }
+    margin-top: 0.6rem;
   }
 </style>
 </head>
 <body>
-<div class="noise"></div>
 
 <header class="header">
-  <div>
-    <div class="eyebrow">Posku · v0.2</div>
-    <h1>Stock keeping <em>made boring</em></h1>
-    <p class="sub">Build SKUs and purchase orders, then push them to your ERP over its API. The app is the form — your ERP is the source of truth.</p>
-  </div>
-  <a href="../" class="back-link">← back to index</a>
+  <div class="eyebrow">Posku · capture</div>
+  <h1>Drop it <em>in here</em></h1>
+  <p class="sub">Paste anything, or drag and drop an email (or any file). It just sits here for now — next steps come later.</p>
 </header>
 
-<div id="api-banner" class="api-banner">ERP endpoint not configured — submissions will only be saved locally. Open <strong>Settings</strong> to point Posku at your ERP.</div>
-
-<nav class="tabs">
-  <button class="tab active" data-tab="sku">SKU Builder</button>
-  <button class="tab" data-tab="library">Recent SKUs <span id="sku-count" class="chip" style="margin-left:0.4rem;">0</span></button>
-  <button class="tab" data-tab="po">Purchase Order</button>
-  <button class="tab" data-tab="po-history">Recent POs <span id="po-count" class="chip" style="margin-left:0.4rem;">0</span></button>
-  <button class="tab" data-tab="settings">Settings</button>
-</nav>
-
 <main>
-  <!-- SKU BUILDER -->
-  <section class="panel active" id="panel-sku">
-    <div class="grid-2">
-      <div class="card">
-        <div class="card-title">Build a SKU</div>
-        <div class="card-sub">Fill the template — code generates live</div>
+  <div class="card" id="drop-card">
+    <div class="card-title">Capture</div>
+    <div class="card-sub">Paste · drop · type</div>
 
-        <div class="field">
-          <label>Category</label>
-          <input type="text" id="sku-category" placeholder="e.g. Apparel" maxlength="20">
-        </div>
-        <div class="field">
-          <label>Product</label>
-          <input type="text" id="sku-product" placeholder="e.g. T-Shirt" maxlength="40">
-        </div>
-        <div class="field-row">
-          <div class="field">
-            <label>Attribute 1 (e.g. size)</label>
-            <input type="text" id="sku-attr1" placeholder="e.g. Medium" maxlength="20">
-          </div>
-          <div class="field">
-            <label>Attribute 2 (e.g. color)</label>
-            <input type="text" id="sku-attr2" placeholder="e.g. Black" maxlength="20">
-          </div>
-        </div>
-        <div class="field-row">
-          <div class="field">
-            <label>Unit cost ($)</label>
-            <input type="number" id="sku-cost" step="0.01" min="0" placeholder="0.00">
-          </div>
-          <div class="field">
-            <label>On hand</label>
-            <input type="number" id="sku-stock" step="1" min="0" placeholder="0">
-          </div>
-        </div>
-        <div class="field">
-          <label>Supplier (optional)</label>
-          <input type="text" id="sku-supplier" placeholder="e.g. Acme Co." maxlength="50">
-        </div>
-        <div class="field">
-          <label>Notes (optional)</label>
-          <textarea id="sku-notes" placeholder="Any spec details, dimensions, etc."></textarea>
-        </div>
+    <textarea id="content" placeholder="Paste info here, or drop a file anywhere on this card…"></textarea>
+    <div class="drop-hint">Tip: drag a <code>.eml</code>, <code>.msg</code>, <code>.txt</code>, <code>.csv</code> or any text file onto this card to load its contents.</div>
 
-        <div class="preview">
-          <div class="preview-label">Generated SKU</div>
-          <div class="preview-sku" id="sku-preview">———</div>
-          <div class="pattern-hint">Pattern: <code>CAT-PROD-A1-A2-###</code></div>
-        </div>
+    <div id="files" class="file-list"></div>
 
-        <div class="btn-row">
-          <button class="btn" id="save-sku">Push SKU to ERP</button>
-          <button class="btn ghost" id="reset-sku">Reset</button>
-        </div>
-        <div id="sku-status" class="status"></div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">How it works</div>
-        <div class="card-sub">Three steps</div>
-        <ol style="padding-left:1.2rem;color:var(--text2);line-height:1.7;font-size:0.9rem;">
-          <li><strong style="color:var(--text);">Configure your ERP</strong> — In <em>Settings</em>, set the base URL, auth header, and endpoint paths for SKUs and POs.</li>
-          <li><strong style="color:var(--text);">Build &amp; push SKUs</strong> — Each product variant gets a code from category, product, and up to two attributes. Saving POSTs the SKU to your ERP and mirrors it locally so the PO builder can reference it.</li>
-          <li><strong style="color:var(--text);">Assemble &amp; push POs</strong> — Pick mirrored SKUs, set quantities, and POST the purchase order. CSV export and print stay available as fallbacks.</li>
-        </ol>
-        <div style="margin-top:1.25rem;padding:1rem;background:var(--surface2);border-radius:8px;border-left:3px solid var(--green);">
-          <div class="mono" style="font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3);margin-bottom:0.4rem;">Source of truth</div>
-          <div style="font-size:0.85rem;color:var(--text2);">Your ERP owns the records. Posku keeps a local mirror in <code style="background:var(--surface3);padding:0.1rem 0.3rem;border-radius:4px;color:var(--text);font-family:'DM Mono',monospace;">localStorage</code> so the PO builder and recent lists work without re-fetching.</div>
-        </div>
-        <div class="btn-row" style="margin-top:1.25rem;">
-          <button class="btn ghost small" id="export-all">Export mirror (JSON)</button>
-          <button class="btn ghost small" id="import-all">Import JSON</button>
-          <input type="file" id="import-file" accept=".json" style="display:none">
-          <button class="btn danger small" id="wipe-all">Clear local mirror</button>
-        </div>
+    <div class="row">
+      <div class="meta" id="meta">0 chars</div>
+      <div class="btn-row">
+        <input type="file" id="file-input" multiple style="display:none">
+        <button class="btn" id="pick">Pick file</button>
+        <button class="btn ghost" id="copy">Copy</button>
+        <button class="btn danger" id="clear">Clear</button>
       </div>
     </div>
-  </section>
-
-  <!-- SKU LIBRARY -->
-  <section class="panel" id="panel-library">
-    <div class="card">
-      <div class="card-title">SKU Library</div>
-      <div class="card-sub">Saved products on this device</div>
-      <div id="library-body"></div>
-    </div>
-  </section>
-
-  <!-- PURCHASE ORDER -->
-  <section class="panel" id="panel-po">
-    <div class="card">
-      <div class="card-title">New Purchase Order</div>
-      <div class="card-sub">Pick SKUs, set quantities, send to supplier</div>
-
-      <div class="po-header">
-        <div class="field">
-          <label>Supplier</label>
-          <input type="text" id="po-supplier" placeholder="Supplier name">
-        </div>
-        <div class="field">
-          <label>Ship to</label>
-          <input type="text" id="po-shipto" placeholder="Warehouse / address">
-        </div>
-        <div class="field">
-          <label>Expected by</label>
-          <input type="date" id="po-date">
-        </div>
-        <div class="field">
-          <label>Reference (optional)</label>
-          <input type="text" id="po-ref" placeholder="Internal reference">
-        </div>
-      </div>
-
-      <div class="sku-picker">
-        <select id="po-sku-select"><option value="">— add SKU from library —</option></select>
-        <button class="btn small" id="add-line">Add line</button>
-      </div>
-
-      <div style="overflow-x:auto;">
-        <table class="table" id="po-table">
-          <thead>
-            <tr>
-              <th>SKU</th>
-              <th>Product</th>
-              <th>Qty</th>
-              <th>Unit cost</th>
-              <th>Line total</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="po-lines"></tbody>
-        </table>
-      </div>
-
-      <div id="po-empty" class="empty">
-        No lines yet
-        <div class="empty-mono">add a SKU above to start</div>
-      </div>
-
-      <div class="totals" id="po-totals" style="display:none;">
-        <div class="totals-row"><span class="totals-label">Subtotal</span><span id="po-subtotal" class="mono">$0.00</span></div>
-        <div class="totals-row">
-          <span class="totals-label">Tax %</span>
-          <input type="number" id="po-tax" class="qty-input" style="width:80px;text-align:right;" value="0" min="0" max="100" step="0.1">
-        </div>
-        <div class="totals-row"><span class="totals-label">Tax amount</span><span id="po-tax-amt" class="mono">$0.00</span></div>
-        <div class="totals-row grand"><span>Total</span><span id="po-grand">$0.00</span></div>
-      </div>
-
-      <div class="btn-row" style="margin-top:1.5rem;">
-        <button class="btn" id="save-po">Push PO to ERP</button>
-        <button class="btn ghost" id="export-po">Export CSV</button>
-        <button class="btn ghost" id="print-po">Print</button>
-        <button class="btn ghost" id="clear-po">Clear</button>
-      </div>
-      <div id="po-status" class="status"></div>
-    </div>
-  </section>
-
-  <!-- PO HISTORY -->
-  <section class="panel" id="panel-po-history">
-    <div class="card">
-      <div class="card-title">Recent Purchase Orders</div>
-      <div class="card-sub">Local mirror of POs pushed from this device</div>
-      <div id="po-history-body"></div>
-    </div>
-  </section>
-
-  <!-- SETTINGS -->
-  <section class="panel" id="panel-settings">
-    <div class="grid-2">
-      <div class="card">
-        <div class="card-title">ERP API endpoint</div>
-        <div class="card-sub">Where Posku posts your SKUs and POs</div>
-
-        <div class="field">
-          <label>Base URL</label>
-          <input type="url" id="cfg-base" placeholder="https://erp.example.com/api/v1">
-          <div class="pattern-hint">No trailing slash. Endpoint paths below are appended to this.</div>
-        </div>
-        <div class="field">
-          <label>Authorization header value</label>
-          <input type="text" id="cfg-auth" placeholder="Bearer eyJhbGc... or ApiKey abc123" autocomplete="off">
-          <div class="pattern-hint">Sent as the <code>Authorization</code> request header. Leave blank if your ERP uses a different scheme.</div>
-        </div>
-        <div class="field-row">
-          <div class="field">
-            <label>SKU endpoint path</label>
-            <input type="text" id="cfg-sku-path" placeholder="/skus">
-          </div>
-          <div class="field">
-            <label>PO endpoint path</label>
-            <input type="text" id="cfg-po-path" placeholder="/purchase-orders">
-          </div>
-        </div>
-        <div class="field">
-          <label>Extra headers (JSON, optional)</label>
-          <textarea id="cfg-headers" placeholder='{"X-Tenant-Id": "acme"}'></textarea>
-          <div class="pattern-hint">Merged into every request. Must be a JSON object.</div>
-        </div>
-
-        <div class="btn-row">
-          <button class="btn" id="cfg-save">Save settings</button>
-          <button class="btn ghost" id="cfg-test">Test connection</button>
-          <button class="btn ghost" id="cfg-reset">Reset</button>
-        </div>
-        <div id="cfg-status" class="status"></div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">Payload reference</div>
-        <div class="card-sub">What Posku sends to your ERP</div>
-        <div style="font-size:0.85rem;color:var(--text2);line-height:1.6;">
-          <p style="margin-bottom:0.75rem;"><strong style="color:var(--text);">POST</strong> <code style="background:var(--surface2);padding:0.1rem 0.4rem;border-radius:4px;color:var(--text);font-family:'DM Mono',monospace;">{baseUrl}{sku path}</code> — body:</p>
-          <pre style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0.85rem;font-family:'DM Mono',monospace;font-size:0.72rem;color:var(--text2);overflow-x:auto;line-height:1.5;">{
-  "code": "APPA-TSHI-MEDI-BLAC-001",
-  "category": "Apparel",
-  "product": "T-Shirt",
-  "attributes": { "attr1": "Medium", "attr2": "Black" },
-  "unit_cost": 12.50,
-  "stock_on_hand": 0,
-  "supplier": "Acme Co.",
-  "notes": ""
-}</pre>
-          <p style="margin:0.85rem 0 0.75rem;"><strong style="color:var(--text);">POST</strong> <code style="background:var(--surface2);padding:0.1rem 0.4rem;border-radius:4px;color:var(--text);font-family:'DM Mono',monospace;">{baseUrl}{po path}</code> — body:</p>
-          <pre style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0.85rem;font-family:'DM Mono',monospace;font-size:0.72rem;color:var(--text2);overflow-x:auto;line-height:1.5;">{
-  "number": "PO-0001",
-  "supplier": "Acme Co.",
-  "ship_to": "Warehouse A",
-  "expected_by": "2026-06-01",
-  "reference": "",
-  "tax_percent": 8.5,
-  "lines": [
-    { "sku_code": "...", "quantity": 10, "unit_cost": 12.50 }
-  ],
-  "subtotal": 125.00,
-  "total": 135.63
-}</pre>
-          <p style="margin-top:0.85rem;color:var(--text3);font-size:0.8rem;">If your ERP responds with an <code style="background:var(--surface2);padding:0.1rem 0.3rem;border-radius:4px;color:var(--text2);font-family:'DM Mono',monospace;">id</code>, Posku stores it on the local record.</p>
-        </div>
-      </div>
-    </div>
-  </section>
+  </div>
 </main>
 
 <script>
 (() => {
-  const LS_SKUS = 'posku.skus.v1';
-  const LS_POS = 'posku.pos.v1';
-  const LS_SEQ = 'posku.seq.v1';
-  const LS_CFG = 'posku.cfg.v1';
-
+  const LS_KEY = 'posku.capture.v1';
   const $ = (id) => document.getElementById(id);
-  const fmt = (n) => '$' + Number(n || 0).toFixed(2);
-  const slug = (s) => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) || 'XXX';
-  const pad = (n, w = 3) => String(n).padStart(w, '0');
+  const ta = $('content');
+  const card = $('drop-card');
+  const meta = $('meta');
+  const files = $('files');
 
-  const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
-  const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+  const fmtSize = (n) => n < 1024 ? n + ' B' : n < 1024 * 1024 ? (n / 1024).toFixed(1) + ' KB' : (n / 1024 / 1024).toFixed(1) + ' MB';
 
-  let skus = load(LS_SKUS, []);
-  let pos = load(LS_POS, []);
-  let seq = load(LS_SEQ, { sku: 1, po: 1 });
-  let cfg = load(LS_CFG, { baseUrl: '', auth: '', skuPath: '/skus', poPath: '/purchase-orders', headers: '' });
-  let currentPO = { lines: [], supplier: '', shipto: '', date: '', ref: '', tax: 0 };
+  ta.value = localStorage.getItem(LS_KEY) || '';
+  updateMeta();
 
-  // --- Tabs ---
-  document.querySelectorAll('.tab').forEach(t => {
-    t.onclick = () => {
-      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-      document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
-      t.classList.add('active');
-      $('panel-' + t.dataset.tab).classList.add('active');
-      if (t.dataset.tab === 'library') renderLibrary();
-      if (t.dataset.tab === 'po') refreshPOSelect();
-      if (t.dataset.tab === 'po-history') renderPOHistory();
-      if (t.dataset.tab === 'settings') loadCfgForm();
-    };
+  ta.addEventListener('input', () => {
+    localStorage.setItem(LS_KEY, ta.value);
+    updateMeta();
   });
 
-  // --- Status banner helpers ---
-  function setStatus(el, kind, msg) {
-    el.className = 'status show ' + kind;
-    el.textContent = msg;
-  }
-  function clearStatus(el) { el.className = 'status'; el.textContent = ''; }
-
-  function updateApiBanner() {
-    const b = $('api-banner');
-    if (cfg.baseUrl) { b.classList.remove('show'); }
-    else { b.className = 'api-banner show'; }
+  function updateMeta() {
+    const v = ta.value;
+    const lines = v ? v.split('\n').length : 0;
+    meta.textContent = `${v.length.toLocaleString()} chars · ${lines.toLocaleString()} lines`;
   }
 
-  // --- ERP API client ---
-  function buildHeaders() {
-    const h = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
-    if (cfg.auth) h['Authorization'] = cfg.auth;
-    if (cfg.headers) {
-      try {
-        const extra = JSON.parse(cfg.headers);
-        if (extra && typeof extra === 'object') Object.assign(h, extra);
-      } catch { /* ignore — validated on save */ }
+  // --- Drag and drop ---
+  ['dragenter', 'dragover'].forEach(e => card.addEventListener(e, (ev) => {
+    ev.preventDefault();
+    card.classList.add('dragging');
+  }));
+  ['dragleave', 'drop'].forEach(e => card.addEventListener(e, (ev) => {
+    if (e === 'dragleave' && card.contains(ev.relatedTarget)) return;
+    card.classList.remove('dragging');
+  }));
+  card.addEventListener('drop', (ev) => {
+    ev.preventDefault();
+    const list = [...(ev.dataTransfer.files || [])];
+    if (list.length) loadFiles(list);
+    else {
+      const text = ev.dataTransfer.getData('text');
+      if (text) appendText(text);
     }
-    return h;
-  }
+  });
 
-  async function erpPost(path, body) {
-    if (!cfg.baseUrl) return { ok: false, skipped: true, error: 'No ERP base URL configured' };
-    const url = cfg.baseUrl.replace(/\/+$/, '') + (path.startsWith('/') ? path : '/' + path);
-    try {
-      const res = await fetch(url, { method: 'POST', headers: buildHeaders(), body: JSON.stringify(body) });
-      const text = await res.text();
-      let json = null;
-      try { json = text ? JSON.parse(text) : null; } catch { /* non-JSON response */ }
-      if (!res.ok) return { ok: false, status: res.status, error: (json && (json.message || json.error)) || text || `HTTP ${res.status}` };
-      return { ok: true, status: res.status, data: json };
-    } catch (err) {
-      return { ok: false, error: err.message || 'Network error' };
-    }
-  }
-
-  async function erpHead() {
-    if (!cfg.baseUrl) return { ok: false, error: 'No base URL set' };
-    const url = cfg.baseUrl.replace(/\/+$/, '');
-    try {
-      const res = await fetch(url, { method: 'GET', headers: buildHeaders() });
-      return { ok: res.ok || res.status < 500, status: res.status };
-    } catch (err) {
-      return { ok: false, error: err.message || 'Network error' };
-    }
-  }
-
-  // --- SKU preview ---
-  const skuFields = ['sku-category', 'sku-product', 'sku-attr1', 'sku-attr2'];
-  const buildCode = () => {
-    const parts = [
-      slug($('sku-category').value),
-      slug($('sku-product').value),
-      slug($('sku-attr1').value),
-      slug($('sku-attr2').value),
-    ].filter(p => p !== 'XXX' || $('sku-category').value);
-    return parts.join('-') + '-' + pad(seq.sku);
-  };
-  const updatePreview = () => { $('sku-preview').textContent = buildCode(); };
-  skuFields.forEach(id => $(id).addEventListener('input', updatePreview));
-  updatePreview();
-
-  // --- Save SKU ---
-  $('save-sku').onclick = async () => {
-    const cat = $('sku-category').value.trim();
-    const prod = $('sku-product').value.trim();
-    const statusEl = $('sku-status');
-    if (!cat || !prod) { setStatus(statusEl, 'err', 'Category and Product are required.'); return; }
-    const code = buildCode();
-    const sku = {
-      id: 'sku_' + Date.now(),
-      code,
-      category: cat,
-      product: prod,
-      attr1: $('sku-attr1').value.trim(),
-      attr2: $('sku-attr2').value.trim(),
-      cost: parseFloat($('sku-cost').value) || 0,
-      stock: parseInt($('sku-stock').value) || 0,
-      supplier: $('sku-supplier').value.trim(),
-      notes: $('sku-notes').value.trim(),
-      created: new Date().toISOString(),
-      erpId: null,
-      erpStatus: 'pending',
-    };
-
-    const btn = $('save-sku');
-    const orig = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = cfg.baseUrl ? 'Pushing to ERP…' : 'Saving locally…';
-    setStatus(statusEl, 'info', cfg.baseUrl ? `POST ${cfg.baseUrl}${cfg.skuPath || '/skus'}` : 'No ERP configured — saving to local mirror only.');
-
-    const payload = {
-      code: sku.code,
-      category: sku.category,
-      product: sku.product,
-      attributes: { attr1: sku.attr1, attr2: sku.attr2 },
-      unit_cost: sku.cost,
-      stock_on_hand: sku.stock,
-      supplier: sku.supplier,
-      notes: sku.notes,
-    };
-    const result = await erpPost(cfg.skuPath || '/skus', payload);
-
-    if (result.ok) {
-      sku.erpStatus = 'synced';
-      if (result.data && (result.data.id != null)) sku.erpId = result.data.id;
-      setStatus(statusEl, 'ok', `SKU ${sku.code} pushed to ERP (HTTP ${result.status})${sku.erpId != null ? ' · ERP id ' + sku.erpId : ''}.`);
-    } else if (result.skipped) {
-      sku.erpStatus = 'local-only';
-      setStatus(statusEl, 'warn', `Saved locally as ${sku.code}. Configure the ERP endpoint to push it.`);
-    } else {
-      sku.erpStatus = 'failed';
-      sku.erpError = result.error;
-      setStatus(statusEl, 'err', `ERP push failed: ${result.error}. SKU ${sku.code} kept in local mirror; retry from Recent SKUs.`);
-    }
-
-    skus.push(sku);
-    seq.sku++;
-    save(LS_SKUS, skus);
-    save(LS_SEQ, seq);
-    resetSKUForm();
-    updateCounts();
-    btn.disabled = false;
-    btn.textContent = orig;
+  // --- File picker ---
+  $('pick').onclick = () => $('file-input').click();
+  $('file-input').onchange = (ev) => {
+    const list = [...(ev.target.files || [])];
+    if (list.length) loadFiles(list);
+    ev.target.value = '';
   };
 
-  $('reset-sku').onclick = resetSKUForm;
-  function resetSKUForm() {
-    ['sku-category', 'sku-product', 'sku-attr1', 'sku-attr2', 'sku-cost', 'sku-stock', 'sku-supplier', 'sku-notes']
-      .forEach(id => $(id).value = '');
-    updatePreview();
+  function loadFiles(list) {
+    list.forEach(f => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = typeof reader.result === 'string' ? reader.result : '';
+        appendText(`\n\n===== ${f.name} (${fmtSize(f.size)}) =====\n${text}`);
+        addPill(f);
+      };
+      reader.readAsText(f);
+    });
   }
+
+  function appendText(t) {
+    ta.value = (ta.value ? ta.value.trimEnd() + '\n' : '') + t.trimStart();
+    localStorage.setItem(LS_KEY, ta.value);
+    updateMeta();
+  }
+
+  function addPill(f) {
+    const pill = document.createElement('div');
+    pill.className = 'file-pill';
+    pill.innerHTML = `<span class="name"></span><span class="size"></span>`;
+    pill.querySelector('.name').textContent = f.name;
+    pill.querySelector('.size').textContent = fmtSize(f.size);
+    files.appendChild(pill);
+  }
+
+  // --- Buttons ---
+  $('copy').onclick = async () => {
+    if (!ta.value) return;
+    try {
+      await navigator.clipboard.writeText(ta.value);
+      flash($('copy'), 'Copied');
+    } catch {
+      ta.select();
+      document.execCommand('copy');
+      flash($('copy'), 'Copied');
+    }
+  };
+
+  $('clear').onclick = () => {
+    if (!ta.value && !files.children.length) return;
+    if (!confirm('Clear everything?')) return;
+    ta.value = '';
+    files.innerHTML = '';
+    localStorage.removeItem(LS_KEY);
+    updateMeta();
+  };
 
   function flash(btn, msg) {
     const orig = btn.textContent;
     btn.textContent = msg;
-    setTimeout(() => btn.textContent = orig, 1200);
+    setTimeout(() => btn.textContent = orig, 1100);
   }
-
-  // --- Library ---
-  function erpChip(item) {
-    const s = item.erpStatus || (item.erpId != null ? 'synced' : 'local-only');
-    if (s === 'synced')     return `<span class="chip green" title="ERP id: ${esc(item.erpId ?? '—')}">synced</span>`;
-    if (s === 'failed')     return `<span class="chip" style="color:var(--red);background:var(--red-dim);border-color:rgba(184,57,44,0.4);" title="${esc(item.erpError || 'push failed')}">failed</span>`;
-    if (s === 'local-only') return '<span class="chip amber">local only</span>';
-    return `<span class="chip">${esc(s)}</span>`;
-  }
-
-  function renderLibrary() {
-    const body = $('library-body');
-    if (!skus.length) {
-      body.innerHTML = '<div class="empty">No SKUs yet<div class="empty-mono">build your first SKU</div></div>';
-      return;
-    }
-    let html = '<div style="overflow-x:auto;"><table class="table"><thead><tr>'
-      + '<th>SKU</th><th>Category</th><th>Product</th><th>Attributes</th><th>Cost</th><th>Stock</th><th>Supplier</th><th>ERP</th><th></th>'
-      + '</tr></thead><tbody>';
-    skus.slice().reverse().forEach(s => {
-      const attrs = [s.attr1, s.attr2].filter(Boolean).join(' / ') || '<span class="mono" style="color:var(--text4);">—</span>';
-      const synced = (s.erpStatus === 'synced');
-      html += `<tr>
-        <td><span class="mono-green">${esc(s.code)}</span></td>
-        <td>${esc(s.category)}</td>
-        <td>${esc(s.product)}</td>
-        <td>${attrs}</td>
-        <td class="mono">${fmt(s.cost)}</td>
-        <td class="mono">${s.stock}</td>
-        <td class="mono">${esc(s.supplier || '—')}</td>
-        <td>${erpChip(s)}</td>
-        <td style="white-space:nowrap;">
-          ${synced ? '' : `<button class="btn small" data-retry-sku="${s.id}">Retry push</button>`}
-          <button class="btn danger small" data-del="${s.id}">Delete</button>
-        </td>
-      </tr>`;
-    });
-    html += '</tbody></table></div>';
-    body.innerHTML = html;
-    body.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
-      if (!confirm('Delete this SKU from local mirror? (Does not affect the ERP record.)')) return;
-      skus = skus.filter(x => x.id !== b.dataset.del);
-      save(LS_SKUS, skus);
-      renderLibrary();
-      updateCounts();
-    });
-    body.querySelectorAll('[data-retry-sku]').forEach(b => b.onclick = async () => {
-      const s = skus.find(x => x.id === b.dataset.retrySku);
-      if (!s) return;
-      b.disabled = true;
-      const orig = b.textContent;
-      b.textContent = 'Pushing…';
-      const payload = {
-        code: s.code, category: s.category, product: s.product,
-        attributes: { attr1: s.attr1, attr2: s.attr2 },
-        unit_cost: s.cost, stock_on_hand: s.stock,
-        supplier: s.supplier, notes: s.notes,
-      };
-      const r = await erpPost(cfg.skuPath || '/skus', payload);
-      if (r.ok) { s.erpStatus = 'synced'; if (r.data && r.data.id != null) s.erpId = r.data.id; delete s.erpError; }
-      else if (r.skipped) { s.erpStatus = 'local-only'; }
-      else { s.erpStatus = 'failed'; s.erpError = r.error; }
-      save(LS_SKUS, skus);
-      renderLibrary();
-      if (!r.ok && !r.skipped) alert('Push failed: ' + r.error);
-      b.textContent = orig;
-      b.disabled = false;
-    });
-  }
-
-  function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-
-  // --- PO ---
-  function refreshPOSelect() {
-    const sel = $('po-sku-select');
-    sel.innerHTML = '<option value="">— add SKU from library —</option>';
-    skus.forEach(s => {
-      const o = document.createElement('option');
-      o.value = s.id;
-      o.textContent = `${s.code} — ${s.product}${s.attr1 ? ' (' + [s.attr1, s.attr2].filter(Boolean).join('/') + ')' : ''}`;
-      sel.appendChild(o);
-    });
-  }
-
-  $('add-line').onclick = () => {
-    const id = $('po-sku-select').value;
-    if (!id) { alert('Pick a SKU first.'); return; }
-    const s = skus.find(x => x.id === id);
-    if (!s) return;
-    if (currentPO.lines.find(l => l.skuId === id)) { alert('Already on this PO. Adjust quantity instead.'); return; }
-    currentPO.lines.push({ skuId: id, code: s.code, product: s.product, qty: 1, cost: s.cost });
-    renderPOLines();
-  };
-
-  function renderPOLines() {
-    const body = $('po-lines');
-    body.innerHTML = '';
-    if (!currentPO.lines.length) {
-      $('po-empty').style.display = 'block';
-      $('po-totals').style.display = 'none';
-      $('po-table').style.display = 'none';
-      return;
-    }
-    $('po-empty').style.display = 'none';
-    $('po-totals').style.display = 'block';
-    $('po-table').style.display = '';
-    currentPO.lines.forEach((l, i) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><span class="mono-green">${esc(l.code)}</span></td>
-        <td>${esc(l.product)}</td>
-        <td><input type="number" class="qty-input" min="1" step="1" value="${l.qty}" data-i="${i}" data-f="qty"></td>
-        <td><input type="number" class="price-input" min="0" step="0.01" value="${l.cost}" data-i="${i}" data-f="cost"></td>
-        <td class="mono-green">${fmt(l.qty * l.cost)}</td>
-        <td><button class="btn danger small" data-rm="${i}">×</button></td>`;
-      body.appendChild(tr);
-    });
-    body.querySelectorAll('input[data-i]').forEach(inp => inp.oninput = () => {
-      const i = +inp.dataset.i;
-      currentPO.lines[i][inp.dataset.f] = parseFloat(inp.value) || 0;
-      renderPOLines();
-    });
-    body.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
-      currentPO.lines.splice(+b.dataset.rm, 1);
-      renderPOLines();
-    });
-    renderPOTotals();
-  }
-
-  function renderPOTotals() {
-    const sub = currentPO.lines.reduce((a, l) => a + l.qty * l.cost, 0);
-    const tax = parseFloat($('po-tax').value) || 0;
-    const taxAmt = sub * tax / 100;
-    $('po-subtotal').textContent = fmt(sub);
-    $('po-tax-amt').textContent = fmt(taxAmt);
-    $('po-grand').textContent = fmt(sub + taxAmt);
-  }
-  $('po-tax').oninput = renderPOTotals;
-
-  $('save-po').onclick = async () => {
-    const statusEl = $('po-status');
-    if (!currentPO.lines.length) { setStatus(statusEl, 'err', 'Add at least one line before pushing.'); return; }
-    const sub = currentPO.lines.reduce((a, l) => a + l.qty * l.cost, 0);
-    const tax = parseFloat($('po-tax').value) || 0;
-    const po = {
-      id: 'po_' + Date.now(),
-      number: 'PO-' + pad(seq.po, 4),
-      supplier: $('po-supplier').value.trim(),
-      shipto: $('po-shipto').value.trim(),
-      date: $('po-date').value,
-      ref: $('po-ref').value.trim(),
-      tax,
-      lines: [...currentPO.lines],
-      subtotal: sub,
-      total: sub * (1 + tax / 100),
-      status: 'open',
-      created: new Date().toISOString(),
-      erpId: null,
-      erpStatus: 'pending',
-    };
-
-    const btn = $('save-po');
-    const orig = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = cfg.baseUrl ? 'Pushing to ERP…' : 'Saving locally…';
-    setStatus(statusEl, 'info', cfg.baseUrl ? `POST ${cfg.baseUrl}${cfg.poPath || '/purchase-orders'}` : 'No ERP configured — saving to local mirror only.');
-
-    const payload = {
-      number: po.number,
-      supplier: po.supplier,
-      ship_to: po.shipto,
-      expected_by: po.date,
-      reference: po.ref,
-      tax_percent: po.tax,
-      lines: po.lines.map(l => ({ sku_code: l.code, quantity: l.qty, unit_cost: l.cost })),
-      subtotal: +po.subtotal.toFixed(2),
-      total: +po.total.toFixed(2),
-    };
-    const result = await erpPost(cfg.poPath || '/purchase-orders', payload);
-
-    if (result.ok) {
-      po.erpStatus = 'synced';
-      if (result.data && (result.data.id != null)) po.erpId = result.data.id;
-      setStatus(statusEl, 'ok', `${po.number} pushed to ERP (HTTP ${result.status})${po.erpId != null ? ' · ERP id ' + po.erpId : ''}.`);
-    } else if (result.skipped) {
-      po.erpStatus = 'local-only';
-      setStatus(statusEl, 'warn', `Saved ${po.number} locally. Configure the ERP endpoint to push it.`);
-    } else {
-      po.erpStatus = 'failed';
-      po.erpError = result.error;
-      setStatus(statusEl, 'err', `ERP push failed: ${result.error}. ${po.number} kept in local mirror; retry from Recent POs.`);
-    }
-
-    pos.push(po);
-    seq.po++;
-    save(LS_POS, pos);
-    save(LS_SEQ, seq);
-    clearPO();
-    updateCounts();
-    btn.disabled = false;
-    btn.textContent = orig;
-  };
-
-  function clearPO() {
-    currentPO = { lines: [], supplier: '', shipto: '', date: '', ref: '', tax: 0 };
-    ['po-supplier', 'po-shipto', 'po-date', 'po-ref'].forEach(id => $(id).value = '');
-    $('po-tax').value = 0;
-    renderPOLines();
-  }
-  $('clear-po').onclick = () => { if (currentPO.lines.length && !confirm('Clear current PO?')) return; clearPO(); };
-
-  $('export-po').onclick = () => {
-    if (!currentPO.lines.length) { alert('Nothing to export.'); return; }
-    const rows = [['SKU', 'Product', 'Quantity', 'Unit cost', 'Line total']];
-    currentPO.lines.forEach(l => rows.push([l.code, l.product, l.qty, l.cost.toFixed(2), (l.qty * l.cost).toFixed(2)]));
-    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-    downloadFile('purchase-order-' + Date.now() + '.csv', csv, 'text/csv');
-  };
-
-  $('print-po').onclick = () => window.print();
-
-  function downloadFile(name, content, type) {
-    const blob = new Blob([content], { type });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }
-
-  // --- PO History ---
-  function renderPOHistory() {
-    const body = $('po-history-body');
-    if (!pos.length) {
-      body.innerHTML = '<div class="empty">No purchase orders yet<div class="empty-mono">create one from the PO tab</div></div>';
-      return;
-    }
-    let html = '<div style="overflow-x:auto;"><table class="table"><thead><tr>'
-      + '<th>PO #</th><th>Supplier</th><th>Date</th><th>Lines</th><th>Total</th><th>Status</th><th>ERP</th><th></th>'
-      + '</tr></thead><tbody>';
-    pos.slice().reverse().forEach(p => {
-      const statusChip = p.status === 'received' ? '<span class="chip green">received</span>' : '<span class="chip amber">open</span>';
-      const synced = (p.erpStatus === 'synced');
-      html += `<tr>
-        <td><span class="mono-green">${esc(p.number)}</span></td>
-        <td>${esc(p.supplier || '—')}</td>
-        <td class="mono">${esc(p.date || '—')}</td>
-        <td class="mono">${p.lines.length}</td>
-        <td class="mono-green">${fmt(p.total)}</td>
-        <td>${statusChip}</td>
-        <td>${erpChip(p)}</td>
-        <td style="white-space:nowrap;">
-          ${synced ? '' : `<button class="btn small" data-retry-po="${p.id}">Retry push</button>`}
-          ${p.status === 'open' ? `<button class="btn small" data-receive="${p.id}">Mark received</button>` : ''}
-          <button class="btn danger small" data-del-po="${p.id}">Delete</button>
-        </td>
-      </tr>`;
-    });
-    html += '</tbody></table></div>';
-    body.innerHTML = html;
-    body.querySelectorAll('[data-retry-po]').forEach(b => b.onclick = async () => {
-      const p = pos.find(x => x.id === b.dataset.retryPo);
-      if (!p) return;
-      b.disabled = true;
-      const orig = b.textContent;
-      b.textContent = 'Pushing…';
-      const payload = {
-        number: p.number, supplier: p.supplier, ship_to: p.shipto,
-        expected_by: p.date, reference: p.ref, tax_percent: p.tax,
-        lines: p.lines.map(l => ({ sku_code: l.code, quantity: l.qty, unit_cost: l.cost })),
-        subtotal: +p.subtotal.toFixed(2), total: +p.total.toFixed(2),
-      };
-      const r = await erpPost(cfg.poPath || '/purchase-orders', payload);
-      if (r.ok) { p.erpStatus = 'synced'; if (r.data && r.data.id != null) p.erpId = r.data.id; delete p.erpError; }
-      else if (r.skipped) { p.erpStatus = 'local-only'; }
-      else { p.erpStatus = 'failed'; p.erpError = r.error; }
-      save(LS_POS, pos);
-      renderPOHistory();
-      if (!r.ok && !r.skipped) alert('Push failed: ' + r.error);
-      b.textContent = orig;
-      b.disabled = false;
-    });
-    body.querySelectorAll('[data-receive]').forEach(b => b.onclick = () => {
-      const p = pos.find(x => x.id === b.dataset.receive);
-      if (!p) return;
-      p.lines.forEach(l => {
-        const s = skus.find(x => x.id === l.skuId);
-        if (s) s.stock = (s.stock || 0) + l.qty;
-      });
-      p.status = 'received';
-      save(LS_POS, pos);
-      save(LS_SKUS, skus);
-      renderPOHistory();
-    });
-    body.querySelectorAll('[data-del-po]').forEach(b => b.onclick = () => {
-      if (!confirm('Delete this PO?')) return;
-      pos = pos.filter(x => x.id !== b.dataset.delPo);
-      save(LS_POS, pos);
-      renderPOHistory();
-      updateCounts();
-    });
-  }
-
-  // --- Counts ---
-  function updateCounts() {
-    $('sku-count').textContent = skus.length;
-    $('po-count').textContent = pos.length;
-  }
-
-  // --- Import / export / wipe ---
-  $('export-all').onclick = () => {
-    const data = { skus, pos, seq, exportedAt: new Date().toISOString(), source: 'posku.v1' };
-    downloadFile('posku-export-' + Date.now() + '.json', JSON.stringify(data, null, 2), 'application/json');
-  };
-
-  $('import-all').onclick = () => $('import-file').click();
-  $('import-file').onchange = (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = () => {
-      try {
-        const data = JSON.parse(r.result);
-        if (!Array.isArray(data.skus) || !Array.isArray(data.pos)) throw new Error('bad shape');
-        if (!confirm(`Import ${data.skus.length} SKUs and ${data.pos.length} POs? This replaces current data.`)) return;
-        skus = data.skus;
-        pos = data.pos;
-        seq = data.seq || { sku: skus.length + 1, po: pos.length + 1 };
-        save(LS_SKUS, skus);
-        save(LS_POS, pos);
-        save(LS_SEQ, seq);
-        updateCounts();
-        renderLibrary();
-        renderPOHistory();
-        alert('Imported.');
-      } catch (err) {
-        alert('Invalid file: ' + err.message);
-      }
-    };
-    r.readAsText(f);
-    e.target.value = '';
-  };
-
-  $('wipe-all').onclick = () => {
-    if (!confirm('Delete ALL SKUs and POs on this device? This cannot be undone.')) return;
-    localStorage.removeItem(LS_SKUS);
-    localStorage.removeItem(LS_POS);
-    localStorage.removeItem(LS_SEQ);
-    skus = []; pos = []; seq = { sku: 1, po: 1 };
-    updateCounts();
-    renderLibrary();
-    renderPOHistory();
-    updatePreview();
-  };
-
-  // --- Settings ---
-  function loadCfgForm() {
-    $('cfg-base').value     = cfg.baseUrl || '';
-    $('cfg-auth').value     = cfg.auth || '';
-    $('cfg-sku-path').value = cfg.skuPath || '/skus';
-    $('cfg-po-path').value  = cfg.poPath  || '/purchase-orders';
-    $('cfg-headers').value  = cfg.headers || '';
-    clearStatus($('cfg-status'));
-  }
-
-  $('cfg-save').onclick = () => {
-    const statusEl = $('cfg-status');
-    const headersRaw = $('cfg-headers').value.trim();
-    if (headersRaw) {
-      try {
-        const v = JSON.parse(headersRaw);
-        if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('must be a JSON object');
-      } catch (err) { setStatus(statusEl, 'err', 'Extra headers JSON is invalid: ' + err.message); return; }
-    }
-    cfg = {
-      baseUrl: $('cfg-base').value.trim().replace(/\/+$/, ''),
-      auth:    $('cfg-auth').value.trim(),
-      skuPath: $('cfg-sku-path').value.trim() || '/skus',
-      poPath:  $('cfg-po-path').value.trim()  || '/purchase-orders',
-      headers: headersRaw,
-    };
-    save(LS_CFG, cfg);
-    updateApiBanner();
-    setStatus(statusEl, 'ok', cfg.baseUrl ? `Settings saved. Posku will POST to ${cfg.baseUrl}${cfg.skuPath} and ${cfg.baseUrl}${cfg.poPath}.` : 'Settings saved. No base URL set — submissions stay local until you configure one.');
-  };
-
-  $('cfg-test').onclick = async () => {
-    const statusEl = $('cfg-status');
-    if (!$('cfg-base').value.trim()) { setStatus(statusEl, 'err', 'Set a base URL first.'); return; }
-    // use the latest field values for the test without persisting
-    const prev = cfg;
-    cfg = {
-      baseUrl: $('cfg-base').value.trim().replace(/\/+$/, ''),
-      auth:    $('cfg-auth').value.trim(),
-      skuPath: $('cfg-sku-path').value.trim() || '/skus',
-      poPath:  $('cfg-po-path').value.trim()  || '/purchase-orders',
-      headers: $('cfg-headers').value.trim(),
-    };
-    setStatus(statusEl, 'info', `Pinging ${cfg.baseUrl}…`);
-    const r = await erpHead();
-    cfg = prev;
-    if (r.ok) setStatus(statusEl, 'ok', `Reachable (HTTP ${r.status}). Click Save settings to persist.`);
-    else setStatus(statusEl, 'err', `Could not reach endpoint: ${r.error || ('HTTP ' + r.status)}.`);
-  };
-
-  $('cfg-reset').onclick = () => {
-    if (!confirm('Clear ERP settings?')) return;
-    cfg = { baseUrl: '', auth: '', skuPath: '/skus', poPath: '/purchase-orders', headers: '' };
-    save(LS_CFG, cfg);
-    loadCfgForm();
-    updateApiBanner();
-    setStatus($('cfg-status'), 'warn', 'Settings cleared.');
-  };
-
-  // --- Init ---
-  updateCounts();
-  updateApiBanner();
-  refreshPOSelect();
-  renderPOLines();
 })();
 </script>
 </body>
