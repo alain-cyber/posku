@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Posku — SKUs & Purchase Orders</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f0e;
+    --surface: #141714;
+    --surface2: #1a1d1a;
+    --surface3: #20231f;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #f0f2ee;
+    --text2: #a4aaa0;
+    --text3: #868c84;
+    --text4: #5a5e58;
+    --green: #4caf7d;
+    --green-dim: rgba(76,175,125,0.12);
+    --red: #e05a4e;
+    --red-dim: rgba(224,90,78,0.12);
+    --amber: #d4a843;
+    --amber-dim: rgba(212,168,67,0.12);
+    --blue: #5b9cf6;
+    --blue-dim: rgba(91,156,246,0.12);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .noise {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    opacity: 0.4;
+  }
+
+  .header {
+    padding: 2rem 2.5rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+  }
+
+  .eyebrow {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    color: var(--text3);
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+
+  h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 2.4rem;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    line-height: 1;
+  }
+
+  h1 em { font-style: italic; color: var(--text2); }
+
+  .sub {
+    color: var(--text2);
+    font-size: 0.9rem;
+    margin-top: 0.75rem;
+    max-width: 640px;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0 2.5rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .tab {
+    padding: 1rem 1.25rem;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text3);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+    margin-bottom: -1px;
+  }
+
+  .tab:hover { color: var(--text); }
+
+  .tab.active {
+    color: var(--text);
+    border-bottom-color: var(--green);
+  }
+
+  main {
+    padding: 2.5rem;
+    position: relative;
+    z-index: 1;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+    gap: 1.5rem;
+  }
+  @media (max-width: 960px) {
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.25rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .card-sub {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text3);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 1.25rem;
+  }
+
+  label {
+    display: block;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text3);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.4rem;
+  }
+
+  input, select, textarea {
+    width: 100%;
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 0.65rem 0.85rem;
+    font-family: 'Syne', sans-serif;
+    font-size: 0.9rem;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--green);
+    background: var(--surface3);
+  }
+
+  textarea { resize: vertical; min-height: 60px; }
+
+  .field { margin-bottom: 1rem; }
+
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+
+  .preview {
+    background: var(--surface2);
+    border: 1px dashed var(--border2);
+    border-radius: 10px;
+    padding: 1rem;
+    margin: 1rem 0;
+    text-align: center;
+  }
+
+  .preview-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--text3);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+
+  .preview-sku {
+    font-family: 'DM Mono', monospace;
+    font-size: 1.3rem;
+    color: var(--green);
+    letter-spacing: 0.05em;
+    word-break: break-all;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.65rem 1.1rem;
+    background: var(--green-dim);
+    color: var(--green);
+    border: 1px solid rgba(76,175,125,0.3);
+    border-radius: 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    font-weight: 500;
+  }
+
+  .btn:hover {
+    background: rgba(76,175,125,0.2);
+    border-color: var(--green);
+  }
+
+  .btn.ghost {
+    background: transparent;
+    color: var(--text2);
+    border-color: var(--border2);
+  }
+  .btn.ghost:hover { color: var(--text); border-color: var(--text3); background: var(--surface2); }
+
+  .btn.danger {
+    background: var(--red-dim);
+    color: var(--red);
+    border-color: rgba(224,90,78,0.3);
+  }
+  .btn.danger:hover { background: rgba(224,90,78,0.2); border-color: var(--red); }
+
+  .btn.small { padding: 0.4rem 0.7rem; font-size: 0.6rem; }
+
+  .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+
+  .table th {
+    text-align: left;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--text3);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 0.6rem 0.5rem;
+    border-bottom: 1px solid var(--border2);
+    font-weight: 500;
+  }
+
+  .table td {
+    padding: 0.7rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: middle;
+  }
+
+  .table tr:last-child td { border-bottom: none; }
+
+  .table tr:hover td { background: rgba(255,255,255,0.015); }
+
+  .mono { font-family: 'DM Mono', monospace; font-size: 0.8rem; color: var(--text2); }
+  .mono-green { font-family: 'DM Mono', monospace; color: var(--green); }
+
+  .empty {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text3);
+    font-size: 0.9rem;
+  }
+
+  .empty-mono {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text4);
+    margin-top: 0.5rem;
+  }
+
+  .totals {
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border2);
+  }
+
+  .totals-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.35rem 0;
+    font-size: 0.9rem;
+  }
+
+  .totals-row.grand {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.3rem;
+    color: var(--green);
+    margin-top: 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .totals-label { color: var(--text2); }
+
+  .chip {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    background: var(--surface3);
+    border: 1px solid var(--border2);
+    border-radius: 5px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text2);
+    letter-spacing: 0.05em;
+  }
+
+  .chip.green { background: var(--green-dim); color: var(--green); border-color: rgba(76,175,125,0.3); }
+  .chip.amber { background: var(--amber-dim); color: var(--amber); border-color: rgba(212,168,67,0.3); }
+  .chip.blue { background: var(--blue-dim); color: var(--blue); border-color: rgba(91,156,246,0.3); }
+
+  .qty-input { width: 70px; padding: 0.4rem 0.5rem; font-family: 'DM Mono', monospace; font-size: 0.8rem; }
+  .price-input { width: 100px; padding: 0.4rem 0.5rem; font-family: 'DM Mono', monospace; font-size: 0.8rem; }
+
+  .po-header {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 600px) {
+    .po-header { grid-template-columns: 1fr; }
+  }
+
+  .sku-picker {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  .sku-picker select { flex: 1; }
+
+  .back-link {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text3);
+    text-decoration: none;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .back-link:hover { color: var(--text); }
+
+  .pattern-hint {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text3);
+    margin-top: 0.4rem;
+  }
+
+  .pattern-hint code {
+    background: var(--surface2);
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    color: var(--text2);
+  }
+
+  @media print {
+    body { background: white; color: black; }
+    .header, .tabs, .no-print, .noise { display: none !important; }
+    .card { border: 1px solid #ccc; background: white; color: black; }
+    .mono, .mono-green, .preview-sku { color: black; }
+    main { padding: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="noise"></div>
+
+<header class="header">
+  <div>
+    <div class="eyebrow">Posku · v0.1</div>
+    <h1>Stock keeping <em>made boring</em></h1>
+    <p class="sub">Build SKUs from a template, then turn them into purchase orders. Everything stays in your browser — no signup, no server.</p>
+  </div>
+  <a href="../" class="back-link">← back to index</a>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="sku">SKU Builder</button>
+  <button class="tab" data-tab="library">SKU Library <span id="sku-count" class="chip" style="margin-left:0.4rem;">0</span></button>
+  <button class="tab" data-tab="po">Purchase Order</button>
+  <button class="tab" data-tab="po-history">PO History <span id="po-count" class="chip" style="margin-left:0.4rem;">0</span></button>
+</nav>
+
+<main>
+  <!-- SKU BUILDER -->
+  <section class="panel active" id="panel-sku">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Build a SKU</div>
+        <div class="card-sub">Fill the template — code generates live</div>
+
+        <div class="field">
+          <label>Category</label>
+          <input type="text" id="sku-category" placeholder="e.g. Apparel" maxlength="20">
+        </div>
+        <div class="field">
+          <label>Product</label>
+          <input type="text" id="sku-product" placeholder="e.g. T-Shirt" maxlength="40">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Attribute 1 (e.g. size)</label>
+            <input type="text" id="sku-attr1" placeholder="e.g. Medium" maxlength="20">
+          </div>
+          <div class="field">
+            <label>Attribute 2 (e.g. color)</label>
+            <input type="text" id="sku-attr2" placeholder="e.g. Black" maxlength="20">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Unit cost ($)</label>
+            <input type="number" id="sku-cost" step="0.01" min="0" placeholder="0.00">
+          </div>
+          <div class="field">
+            <label>On hand</label>
+            <input type="number" id="sku-stock" step="1" min="0" placeholder="0">
+          </div>
+        </div>
+        <div class="field">
+          <label>Supplier (optional)</label>
+          <input type="text" id="sku-supplier" placeholder="e.g. Acme Co." maxlength="50">
+        </div>
+        <div class="field">
+          <label>Notes (optional)</label>
+          <textarea id="sku-notes" placeholder="Any spec details, dimensions, etc."></textarea>
+        </div>
+
+        <div class="preview">
+          <div class="preview-label">Generated SKU</div>
+          <div class="preview-sku" id="sku-preview">———</div>
+          <div class="pattern-hint">Pattern: <code>CAT-PROD-A1-A2-###</code></div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn" id="save-sku">Save SKU</button>
+          <button class="btn ghost" id="reset-sku">Reset</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">How it works</div>
+        <div class="card-sub">Three steps</div>
+        <ol style="padding-left:1.2rem;color:var(--text2);line-height:1.7;font-size:0.9rem;">
+          <li><strong style="color:var(--text);">Define SKUs</strong> — Each product variant gets a code built from category, product, and up to two attributes. A sequence number ensures uniqueness.</li>
+          <li><strong style="color:var(--text);">Pick from library</strong> — Build a purchase order by selecting saved SKUs, choosing quantities, and confirming unit cost.</li>
+          <li><strong style="color:var(--text);">Send or print</strong> — Export the PO as CSV or print it. Stock-on-hand updates when you mark a PO received.</li>
+        </ol>
+        <div style="margin-top:1.25rem;padding:1rem;background:var(--surface2);border-radius:8px;border-left:3px solid var(--green);">
+          <div class="mono" style="font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3);margin-bottom:0.4rem;">Storage</div>
+          <div style="font-size:0.85rem;color:var(--text2);">All data lives in <code style="background:var(--surface3);padding:0.1rem 0.3rem;border-radius:4px;color:var(--text);font-family:'DM Mono',monospace;">localStorage</code> on this device. Export to CSV before clearing your browser data.</div>
+        </div>
+        <div class="btn-row" style="margin-top:1.25rem;">
+          <button class="btn ghost small" id="export-all">Export all (JSON)</button>
+          <button class="btn ghost small" id="import-all">Import JSON</button>
+          <input type="file" id="import-file" accept=".json" style="display:none">
+          <button class="btn danger small" id="wipe-all">Wipe everything</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SKU LIBRARY -->
+  <section class="panel" id="panel-library">
+    <div class="card">
+      <div class="card-title">SKU Library</div>
+      <div class="card-sub">Saved products on this device</div>
+      <div id="library-body"></div>
+    </div>
+  </section>
+
+  <!-- PURCHASE ORDER -->
+  <section class="panel" id="panel-po">
+    <div class="card">
+      <div class="card-title">New Purchase Order</div>
+      <div class="card-sub">Pick SKUs, set quantities, send to supplier</div>
+
+      <div class="po-header">
+        <div class="field">
+          <label>Supplier</label>
+          <input type="text" id="po-supplier" placeholder="Supplier name">
+        </div>
+        <div class="field">
+          <label>Ship to</label>
+          <input type="text" id="po-shipto" placeholder="Warehouse / address">
+        </div>
+        <div class="field">
+          <label>Expected by</label>
+          <input type="date" id="po-date">
+        </div>
+        <div class="field">
+          <label>Reference (optional)</label>
+          <input type="text" id="po-ref" placeholder="Internal reference">
+        </div>
+      </div>
+
+      <div class="sku-picker">
+        <select id="po-sku-select"><option value="">— add SKU from library —</option></select>
+        <button class="btn small" id="add-line">Add line</button>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table class="table" id="po-table">
+          <thead>
+            <tr>
+              <th>SKU</th>
+              <th>Product</th>
+              <th>Qty</th>
+              <th>Unit cost</th>
+              <th>Line total</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="po-lines"></tbody>
+        </table>
+      </div>
+
+      <div id="po-empty" class="empty">
+        No lines yet
+        <div class="empty-mono">add a SKU above to start</div>
+      </div>
+
+      <div class="totals" id="po-totals" style="display:none;">
+        <div class="totals-row"><span class="totals-label">Subtotal</span><span id="po-subtotal" class="mono">$0.00</span></div>
+        <div class="totals-row">
+          <span class="totals-label">Tax %</span>
+          <input type="number" id="po-tax" class="qty-input" style="width:80px;text-align:right;" value="0" min="0" max="100" step="0.1">
+        </div>
+        <div class="totals-row"><span class="totals-label">Tax amount</span><span id="po-tax-amt" class="mono">$0.00</span></div>
+        <div class="totals-row grand"><span>Total</span><span id="po-grand">$0.00</span></div>
+      </div>
+
+      <div class="btn-row" style="margin-top:1.5rem;">
+        <button class="btn" id="save-po">Save PO</button>
+        <button class="btn ghost" id="export-po">Export CSV</button>
+        <button class="btn ghost" id="print-po">Print</button>
+        <button class="btn ghost" id="clear-po">Clear</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- PO HISTORY -->
+  <section class="panel" id="panel-po-history">
+    <div class="card">
+      <div class="card-title">Purchase Order History</div>
+      <div class="card-sub">All saved POs</div>
+      <div id="po-history-body"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const LS_SKUS = 'posku.skus.v1';
+  const LS_POS = 'posku.pos.v1';
+  const LS_SEQ = 'posku.seq.v1';
+
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => '$' + Number(n || 0).toFixed(2);
+  const slug = (s) => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) || 'XXX';
+  const pad = (n, w = 3) => String(n).padStart(w, '0');
+
+  const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+  const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+
+  let skus = load(LS_SKUS, []);
+  let pos = load(LS_POS, []);
+  let seq = load(LS_SEQ, { sku: 1, po: 1 });
+  let currentPO = { lines: [], supplier: '', shipto: '', date: '', ref: '', tax: 0 };
+
+  // --- Tabs ---
+  document.querySelectorAll('.tab').forEach(t => {
+    t.onclick = () => {
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      $('panel-' + t.dataset.tab).classList.add('active');
+      if (t.dataset.tab === 'library') renderLibrary();
+      if (t.dataset.tab === 'po') refreshPOSelect();
+      if (t.dataset.tab === 'po-history') renderPOHistory();
+    };
+  });
+
+  // --- SKU preview ---
+  const skuFields = ['sku-category', 'sku-product', 'sku-attr1', 'sku-attr2'];
+  const buildCode = () => {
+    const parts = [
+      slug($('sku-category').value),
+      slug($('sku-product').value),
+      slug($('sku-attr1').value),
+      slug($('sku-attr2').value),
+    ].filter(p => p !== 'XXX' || $('sku-category').value);
+    return parts.join('-') + '-' + pad(seq.sku);
+  };
+  const updatePreview = () => { $('sku-preview').textContent = buildCode(); };
+  skuFields.forEach(id => $(id).addEventListener('input', updatePreview));
+  updatePreview();
+
+  // --- Save SKU ---
+  $('save-sku').onclick = () => {
+    const cat = $('sku-category').value.trim();
+    const prod = $('sku-product').value.trim();
+    if (!cat || !prod) { alert('Category and Product are required.'); return; }
+    const code = buildCode();
+    skus.push({
+      id: 'sku_' + Date.now(),
+      code,
+      category: cat,
+      product: prod,
+      attr1: $('sku-attr1').value.trim(),
+      attr2: $('sku-attr2').value.trim(),
+      cost: parseFloat($('sku-cost').value) || 0,
+      stock: parseInt($('sku-stock').value) || 0,
+      supplier: $('sku-supplier').value.trim(),
+      notes: $('sku-notes').value.trim(),
+      created: new Date().toISOString(),
+    });
+    seq.sku++;
+    save(LS_SKUS, skus);
+    save(LS_SEQ, seq);
+    resetSKUForm();
+    updateCounts();
+    flash($('save-sku'), 'Saved ✓');
+  };
+
+  $('reset-sku').onclick = resetSKUForm;
+  function resetSKUForm() {
+    ['sku-category', 'sku-product', 'sku-attr1', 'sku-attr2', 'sku-cost', 'sku-stock', 'sku-supplier', 'sku-notes']
+      .forEach(id => $(id).value = '');
+    updatePreview();
+  }
+
+  function flash(btn, msg) {
+    const orig = btn.textContent;
+    btn.textContent = msg;
+    setTimeout(() => btn.textContent = orig, 1200);
+  }
+
+  // --- Library ---
+  function renderLibrary() {
+    const body = $('library-body');
+    if (!skus.length) {
+      body.innerHTML = '<div class="empty">No SKUs yet<div class="empty-mono">build your first SKU</div></div>';
+      return;
+    }
+    let html = '<div style="overflow-x:auto;"><table class="table"><thead><tr>'
+      + '<th>SKU</th><th>Category</th><th>Product</th><th>Attributes</th><th>Cost</th><th>Stock</th><th>Supplier</th><th></th>'
+      + '</tr></thead><tbody>';
+    skus.slice().reverse().forEach(s => {
+      const attrs = [s.attr1, s.attr2].filter(Boolean).join(' / ') || '<span class="mono" style="color:var(--text4);">—</span>';
+      html += `<tr>
+        <td><span class="mono-green">${esc(s.code)}</span></td>
+        <td>${esc(s.category)}</td>
+        <td>${esc(s.product)}</td>
+        <td>${attrs}</td>
+        <td class="mono">${fmt(s.cost)}</td>
+        <td class="mono">${s.stock}</td>
+        <td class="mono">${esc(s.supplier || '—')}</td>
+        <td><button class="btn danger small" data-del="${s.id}">Delete</button></td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+    body.innerHTML = html;
+    body.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+      if (!confirm('Delete this SKU?')) return;
+      skus = skus.filter(x => x.id !== b.dataset.del);
+      save(LS_SKUS, skus);
+      renderLibrary();
+      updateCounts();
+    });
+  }
+
+  function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+  // --- PO ---
+  function refreshPOSelect() {
+    const sel = $('po-sku-select');
+    sel.innerHTML = '<option value="">— add SKU from library —</option>';
+    skus.forEach(s => {
+      const o = document.createElement('option');
+      o.value = s.id;
+      o.textContent = `${s.code} — ${s.product}${s.attr1 ? ' (' + [s.attr1, s.attr2].filter(Boolean).join('/') + ')' : ''}`;
+      sel.appendChild(o);
+    });
+  }
+
+  $('add-line').onclick = () => {
+    const id = $('po-sku-select').value;
+    if (!id) { alert('Pick a SKU first.'); return; }
+    const s = skus.find(x => x.id === id);
+    if (!s) return;
+    if (currentPO.lines.find(l => l.skuId === id)) { alert('Already on this PO. Adjust quantity instead.'); return; }
+    currentPO.lines.push({ skuId: id, code: s.code, product: s.product, qty: 1, cost: s.cost });
+    renderPOLines();
+  };
+
+  function renderPOLines() {
+    const body = $('po-lines');
+    body.innerHTML = '';
+    if (!currentPO.lines.length) {
+      $('po-empty').style.display = 'block';
+      $('po-totals').style.display = 'none';
+      $('po-table').style.display = 'none';
+      return;
+    }
+    $('po-empty').style.display = 'none';
+    $('po-totals').style.display = 'block';
+    $('po-table').style.display = '';
+    currentPO.lines.forEach((l, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><span class="mono-green">${esc(l.code)}</span></td>
+        <td>${esc(l.product)}</td>
+        <td><input type="number" class="qty-input" min="1" step="1" value="${l.qty}" data-i="${i}" data-f="qty"></td>
+        <td><input type="number" class="price-input" min="0" step="0.01" value="${l.cost}" data-i="${i}" data-f="cost"></td>
+        <td class="mono-green">${fmt(l.qty * l.cost)}</td>
+        <td><button class="btn danger small" data-rm="${i}">×</button></td>`;
+      body.appendChild(tr);
+    });
+    body.querySelectorAll('input[data-i]').forEach(inp => inp.oninput = () => {
+      const i = +inp.dataset.i;
+      currentPO.lines[i][inp.dataset.f] = parseFloat(inp.value) || 0;
+      renderPOLines();
+    });
+    body.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
+      currentPO.lines.splice(+b.dataset.rm, 1);
+      renderPOLines();
+    });
+    renderPOTotals();
+  }
+
+  function renderPOTotals() {
+    const sub = currentPO.lines.reduce((a, l) => a + l.qty * l.cost, 0);
+    const tax = parseFloat($('po-tax').value) || 0;
+    const taxAmt = sub * tax / 100;
+    $('po-subtotal').textContent = fmt(sub);
+    $('po-tax-amt').textContent = fmt(taxAmt);
+    $('po-grand').textContent = fmt(sub + taxAmt);
+  }
+  $('po-tax').oninput = renderPOTotals;
+
+  $('save-po').onclick = () => {
+    if (!currentPO.lines.length) { alert('Add at least one line.'); return; }
+    const sub = currentPO.lines.reduce((a, l) => a + l.qty * l.cost, 0);
+    const tax = parseFloat($('po-tax').value) || 0;
+    const po = {
+      id: 'po_' + Date.now(),
+      number: 'PO-' + pad(seq.po, 4),
+      supplier: $('po-supplier').value.trim(),
+      shipto: $('po-shipto').value.trim(),
+      date: $('po-date').value,
+      ref: $('po-ref').value.trim(),
+      tax,
+      lines: [...currentPO.lines],
+      subtotal: sub,
+      total: sub * (1 + tax / 100),
+      status: 'open',
+      created: new Date().toISOString(),
+    };
+    pos.push(po);
+    seq.po++;
+    save(LS_POS, pos);
+    save(LS_SEQ, seq);
+    alert('Saved ' + po.number);
+    clearPO();
+    updateCounts();
+  };
+
+  function clearPO() {
+    currentPO = { lines: [], supplier: '', shipto: '', date: '', ref: '', tax: 0 };
+    ['po-supplier', 'po-shipto', 'po-date', 'po-ref'].forEach(id => $(id).value = '');
+    $('po-tax').value = 0;
+    renderPOLines();
+  }
+  $('clear-po').onclick = () => { if (currentPO.lines.length && !confirm('Clear current PO?')) return; clearPO(); };
+
+  $('export-po').onclick = () => {
+    if (!currentPO.lines.length) { alert('Nothing to export.'); return; }
+    const rows = [['SKU', 'Product', 'Quantity', 'Unit cost', 'Line total']];
+    currentPO.lines.forEach(l => rows.push([l.code, l.product, l.qty, l.cost.toFixed(2), (l.qty * l.cost).toFixed(2)]));
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    downloadFile('purchase-order-' + Date.now() + '.csv', csv, 'text/csv');
+  };
+
+  $('print-po').onclick = () => window.print();
+
+  function downloadFile(name, content, type) {
+    const blob = new Blob([content], { type });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  // --- PO History ---
+  function renderPOHistory() {
+    const body = $('po-history-body');
+    if (!pos.length) {
+      body.innerHTML = '<div class="empty">No purchase orders yet<div class="empty-mono">create one from the PO tab</div></div>';
+      return;
+    }
+    let html = '<div style="overflow-x:auto;"><table class="table"><thead><tr>'
+      + '<th>PO #</th><th>Supplier</th><th>Date</th><th>Lines</th><th>Total</th><th>Status</th><th></th>'
+      + '</tr></thead><tbody>';
+    pos.slice().reverse().forEach(p => {
+      const statusChip = p.status === 'received' ? '<span class="chip green">received</span>' : '<span class="chip amber">open</span>';
+      html += `<tr>
+        <td><span class="mono-green">${esc(p.number)}</span></td>
+        <td>${esc(p.supplier || '—')}</td>
+        <td class="mono">${esc(p.date || '—')}</td>
+        <td class="mono">${p.lines.length}</td>
+        <td class="mono-green">${fmt(p.total)}</td>
+        <td>${statusChip}</td>
+        <td>
+          ${p.status === 'open' ? `<button class="btn small" data-receive="${p.id}">Mark received</button>` : ''}
+          <button class="btn danger small" data-del-po="${p.id}">Delete</button>
+        </td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+    body.innerHTML = html;
+    body.querySelectorAll('[data-receive]').forEach(b => b.onclick = () => {
+      const p = pos.find(x => x.id === b.dataset.receive);
+      if (!p) return;
+      p.lines.forEach(l => {
+        const s = skus.find(x => x.id === l.skuId);
+        if (s) s.stock = (s.stock || 0) + l.qty;
+      });
+      p.status = 'received';
+      save(LS_POS, pos);
+      save(LS_SKUS, skus);
+      renderPOHistory();
+    });
+    body.querySelectorAll('[data-del-po]').forEach(b => b.onclick = () => {
+      if (!confirm('Delete this PO?')) return;
+      pos = pos.filter(x => x.id !== b.dataset.delPo);
+      save(LS_POS, pos);
+      renderPOHistory();
+      updateCounts();
+    });
+  }
+
+  // --- Counts ---
+  function updateCounts() {
+    $('sku-count').textContent = skus.length;
+    $('po-count').textContent = pos.length;
+  }
+
+  // --- Import / export / wipe ---
+  $('export-all').onclick = () => {
+    const data = { skus, pos, seq, exportedAt: new Date().toISOString(), source: 'posku.v1' };
+    downloadFile('posku-export-' + Date.now() + '.json', JSON.stringify(data, null, 2), 'application/json');
+  };
+
+  $('import-all').onclick = () => $('import-file').click();
+  $('import-file').onchange = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const data = JSON.parse(r.result);
+        if (!Array.isArray(data.skus) || !Array.isArray(data.pos)) throw new Error('bad shape');
+        if (!confirm(`Import ${data.skus.length} SKUs and ${data.pos.length} POs? This replaces current data.`)) return;
+        skus = data.skus;
+        pos = data.pos;
+        seq = data.seq || { sku: skus.length + 1, po: pos.length + 1 };
+        save(LS_SKUS, skus);
+        save(LS_POS, pos);
+        save(LS_SEQ, seq);
+        updateCounts();
+        renderLibrary();
+        renderPOHistory();
+        alert('Imported.');
+      } catch (err) {
+        alert('Invalid file: ' + err.message);
+      }
+    };
+    r.readAsText(f);
+    e.target.value = '';
+  };
+
+  $('wipe-all').onclick = () => {
+    if (!confirm('Delete ALL SKUs and POs on this device? This cannot be undone.')) return;
+    localStorage.removeItem(LS_SKUS);
+    localStorage.removeItem(LS_POS);
+    localStorage.removeItem(LS_SEQ);
+    skus = []; pos = []; seq = { sku: 1, po: 1 };
+    updateCounts();
+    renderLibrary();
+    renderPOHistory();
+    updatePreview();
+  };
+
+  // --- Init ---
+  updateCounts();
+  refreshPOSelect();
+  renderPOLines();
+})();
+</script>
+</body>
+</html>
