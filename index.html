@@ -7,24 +7,24 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0d0f0e;
-    --surface: #141714;
-    --surface2: #1a1d1a;
-    --surface3: #20231f;
-    --border: rgba(255,255,255,0.07);
-    --border2: rgba(255,255,255,0.12);
-    --text: #f0f2ee;
-    --text2: #a4aaa0;
-    --text3: #868c84;
-    --text4: #5a5e58;
-    --green: #4caf7d;
-    --green-dim: rgba(76,175,125,0.12);
-    --red: #e05a4e;
-    --red-dim: rgba(224,90,78,0.12);
-    --amber: #d4a843;
-    --amber-dim: rgba(212,168,67,0.12);
-    --blue: #5b9cf6;
-    --blue-dim: rgba(91,156,246,0.12);
+    --bg: #0a0c0b;
+    --surface: #16191a;
+    --surface2: #1f2325;
+    --surface3: #292e31;
+    --border: rgba(255,255,255,0.14);
+    --border2: rgba(255,255,255,0.24);
+    --text: #ffffff;
+    --text2: #d8dcd4;
+    --text3: #b2b7ae;
+    --text4: #828780;
+    --green: #5fd49a;
+    --green-dim: rgba(95,212,154,0.18);
+    --red: #ff7466;
+    --red-dim: rgba(255,116,102,0.18);
+    --amber: #f0c34f;
+    --amber-dim: rgba(240,195,79,0.18);
+    --blue: #7ab2ff;
+    --blue-dim: rgba(122,178,255,0.18);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -40,7 +40,7 @@
   .noise {
     position: fixed; inset: 0; pointer-events: none; z-index: 0;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-    opacity: 0.4;
+    opacity: 0.2;
   }
 
   .header {
@@ -291,7 +291,7 @@
 
   .table tr:last-child td { border-bottom: none; }
 
-  .table tr:hover td { background: rgba(255,255,255,0.015); }
+  .table tr:hover td { background: rgba(255,255,255,0.04); }
 
   .mono { font-family: 'DM Mono', monospace; font-size: 0.8rem; color: var(--text2); }
   .mono-green { font-family: 'DM Mono', monospace; color: var(--green); }
@@ -396,6 +396,39 @@
     color: var(--text2);
   }
 
+  .status {
+    margin-top: 1rem;
+    padding: 0.6rem 0.85rem;
+    border-radius: 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.05em;
+    display: none;
+    line-height: 1.5;
+    word-break: break-word;
+  }
+  .status.show { display: block; }
+  .status.ok    { background: var(--green-dim); color: var(--green); border: 1px solid rgba(95,212,154,0.4); }
+  .status.err   { background: var(--red-dim);   color: var(--red);   border: 1px solid rgba(255,116,102,0.4); }
+  .status.warn  { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(240,195,79,0.4); }
+  .status.info  { background: var(--blue-dim);  color: var(--blue);  border: 1px solid rgba(122,178,255,0.4); }
+
+  .api-banner {
+    margin: 0 2.5rem;
+    padding: 0.55rem 0.85rem;
+    border-radius: 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    color: var(--amber);
+    background: var(--amber-dim);
+    border: 1px solid rgba(240,195,79,0.4);
+    margin-top: 1rem;
+    display: none;
+  }
+  .api-banner.show { display: block; }
+  .api-banner.ok { color: var(--green); background: var(--green-dim); border-color: rgba(95,212,154,0.4); }
+
   @media print {
     body { background: white; color: black; }
     .header, .tabs, .no-print, .noise { display: none !important; }
@@ -410,18 +443,21 @@
 
 <header class="header">
   <div>
-    <div class="eyebrow">Posku · v0.1</div>
+    <div class="eyebrow">Posku · v0.2</div>
     <h1>Stock keeping <em>made boring</em></h1>
-    <p class="sub">Build SKUs from a template, then turn them into purchase orders. Everything stays in your browser — no signup, no server.</p>
+    <p class="sub">Build SKUs and purchase orders, then push them to your ERP over its API. The app is the form — your ERP is the source of truth.</p>
   </div>
   <a href="../" class="back-link">← back to index</a>
 </header>
 
+<div id="api-banner" class="api-banner">ERP endpoint not configured — submissions will only be saved locally. Open <strong>Settings</strong> to point Posku at your ERP.</div>
+
 <nav class="tabs">
   <button class="tab active" data-tab="sku">SKU Builder</button>
-  <button class="tab" data-tab="library">SKU Library <span id="sku-count" class="chip" style="margin-left:0.4rem;">0</span></button>
+  <button class="tab" data-tab="library">Recent SKUs <span id="sku-count" class="chip" style="margin-left:0.4rem;">0</span></button>
   <button class="tab" data-tab="po">Purchase Order</button>
-  <button class="tab" data-tab="po-history">PO History <span id="po-count" class="chip" style="margin-left:0.4rem;">0</span></button>
+  <button class="tab" data-tab="po-history">Recent POs <span id="po-count" class="chip" style="margin-left:0.4rem;">0</span></button>
+  <button class="tab" data-tab="settings">Settings</button>
 </nav>
 
 <main>
@@ -476,28 +512,29 @@
         </div>
 
         <div class="btn-row">
-          <button class="btn" id="save-sku">Save SKU</button>
+          <button class="btn" id="save-sku">Push SKU to ERP</button>
           <button class="btn ghost" id="reset-sku">Reset</button>
         </div>
+        <div id="sku-status" class="status"></div>
       </div>
 
       <div class="card">
         <div class="card-title">How it works</div>
         <div class="card-sub">Three steps</div>
         <ol style="padding-left:1.2rem;color:var(--text2);line-height:1.7;font-size:0.9rem;">
-          <li><strong style="color:var(--text);">Define SKUs</strong> — Each product variant gets a code built from category, product, and up to two attributes. A sequence number ensures uniqueness.</li>
-          <li><strong style="color:var(--text);">Pick from library</strong> — Build a purchase order by selecting saved SKUs, choosing quantities, and confirming unit cost.</li>
-          <li><strong style="color:var(--text);">Send or print</strong> — Export the PO as CSV or print it. Stock-on-hand updates when you mark a PO received.</li>
+          <li><strong style="color:var(--text);">Configure your ERP</strong> — In <em>Settings</em>, set the base URL, auth header, and endpoint paths for SKUs and POs.</li>
+          <li><strong style="color:var(--text);">Build &amp; push SKUs</strong> — Each product variant gets a code from category, product, and up to two attributes. Saving POSTs the SKU to your ERP and mirrors it locally so the PO builder can reference it.</li>
+          <li><strong style="color:var(--text);">Assemble &amp; push POs</strong> — Pick mirrored SKUs, set quantities, and POST the purchase order. CSV export and print stay available as fallbacks.</li>
         </ol>
         <div style="margin-top:1.25rem;padding:1rem;background:var(--surface2);border-radius:8px;border-left:3px solid var(--green);">
-          <div class="mono" style="font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3);margin-bottom:0.4rem;">Storage</div>
-          <div style="font-size:0.85rem;color:var(--text2);">All data lives in <code style="background:var(--surface3);padding:0.1rem 0.3rem;border-radius:4px;color:var(--text);font-family:'DM Mono',monospace;">localStorage</code> on this device. Export to CSV before clearing your browser data.</div>
+          <div class="mono" style="font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3);margin-bottom:0.4rem;">Source of truth</div>
+          <div style="font-size:0.85rem;color:var(--text2);">Your ERP owns the records. Posku keeps a local mirror in <code style="background:var(--surface3);padding:0.1rem 0.3rem;border-radius:4px;color:var(--text);font-family:'DM Mono',monospace;">localStorage</code> so the PO builder and recent lists work without re-fetching.</div>
         </div>
         <div class="btn-row" style="margin-top:1.25rem;">
-          <button class="btn ghost small" id="export-all">Export all (JSON)</button>
+          <button class="btn ghost small" id="export-all">Export mirror (JSON)</button>
           <button class="btn ghost small" id="import-all">Import JSON</button>
           <input type="file" id="import-file" accept=".json" style="display:none">
-          <button class="btn danger small" id="wipe-all">Wipe everything</button>
+          <button class="btn danger small" id="wipe-all">Clear local mirror</button>
         </div>
       </div>
     </div>
@@ -574,20 +611,97 @@
       </div>
 
       <div class="btn-row" style="margin-top:1.5rem;">
-        <button class="btn" id="save-po">Save PO</button>
+        <button class="btn" id="save-po">Push PO to ERP</button>
         <button class="btn ghost" id="export-po">Export CSV</button>
         <button class="btn ghost" id="print-po">Print</button>
         <button class="btn ghost" id="clear-po">Clear</button>
       </div>
+      <div id="po-status" class="status"></div>
     </div>
   </section>
 
   <!-- PO HISTORY -->
   <section class="panel" id="panel-po-history">
     <div class="card">
-      <div class="card-title">Purchase Order History</div>
-      <div class="card-sub">All saved POs</div>
+      <div class="card-title">Recent Purchase Orders</div>
+      <div class="card-sub">Local mirror of POs pushed from this device</div>
       <div id="po-history-body"></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="panel" id="panel-settings">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">ERP API endpoint</div>
+        <div class="card-sub">Where Posku posts your SKUs and POs</div>
+
+        <div class="field">
+          <label>Base URL</label>
+          <input type="url" id="cfg-base" placeholder="https://erp.example.com/api/v1">
+          <div class="pattern-hint">No trailing slash. Endpoint paths below are appended to this.</div>
+        </div>
+        <div class="field">
+          <label>Authorization header value</label>
+          <input type="text" id="cfg-auth" placeholder="Bearer eyJhbGc... or ApiKey abc123" autocomplete="off">
+          <div class="pattern-hint">Sent as the <code>Authorization</code> request header. Leave blank if your ERP uses a different scheme.</div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>SKU endpoint path</label>
+            <input type="text" id="cfg-sku-path" placeholder="/skus">
+          </div>
+          <div class="field">
+            <label>PO endpoint path</label>
+            <input type="text" id="cfg-po-path" placeholder="/purchase-orders">
+          </div>
+        </div>
+        <div class="field">
+          <label>Extra headers (JSON, optional)</label>
+          <textarea id="cfg-headers" placeholder='{"X-Tenant-Id": "acme"}'></textarea>
+          <div class="pattern-hint">Merged into every request. Must be a JSON object.</div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn" id="cfg-save">Save settings</button>
+          <button class="btn ghost" id="cfg-test">Test connection</button>
+          <button class="btn ghost" id="cfg-reset">Reset</button>
+        </div>
+        <div id="cfg-status" class="status"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Payload reference</div>
+        <div class="card-sub">What Posku sends to your ERP</div>
+        <div style="font-size:0.85rem;color:var(--text2);line-height:1.6;">
+          <p style="margin-bottom:0.75rem;"><strong style="color:var(--text);">POST</strong> <code style="background:var(--surface2);padding:0.1rem 0.4rem;border-radius:4px;color:var(--text);font-family:'DM Mono',monospace;">{baseUrl}{sku path}</code> — body:</p>
+          <pre style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0.85rem;font-family:'DM Mono',monospace;font-size:0.72rem;color:var(--text2);overflow-x:auto;line-height:1.5;">{
+  "code": "APPA-TSHI-MEDI-BLAC-001",
+  "category": "Apparel",
+  "product": "T-Shirt",
+  "attributes": { "attr1": "Medium", "attr2": "Black" },
+  "unit_cost": 12.50,
+  "stock_on_hand": 0,
+  "supplier": "Acme Co.",
+  "notes": ""
+}</pre>
+          <p style="margin:0.85rem 0 0.75rem;"><strong style="color:var(--text);">POST</strong> <code style="background:var(--surface2);padding:0.1rem 0.4rem;border-radius:4px;color:var(--text);font-family:'DM Mono',monospace;">{baseUrl}{po path}</code> — body:</p>
+          <pre style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0.85rem;font-family:'DM Mono',monospace;font-size:0.72rem;color:var(--text2);overflow-x:auto;line-height:1.5;">{
+  "number": "PO-0001",
+  "supplier": "Acme Co.",
+  "ship_to": "Warehouse A",
+  "expected_by": "2026-06-01",
+  "reference": "",
+  "tax_percent": 8.5,
+  "lines": [
+    { "sku_code": "...", "quantity": 10, "unit_cost": 12.50 }
+  ],
+  "subtotal": 125.00,
+  "total": 135.63
+}</pre>
+          <p style="margin-top:0.85rem;color:var(--text3);font-size:0.8rem;">If your ERP responds with an <code style="background:var(--surface2);padding:0.1rem 0.3rem;border-radius:4px;color:var(--text2);font-family:'DM Mono',monospace;">id</code>, Posku stores it on the local record.</p>
+        </div>
+      </div>
     </div>
   </section>
 </main>
@@ -597,6 +711,7 @@
   const LS_SKUS = 'posku.skus.v1';
   const LS_POS = 'posku.pos.v1';
   const LS_SEQ = 'posku.seq.v1';
+  const LS_CFG = 'posku.cfg.v1';
 
   const $ = (id) => document.getElementById(id);
   const fmt = (n) => '$' + Number(n || 0).toFixed(2);
@@ -609,6 +724,7 @@
   let skus = load(LS_SKUS, []);
   let pos = load(LS_POS, []);
   let seq = load(LS_SEQ, { sku: 1, po: 1 });
+  let cfg = load(LS_CFG, { baseUrl: '', auth: '', skuPath: '/skus', poPath: '/purchase-orders', headers: '' });
   let currentPO = { lines: [], supplier: '', shipto: '', date: '', ref: '', tax: 0 };
 
   // --- Tabs ---
@@ -621,8 +737,61 @@
       if (t.dataset.tab === 'library') renderLibrary();
       if (t.dataset.tab === 'po') refreshPOSelect();
       if (t.dataset.tab === 'po-history') renderPOHistory();
+      if (t.dataset.tab === 'settings') loadCfgForm();
     };
   });
+
+  // --- Status banner helpers ---
+  function setStatus(el, kind, msg) {
+    el.className = 'status show ' + kind;
+    el.textContent = msg;
+  }
+  function clearStatus(el) { el.className = 'status'; el.textContent = ''; }
+
+  function updateApiBanner() {
+    const b = $('api-banner');
+    if (cfg.baseUrl) { b.classList.remove('show'); }
+    else { b.className = 'api-banner show'; }
+  }
+
+  // --- ERP API client ---
+  function buildHeaders() {
+    const h = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+    if (cfg.auth) h['Authorization'] = cfg.auth;
+    if (cfg.headers) {
+      try {
+        const extra = JSON.parse(cfg.headers);
+        if (extra && typeof extra === 'object') Object.assign(h, extra);
+      } catch { /* ignore — validated on save */ }
+    }
+    return h;
+  }
+
+  async function erpPost(path, body) {
+    if (!cfg.baseUrl) return { ok: false, skipped: true, error: 'No ERP base URL configured' };
+    const url = cfg.baseUrl.replace(/\/+$/, '') + (path.startsWith('/') ? path : '/' + path);
+    try {
+      const res = await fetch(url, { method: 'POST', headers: buildHeaders(), body: JSON.stringify(body) });
+      const text = await res.text();
+      let json = null;
+      try { json = text ? JSON.parse(text) : null; } catch { /* non-JSON response */ }
+      if (!res.ok) return { ok: false, status: res.status, error: (json && (json.message || json.error)) || text || `HTTP ${res.status}` };
+      return { ok: true, status: res.status, data: json };
+    } catch (err) {
+      return { ok: false, error: err.message || 'Network error' };
+    }
+  }
+
+  async function erpHead() {
+    if (!cfg.baseUrl) return { ok: false, error: 'No base URL set' };
+    const url = cfg.baseUrl.replace(/\/+$/, '');
+    try {
+      const res = await fetch(url, { method: 'GET', headers: buildHeaders() });
+      return { ok: res.ok || res.status < 500, status: res.status };
+    } catch (err) {
+      return { ok: false, error: err.message || 'Network error' };
+    }
+  }
 
   // --- SKU preview ---
   const skuFields = ['sku-category', 'sku-product', 'sku-attr1', 'sku-attr2'];
@@ -640,12 +809,13 @@
   updatePreview();
 
   // --- Save SKU ---
-  $('save-sku').onclick = () => {
+  $('save-sku').onclick = async () => {
     const cat = $('sku-category').value.trim();
     const prod = $('sku-product').value.trim();
-    if (!cat || !prod) { alert('Category and Product are required.'); return; }
+    const statusEl = $('sku-status');
+    if (!cat || !prod) { setStatus(statusEl, 'err', 'Category and Product are required.'); return; }
     const code = buildCode();
-    skus.push({
+    const sku = {
       id: 'sku_' + Date.now(),
       code,
       category: cat,
@@ -657,13 +827,49 @@
       supplier: $('sku-supplier').value.trim(),
       notes: $('sku-notes').value.trim(),
       created: new Date().toISOString(),
-    });
+      erpId: null,
+      erpStatus: 'pending',
+    };
+
+    const btn = $('save-sku');
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = cfg.baseUrl ? 'Pushing to ERP…' : 'Saving locally…';
+    setStatus(statusEl, 'info', cfg.baseUrl ? `POST ${cfg.baseUrl}${cfg.skuPath || '/skus'}` : 'No ERP configured — saving to local mirror only.');
+
+    const payload = {
+      code: sku.code,
+      category: sku.category,
+      product: sku.product,
+      attributes: { attr1: sku.attr1, attr2: sku.attr2 },
+      unit_cost: sku.cost,
+      stock_on_hand: sku.stock,
+      supplier: sku.supplier,
+      notes: sku.notes,
+    };
+    const result = await erpPost(cfg.skuPath || '/skus', payload);
+
+    if (result.ok) {
+      sku.erpStatus = 'synced';
+      if (result.data && (result.data.id != null)) sku.erpId = result.data.id;
+      setStatus(statusEl, 'ok', `SKU ${sku.code} pushed to ERP (HTTP ${result.status})${sku.erpId != null ? ' · ERP id ' + sku.erpId : ''}.`);
+    } else if (result.skipped) {
+      sku.erpStatus = 'local-only';
+      setStatus(statusEl, 'warn', `Saved locally as ${sku.code}. Configure the ERP endpoint to push it.`);
+    } else {
+      sku.erpStatus = 'failed';
+      sku.erpError = result.error;
+      setStatus(statusEl, 'err', `ERP push failed: ${result.error}. SKU ${sku.code} kept in local mirror; retry from Recent SKUs.`);
+    }
+
+    skus.push(sku);
     seq.sku++;
     save(LS_SKUS, skus);
     save(LS_SEQ, seq);
     resetSKUForm();
     updateCounts();
-    flash($('save-sku'), 'Saved ✓');
+    btn.disabled = false;
+    btn.textContent = orig;
   };
 
   $('reset-sku').onclick = resetSKUForm;
@@ -680,6 +886,14 @@
   }
 
   // --- Library ---
+  function erpChip(item) {
+    const s = item.erpStatus || (item.erpId != null ? 'synced' : 'local-only');
+    if (s === 'synced')     return `<span class="chip green" title="ERP id: ${esc(item.erpId ?? '—')}">synced</span>`;
+    if (s === 'failed')     return `<span class="chip" style="color:var(--red);background:var(--red-dim);border-color:rgba(255,116,102,0.4);" title="${esc(item.erpError || 'push failed')}">failed</span>`;
+    if (s === 'local-only') return '<span class="chip amber">local only</span>';
+    return `<span class="chip">${esc(s)}</span>`;
+  }
+
   function renderLibrary() {
     const body = $('library-body');
     if (!skus.length) {
@@ -687,10 +901,11 @@
       return;
     }
     let html = '<div style="overflow-x:auto;"><table class="table"><thead><tr>'
-      + '<th>SKU</th><th>Category</th><th>Product</th><th>Attributes</th><th>Cost</th><th>Stock</th><th>Supplier</th><th></th>'
+      + '<th>SKU</th><th>Category</th><th>Product</th><th>Attributes</th><th>Cost</th><th>Stock</th><th>Supplier</th><th>ERP</th><th></th>'
       + '</tr></thead><tbody>';
     skus.slice().reverse().forEach(s => {
       const attrs = [s.attr1, s.attr2].filter(Boolean).join(' / ') || '<span class="mono" style="color:var(--text4);">—</span>';
+      const synced = (s.erpStatus === 'synced');
       html += `<tr>
         <td><span class="mono-green">${esc(s.code)}</span></td>
         <td>${esc(s.category)}</td>
@@ -699,17 +914,43 @@
         <td class="mono">${fmt(s.cost)}</td>
         <td class="mono">${s.stock}</td>
         <td class="mono">${esc(s.supplier || '—')}</td>
-        <td><button class="btn danger small" data-del="${s.id}">Delete</button></td>
+        <td>${erpChip(s)}</td>
+        <td style="white-space:nowrap;">
+          ${synced ? '' : `<button class="btn small" data-retry-sku="${s.id}">Retry push</button>`}
+          <button class="btn danger small" data-del="${s.id}">Delete</button>
+        </td>
       </tr>`;
     });
     html += '</tbody></table></div>';
     body.innerHTML = html;
     body.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
-      if (!confirm('Delete this SKU?')) return;
+      if (!confirm('Delete this SKU from local mirror? (Does not affect the ERP record.)')) return;
       skus = skus.filter(x => x.id !== b.dataset.del);
       save(LS_SKUS, skus);
       renderLibrary();
       updateCounts();
+    });
+    body.querySelectorAll('[data-retry-sku]').forEach(b => b.onclick = async () => {
+      const s = skus.find(x => x.id === b.dataset.retrySku);
+      if (!s) return;
+      b.disabled = true;
+      const orig = b.textContent;
+      b.textContent = 'Pushing…';
+      const payload = {
+        code: s.code, category: s.category, product: s.product,
+        attributes: { attr1: s.attr1, attr2: s.attr2 },
+        unit_cost: s.cost, stock_on_hand: s.stock,
+        supplier: s.supplier, notes: s.notes,
+      };
+      const r = await erpPost(cfg.skuPath || '/skus', payload);
+      if (r.ok) { s.erpStatus = 'synced'; if (r.data && r.data.id != null) s.erpId = r.data.id; delete s.erpError; }
+      else if (r.skipped) { s.erpStatus = 'local-only'; }
+      else { s.erpStatus = 'failed'; s.erpError = r.error; }
+      save(LS_SKUS, skus);
+      renderLibrary();
+      if (!r.ok && !r.skipped) alert('Push failed: ' + r.error);
+      b.textContent = orig;
+      b.disabled = false;
     });
   }
 
@@ -782,8 +1023,9 @@
   }
   $('po-tax').oninput = renderPOTotals;
 
-  $('save-po').onclick = () => {
-    if (!currentPO.lines.length) { alert('Add at least one line.'); return; }
+  $('save-po').onclick = async () => {
+    const statusEl = $('po-status');
+    if (!currentPO.lines.length) { setStatus(statusEl, 'err', 'Add at least one line before pushing.'); return; }
     const sub = currentPO.lines.reduce((a, l) => a + l.qty * l.cost, 0);
     const tax = parseFloat($('po-tax').value) || 0;
     const po = {
@@ -799,14 +1041,50 @@
       total: sub * (1 + tax / 100),
       status: 'open',
       created: new Date().toISOString(),
+      erpId: null,
+      erpStatus: 'pending',
     };
+
+    const btn = $('save-po');
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = cfg.baseUrl ? 'Pushing to ERP…' : 'Saving locally…';
+    setStatus(statusEl, 'info', cfg.baseUrl ? `POST ${cfg.baseUrl}${cfg.poPath || '/purchase-orders'}` : 'No ERP configured — saving to local mirror only.');
+
+    const payload = {
+      number: po.number,
+      supplier: po.supplier,
+      ship_to: po.shipto,
+      expected_by: po.date,
+      reference: po.ref,
+      tax_percent: po.tax,
+      lines: po.lines.map(l => ({ sku_code: l.code, quantity: l.qty, unit_cost: l.cost })),
+      subtotal: +po.subtotal.toFixed(2),
+      total: +po.total.toFixed(2),
+    };
+    const result = await erpPost(cfg.poPath || '/purchase-orders', payload);
+
+    if (result.ok) {
+      po.erpStatus = 'synced';
+      if (result.data && (result.data.id != null)) po.erpId = result.data.id;
+      setStatus(statusEl, 'ok', `${po.number} pushed to ERP (HTTP ${result.status})${po.erpId != null ? ' · ERP id ' + po.erpId : ''}.`);
+    } else if (result.skipped) {
+      po.erpStatus = 'local-only';
+      setStatus(statusEl, 'warn', `Saved ${po.number} locally. Configure the ERP endpoint to push it.`);
+    } else {
+      po.erpStatus = 'failed';
+      po.erpError = result.error;
+      setStatus(statusEl, 'err', `ERP push failed: ${result.error}. ${po.number} kept in local mirror; retry from Recent POs.`);
+    }
+
     pos.push(po);
     seq.po++;
     save(LS_POS, pos);
     save(LS_SEQ, seq);
-    alert('Saved ' + po.number);
     clearPO();
     updateCounts();
+    btn.disabled = false;
+    btn.textContent = orig;
   };
 
   function clearPO() {
@@ -844,10 +1122,11 @@
       return;
     }
     let html = '<div style="overflow-x:auto;"><table class="table"><thead><tr>'
-      + '<th>PO #</th><th>Supplier</th><th>Date</th><th>Lines</th><th>Total</th><th>Status</th><th></th>'
+      + '<th>PO #</th><th>Supplier</th><th>Date</th><th>Lines</th><th>Total</th><th>Status</th><th>ERP</th><th></th>'
       + '</tr></thead><tbody>';
     pos.slice().reverse().forEach(p => {
       const statusChip = p.status === 'received' ? '<span class="chip green">received</span>' : '<span class="chip amber">open</span>';
+      const synced = (p.erpStatus === 'synced');
       html += `<tr>
         <td><span class="mono-green">${esc(p.number)}</span></td>
         <td>${esc(p.supplier || '—')}</td>
@@ -855,7 +1134,9 @@
         <td class="mono">${p.lines.length}</td>
         <td class="mono-green">${fmt(p.total)}</td>
         <td>${statusChip}</td>
-        <td>
+        <td>${erpChip(p)}</td>
+        <td style="white-space:nowrap;">
+          ${synced ? '' : `<button class="btn small" data-retry-po="${p.id}">Retry push</button>`}
           ${p.status === 'open' ? `<button class="btn small" data-receive="${p.id}">Mark received</button>` : ''}
           <button class="btn danger small" data-del-po="${p.id}">Delete</button>
         </td>
@@ -863,6 +1144,28 @@
     });
     html += '</tbody></table></div>';
     body.innerHTML = html;
+    body.querySelectorAll('[data-retry-po]').forEach(b => b.onclick = async () => {
+      const p = pos.find(x => x.id === b.dataset.retryPo);
+      if (!p) return;
+      b.disabled = true;
+      const orig = b.textContent;
+      b.textContent = 'Pushing…';
+      const payload = {
+        number: p.number, supplier: p.supplier, ship_to: p.shipto,
+        expected_by: p.date, reference: p.ref, tax_percent: p.tax,
+        lines: p.lines.map(l => ({ sku_code: l.code, quantity: l.qty, unit_cost: l.cost })),
+        subtotal: +p.subtotal.toFixed(2), total: +p.total.toFixed(2),
+      };
+      const r = await erpPost(cfg.poPath || '/purchase-orders', payload);
+      if (r.ok) { p.erpStatus = 'synced'; if (r.data && r.data.id != null) p.erpId = r.data.id; delete p.erpError; }
+      else if (r.skipped) { p.erpStatus = 'local-only'; }
+      else { p.erpStatus = 'failed'; p.erpError = r.error; }
+      save(LS_POS, pos);
+      renderPOHistory();
+      if (!r.ok && !r.skipped) alert('Push failed: ' + r.error);
+      b.textContent = orig;
+      b.disabled = false;
+    });
     body.querySelectorAll('[data-receive]').forEach(b => b.onclick = () => {
       const p = pos.find(x => x.id === b.dataset.receive);
       if (!p) return;
@@ -936,8 +1239,68 @@
     updatePreview();
   };
 
+  // --- Settings ---
+  function loadCfgForm() {
+    $('cfg-base').value     = cfg.baseUrl || '';
+    $('cfg-auth').value     = cfg.auth || '';
+    $('cfg-sku-path').value = cfg.skuPath || '/skus';
+    $('cfg-po-path').value  = cfg.poPath  || '/purchase-orders';
+    $('cfg-headers').value  = cfg.headers || '';
+    clearStatus($('cfg-status'));
+  }
+
+  $('cfg-save').onclick = () => {
+    const statusEl = $('cfg-status');
+    const headersRaw = $('cfg-headers').value.trim();
+    if (headersRaw) {
+      try {
+        const v = JSON.parse(headersRaw);
+        if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('must be a JSON object');
+      } catch (err) { setStatus(statusEl, 'err', 'Extra headers JSON is invalid: ' + err.message); return; }
+    }
+    cfg = {
+      baseUrl: $('cfg-base').value.trim().replace(/\/+$/, ''),
+      auth:    $('cfg-auth').value.trim(),
+      skuPath: $('cfg-sku-path').value.trim() || '/skus',
+      poPath:  $('cfg-po-path').value.trim()  || '/purchase-orders',
+      headers: headersRaw,
+    };
+    save(LS_CFG, cfg);
+    updateApiBanner();
+    setStatus(statusEl, 'ok', cfg.baseUrl ? `Settings saved. Posku will POST to ${cfg.baseUrl}${cfg.skuPath} and ${cfg.baseUrl}${cfg.poPath}.` : 'Settings saved. No base URL set — submissions stay local until you configure one.');
+  };
+
+  $('cfg-test').onclick = async () => {
+    const statusEl = $('cfg-status');
+    if (!$('cfg-base').value.trim()) { setStatus(statusEl, 'err', 'Set a base URL first.'); return; }
+    // use the latest field values for the test without persisting
+    const prev = cfg;
+    cfg = {
+      baseUrl: $('cfg-base').value.trim().replace(/\/+$/, ''),
+      auth:    $('cfg-auth').value.trim(),
+      skuPath: $('cfg-sku-path').value.trim() || '/skus',
+      poPath:  $('cfg-po-path').value.trim()  || '/purchase-orders',
+      headers: $('cfg-headers').value.trim(),
+    };
+    setStatus(statusEl, 'info', `Pinging ${cfg.baseUrl}…`);
+    const r = await erpHead();
+    cfg = prev;
+    if (r.ok) setStatus(statusEl, 'ok', `Reachable (HTTP ${r.status}). Click Save settings to persist.`);
+    else setStatus(statusEl, 'err', `Could not reach endpoint: ${r.error || ('HTTP ' + r.status)}.`);
+  };
+
+  $('cfg-reset').onclick = () => {
+    if (!confirm('Clear ERP settings?')) return;
+    cfg = { baseUrl: '', auth: '', skuPath: '/skus', poPath: '/purchase-orders', headers: '' };
+    save(LS_CFG, cfg);
+    loadCfgForm();
+    updateApiBanner();
+    setStatus($('cfg-status'), 'warn', 'Settings cleared.');
+  };
+
   // --- Init ---
   updateCounts();
+  updateApiBanner();
   refreshPOSelect();
   renderPOLines();
 })();
