@@ -110,6 +110,35 @@ textarea::placeholder { color: var(--text4); }
 .edit-field select:focus, .edit-field input:focus { outline: none; border-color: var(--green); }
 .flags { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: var(--amber); margin-top: 0.25rem; }
 
+/* PO draft cards */
+.po-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem 1.2rem; margin-bottom: 1rem; }
+.po-card.done { background: var(--green-dim); border-color: rgba(30,127,86,0.4); }
+.po-card.failed { background: var(--red-dim); border-color: rgba(184,57,44,0.4); }
+.po-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; flex-wrap: wrap; gap: 0.5rem; }
+.po-head .po-title { font-family: 'DM Mono', monospace; font-size: 0.85rem; color: var(--text); letter-spacing: 0.05em; }
+.po-head .po-title .sku-ref { color: var(--text3); font-size: 0.72rem; margin-left: 0.5rem; }
+.po-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem 0.8rem; }
+@media (max-width: 900px) { .po-grid { grid-template-columns: repeat(2, 1fr); } }
+.po-field { display: flex; flex-direction: column; }
+.po-field.wide { grid-column: span 2; }
+.po-field.full { grid-column: 1 / -1; }
+.po-field label { font-family: 'DM Mono', monospace; font-size: 0.6rem; color: var(--text3); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.3rem; }
+.po-field input, .po-field select, .po-field textarea { background: var(--surface); border: 1px solid var(--border2); border-radius: 6px; padding: 0.4rem 0.6rem; font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--text); width: 100%; }
+.po-field textarea { min-height: 50px; resize: vertical; font-family: 'DM Mono', monospace; }
+.po-field input:focus, .po-field select:focus, .po-field textarea:focus { outline: none; border-color: var(--green); }
+.tag-row { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.tag-btn { background: var(--surface); border: 1px solid var(--border2); color: var(--text2); border-radius: 6px; padding: 0.35rem 0.7rem; font-family: 'DM Mono', monospace; font-size: 0.72rem; letter-spacing: 0.05em; cursor: pointer; }
+.tag-btn:hover { border-color: var(--text3); }
+.tag-btn.active { background: var(--green-dim); color: var(--green); border-color: var(--green); }
+.po-line { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.7rem 0.9rem; margin-top: 0.6rem; }
+.po-line-title { font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text3); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.5rem; }
+.po-actions { display: flex; gap: 0.5rem; margin-top: 0.9rem; align-items: center; flex-wrap: wrap; }
+.po-result { font-family: 'DM Mono', monospace; font-size: 0.72rem; margin-left: auto; }
+.po-result.ok { color: var(--green); }
+.po-result.err { color: var(--red); }
+.select-col { width: 28px; padding-left: 0.6rem !important; }
+.select-col input { transform: scale(1.1); cursor: pointer; }
+
 @media print {
   .settings-bar, .input-card, .btn-row, .no-print { display: none !important; }
   body { background: white; }
@@ -177,6 +206,7 @@ textarea::placeholder { color: var(--text4); }
         <table class="table">
           <thead>
             <tr>
+              <th class="select-col"><input type="checkbox" id="select-all"></th>
               <th>Load ID</th>
               <th>Location</th>
               <th>Type</th>
@@ -193,6 +223,23 @@ textarea::placeholder { color: var(--text4); }
         </table>
       </div>
       <div id="push-status" class="status" style="margin-top:1rem;"></div>
+      <div class="btn-row" id="po-action-row" style="margin-top:1rem;display:none;">
+        <button class="btn" id="generate-po-btn">Generate PO drafts from selected</button>
+        <span class="hint" id="select-count" style="margin-left:0.5rem;"></span>
+      </div>
+    </div>
+
+    <!-- PO drafts section -->
+    <div class="card" id="po-section" style="display:none;">
+      <div class="loads-header">
+        <div class="loads-title">PO drafts <span class="hint" style="margin-left:0.5rem;">edit fields, then push individually or all at once</span></div>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="btn" id="push-all-pos-btn">Push all draft POs</button>
+          <button class="btn ghost" id="clear-pos-btn">Clear drafts</button>
+        </div>
+      </div>
+      <div id="po-list"></div>
+      <div id="po-status" class="status" style="margin-top:1rem;"></div>
     </div>
   </div>
 </main>
@@ -296,6 +343,47 @@ const SUPPLIERS = {
 
 let activeSupplier = 'WYF'; // tracks currently selected supplier tab
 
+// ── PO defaults (per supplier) ───────────────────────────────────────────────
+const PO_DEFAULTS = {
+  WYF: {
+    user_name:         'posku_api',
+    supplier_id:       770,
+    legacy_user_id:    179,
+    shipping_method_id: 64,  // Truckload
+    shipping_company_id: 393, // Santa Fe Trucking (most common WYF carrier)
+    billing_address:   'Wayfair Inc., 4 Copley Place, 7th Floor, Boston, MA 02116',
+    shipping_address_byLoc: {
+      PR:   'Via Trading, 11471 Penrose St, Sun Valley, CA 91352',
+      LA:   'Via Trading, 11471 Penrose St, Sun Valley, CA 91352',
+      KWA:  'Via Trading - Romeoville, 1100 W Crossroads Pkwy, Romeoville, IL 60446',
+      JFL:  'Via Trading - Jacksonville, FL',
+      AMD:  'Via Trading - Aberdeen, MD',
+      RIL:  'Via Trading - Romeoville, 1100 W Crossroads Pkwy, Romeoville, IL 60446',
+      LTX:  'Via Trading - Lancaster, TX',
+      EKY:  'Via Trading - Kentucky',
+      MCDO: 'Via Trading - McDonough, GA',
+      CI:   'Via Trading - City of Industry, CA',
+      POR:  'Via Trading - Portland, OR',
+    },
+    shippingMethods: [
+      { id: 64, name: 'Truckload' },
+      { id: 65, name: 'Direct Truckload' },
+      { id: 66, name: 'LTL' },
+      { id: 74, name: 'Direct LTL' },
+    ],
+    shippingCompanies: [
+      { id: 393, name: 'Santa Fe Trucking' },
+      { id: 573, name: 'RXO' },
+      { id: 443, name: 'Arrive Logistics' },
+      { id: 622, name: 'BAOP (Buyer own pickup)' },
+      { id: 111, name: 'SoCal' },
+      { id: 220, name: 'LTL x3' },
+      { id: 66,  name: 'LTL' },
+    ],
+    typeLabel: { LQ: 'Liquidation', S: 'Salvage', QC: 'QC', A: 'Excess', HDO: 'HDO' },
+  },
+};
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -351,6 +439,7 @@ function extractLoadIds(text) {
 }
 
 let loads = [];
+let poDrafts = []; // [{ id, sku, productId, ...editable fields..., status: 'draft'|'pushing'|'done'|'failed', result }]
 
 function parseEmail(text, supplierKey) {
   if (!text.trim()) return [];
@@ -475,8 +564,8 @@ async function pushLoad(load) {
   const r = await erpRequest('POST', '/api/products', payload);
   console.log('[Posku] POST response:', JSON.stringify(r, null, 2));
   if (r.ok) {
-    const erpId = r.data?.newProductId ?? r.data?.id ?? r.data?.data?.id ?? null;
-    return { ok: true, erpId };
+    const erpId = r.data?.newProductId ?? r.data?.id ?? r.data?.data?.id ?? r.data?.product_id ?? null;
+    return { ok: true, erpId, raw: r.data };
   }
   const errMsg = r.data?.message || r.data?.error || (r.error) || `HTTP ${r.status}`;
   return { ok: false, error: errMsg };
@@ -502,6 +591,7 @@ function renderLoads() {
     };
 
     tr.innerHTML = `
+      <td class="select-col">${load.status === 'done' ? `<input type="checkbox" data-select="${idx}" ${load.selected ? 'checked' : ''}>` : ''}</td>
       <td class="mono">${esc(load.loadId)}</td>
       <td><span class="mono">${esc(load.locCode || '—')}</span></td>
       <td><span class="mono">${esc(load.typeCode || '—')}</span></td>
@@ -523,7 +613,7 @@ function renderLoads() {
     const er = document.createElement('tr');
     er.id = 'edit-' + idx;
     er.className = 'edit-row';
-    er.innerHTML = `<td colspan="10">
+    er.innerHTML = `<td colspan="11">
       <div class="edit-grid">
         <div class="edit-field">
           <label>Load ID</label>
@@ -563,7 +653,7 @@ function renderLoads() {
 
     if ((load.status === 'failed' || load.status === 'dup') && load.erpResult) {
       const msgRow = document.createElement('tr');
-      msgRow.innerHTML = `<td colspan="10" style="padding:0.5rem 0.8rem;background:${load.status==='failed'?'var(--red-dim)':'var(--surface2)'};border-bottom:1px solid var(--border);">
+      msgRow.innerHTML = `<td colspan="11" style="padding:0.5rem 0.8rem;background:${load.status==='failed'?'var(--red-dim)':'var(--surface2)'};border-bottom:1px solid var(--border);">
         <span class="mono" style="color:${load.status==='failed'?'var(--red)':'var(--text2)'};font-size:0.74rem;">
           ${load.status==='failed' ? '✗' : 'ℹ'} ${esc(load.erpResult)}
         </span>
@@ -574,6 +664,21 @@ function renderLoads() {
 
   updateSummary();
   attachHandlers();
+  updatePoActionRow();
+}
+
+function updatePoActionRow() {
+  const pushedCount = loads.filter(l => l.status === 'done').length;
+  const selCount = loads.filter(l => l.status === 'done' && l.selected).length;
+  const row = $('po-action-row');
+  if (pushedCount === 0) { row.style.display = 'none'; return; }
+  row.style.display = 'flex';
+  $('select-count').textContent = selCount
+    ? `${selCount} of ${pushedCount} pushed SKUs selected`
+    : `Select pushed SKUs to generate POs (${pushedCount} available)`;
+  $('generate-po-btn').disabled = selCount === 0;
+  // sync select-all
+  $('select-all').checked = pushedCount > 0 && selCount === pushedCount;
 }
 
 function updateSummary() {
@@ -639,7 +744,19 @@ function attachHandlers() {
       else renderLoads();
     };
   });
+  $('loads-body').querySelectorAll('[data-select]').forEach(cb => {
+    cb.onchange = () => {
+      loads[+cb.dataset.select].selected = cb.checked;
+      updatePoActionRow();
+    };
+  });
 }
+
+$('select-all').onchange = () => {
+  const checked = $('select-all').checked;
+  loads.forEach(l => { if (l.status === 'done') l.selected = checked; });
+  renderLoads();
+};
 
 async function doPush(indices) {
   const cfg = loadCfg();
@@ -656,6 +773,7 @@ async function doPush(indices) {
     const result = await pushLoad(load);
     if (result.ok) {
       load.status = 'done';
+      load.productId = result.erpId;
       load.erpResult = `ERP id: ${result.erpId ?? 'n/a'}`;
     } else if (result.skipped) {
       load.status = 'dup';
@@ -982,6 +1100,232 @@ $('clear-loads-btn').onclick = () => {
     loads = [];
     $('loads-section').style.display = 'none';
     clearStatus($('push-status'));
+  }
+};
+
+// ── PO drafts ────────────────────────────────────────────────────────────────
+function todayISO(offsetDays = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+
+function createDraftFromLoad(load) {
+  const def = PO_DEFAULTS[load.supplierKey] || PO_DEFAULTS.WYF;
+  const typeLabel = def.typeLabel?.[load.typeCode] || load.typeCode || '';
+  return {
+    id:               'po_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+    loadIdx:          loads.indexOf(load),
+    sku:              load.sku,
+    productId:        load.productId || null,
+    productName:      load.name,
+    loadId:           load.loadId,
+    typeLabel,
+    locCode:          load.locCode,
+    // editable fields (only what the API contract accepts today)
+    note:             '',
+    supplier_invoice_number: '',
+    order_date:       todayISO(0),
+    due_date:         todayISO(7),
+    delivery_date:    todayISO(10),
+    shipping_method_id: def.shipping_method_id,
+    shipping_company_id: def.shipping_company_id,
+    sub_total:        0,
+    billing_address:  def.billing_address,
+    shipping_address: def.shipping_address_byLoc?.[load.locCode] || '',
+    item_qty:         1,
+    item_price:       0,
+    item_pallets_qty: 0,
+    item_supplier_sku: '',
+    // status
+    status:           'draft',
+    result:           null,
+  };
+}
+
+function generatePoDrafts() {
+  const selected = loads.filter(l => l.status === 'done' && l.selected);
+  if (!selected.length) return;
+  // Skip if a draft already exists for the same load
+  const existing = new Set(poDrafts.map(p => p.loadId + '|' + p.sku));
+  const added = selected.filter(l => !existing.has(l.loadId + '|' + l.sku));
+  added.forEach(l => poDrafts.push(createDraftFromLoad(l)));
+  // unselect after adding
+  selected.forEach(l => l.selected = false);
+  $('po-section').style.display = '';
+  renderLoads();
+  renderPoDrafts();
+}
+
+function renderPoDrafts() {
+  const list = $('po-list');
+  if (!poDrafts.length) { list.innerHTML = '<div class="hint">No drafts yet.</div>'; return; }
+  const def = PO_DEFAULTS[activeSupplier] || PO_DEFAULTS.WYF;
+  list.innerHTML = poDrafts.map((d, idx) => {
+    const cls = d.status === 'done' ? 'done' : (d.status === 'failed' ? 'failed' : '');
+    return `
+    <div class="po-card ${cls}" id="po-card-${idx}">
+      <div class="po-head">
+        <div class="po-title">
+          DRAFT ${idx + 1}
+          <span class="sku-ref">SKU: ${esc(d.sku)} · product_id: ${esc(d.productId ?? 'n/a')}</span>
+        </div>
+        <div>${d.status === 'done' ? `<span class="chip green">pushed</span>` :
+              d.status === 'failed' ? `<span class="chip red">failed</span>` :
+              d.status === 'pushing' ? `<span class="chip blue">pushing…</span>` :
+              `<span class="chip amber">draft</span>`}</div>
+      </div>
+
+      <div class="po-grid">
+        <div class="po-field"><label>Order date</label><input type="date" data-po="${idx}" data-k="order_date" value="${esc(d.order_date)}"></div>
+        <div class="po-field"><label>Due date</label><input type="date" data-po="${idx}" data-k="due_date" value="${esc(d.due_date)}"></div>
+        <div class="po-field"><label>Delivery date</label><input type="date" data-po="${idx}" data-k="delivery_date" value="${esc(d.delivery_date)}"></div>
+        <div class="po-field"><label>Sub total ($)</label><input type="number" step="0.01" data-po="${idx}" data-k="sub_total" value="${esc(d.sub_total)}"></div>
+
+        <div class="po-field wide">
+          <label>Shipping method</label>
+          <div class="tag-row">
+            ${def.shippingMethods.map(m => `<button type="button" class="tag-btn ${d.shipping_method_id === m.id ? 'active' : ''}" data-po="${idx}" data-method="${m.id}">${esc(m.name)}</button>`).join('')}
+          </div>
+        </div>
+
+        <div class="po-field wide">
+          <label>Shipping company (proposed: ${esc(def.shippingCompanies[0].name)}) — confirm or override</label>
+          <select data-po="${idx}" data-k="shipping_company_id">
+            ${def.shippingCompanies.map(c => `<option value="${c.id}" ${c.id === d.shipping_company_id ? 'selected' : ''}>${c.id} — ${esc(c.name)}</option>`).join('')}
+          </select>
+        </div>
+
+        <div class="po-field full"><label>Supplier invoice #</label><input type="text" data-po="${idx}" data-k="supplier_invoice_number" value="${esc(d.supplier_invoice_number)}" placeholder="optional"></div>
+        <div class="po-field full"><label>Billing address</label><textarea data-po="${idx}" data-k="billing_address">${esc(d.billing_address)}</textarea></div>
+        <div class="po-field full"><label>Shipping address (Via Trading DC)</label><textarea data-po="${idx}" data-k="shipping_address">${esc(d.shipping_address)}</textarea></div>
+        <div class="po-field full"><label>Note</label><textarea data-po="${idx}" data-k="note" placeholder="optional">${esc(d.note)}</textarea></div>
+      </div>
+
+      <div class="po-line">
+        <div class="po-line-title">Line item · ${esc(d.sku)}</div>
+        <div class="po-grid">
+          <div class="po-field"><label>Qty</label><input type="number" min="1" data-po="${idx}" data-k="item_qty" value="${esc(d.item_qty)}"></div>
+          <div class="po-field"><label>Price ($)</label><input type="number" step="0.01" data-po="${idx}" data-k="item_price" value="${esc(d.item_price)}"></div>
+          <div class="po-field"><label>Pallets qty</label><input type="number" min="0" data-po="${idx}" data-k="item_pallets_qty" value="${esc(d.item_pallets_qty)}"></div>
+          <div class="po-field"><label>Supplier SKU</label><input type="text" data-po="${idx}" data-k="item_supplier_sku" value="${esc(d.item_supplier_sku)}" placeholder="optional"></div>
+        </div>
+      </div>
+
+      <div class="po-actions">
+        ${d.status === 'done'
+          ? `<button class="btn ghost" data-po-remove="${idx}">Remove</button>`
+          : `<button class="btn" data-po-push="${idx}">Push this PO</button>
+             <button class="btn ghost" data-po-remove="${idx}">Remove</button>`}
+        ${d.result ? `<span class="po-result ${d.status === 'failed' ? 'err' : 'ok'}">${esc(d.result)}</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  attachPoHandlers();
+}
+
+function attachPoHandlers() {
+  $('po-list').querySelectorAll('input[data-po], select[data-po], textarea[data-po]').forEach(el => {
+    el.oninput = el.onchange = () => {
+      const idx = +el.dataset.po;
+      const k = el.dataset.k;
+      let v = el.value;
+      if (['sub_total','item_qty','item_price','item_pallets_qty','shipping_company_id'].includes(k)) {
+        v = Number(v);
+      }
+      poDrafts[idx][k] = v;
+    };
+  });
+  $('po-list').querySelectorAll('[data-method]').forEach(b => {
+    b.onclick = () => {
+      const idx = +b.dataset.po;
+      poDrafts[idx].shipping_method_id = +b.dataset.method;
+      // re-render just the tag row
+      const card = $('po-card-' + idx);
+      const def = PO_DEFAULTS[activeSupplier] || PO_DEFAULTS.WYF;
+      const tagRow = card.querySelector('.tag-row');
+      tagRow.innerHTML = def.shippingMethods.map(m => `<button type="button" class="tag-btn ${poDrafts[idx].shipping_method_id === m.id ? 'active' : ''}" data-po="${idx}" data-method="${m.id}">${esc(m.name)}</button>`).join('');
+      attachPoHandlers();
+    };
+  });
+  $('po-list').querySelectorAll('[data-po-push]').forEach(b => {
+    b.onclick = async () => {
+      await pushSinglePo(+b.dataset['poPush']);
+    };
+  });
+  $('po-list').querySelectorAll('[data-po-remove]').forEach(b => {
+    b.onclick = () => {
+      poDrafts.splice(+b.dataset['poRemove'], 1);
+      if (!poDrafts.length) $('po-section').style.display = 'none';
+      renderPoDrafts();
+    };
+  });
+}
+
+function buildPoPayload(d) {
+  const def = PO_DEFAULTS[activeSupplier] || PO_DEFAULTS.WYF;
+  const item = {
+    sku:           d.sku,
+    product_name:  d.productName,
+    qty:           Number(d.item_qty) || 1,
+    price:         Number(d.item_price) || 0,
+    pallets_qty:   Number(d.item_pallets_qty) || 0,
+    user_id:       def.legacy_user_id,
+  };
+  if (d.productId)         item.product_id    = d.productId;
+  if (d.item_supplier_sku) item.supplier_sku  = d.item_supplier_sku;
+
+  return {
+    data: {
+      user_name:               def.user_name,
+      supplier_id:             def.supplier_id,
+      legacy_user_id:          def.legacy_user_id,
+      order_date:              d.order_date,
+      due_date:                d.due_date,
+      delivery_date:           d.delivery_date,
+      shipping_method_id:      Number(d.shipping_method_id),
+      shipping_company_id:     Number(d.shipping_company_id),
+      sub_total:               Number(d.sub_total) || 0,
+      note:                    d.note || '',
+      supplier_invoice_number: d.supplier_invoice_number || '',
+      billing_address:         d.billing_address,
+      shipping_address:        d.shipping_address,
+      items:                   [item],
+    },
+  };
+}
+
+async function pushSinglePo(idx) {
+  const d = poDrafts[idx];
+  if (!d || d.status === 'done') return;
+  d.status = 'pushing';
+  d.result = null;
+  renderPoDrafts();
+  const payload = buildPoPayload(d);
+  console.log('[Posku] POST /api/purchase-orders payload:', JSON.stringify(payload, null, 2));
+  const r = await erpRequest('POST', '/api/purchase-orders', payload);
+  console.log('[Posku] POST /api/purchase-orders response:', JSON.stringify(r, null, 2));
+  if (r.ok) {
+    const poId = r.data?.id ?? r.data?.data?.id ?? r.data?.po_id ?? r.data?.newPurchaseOrderId ?? null;
+    d.status = 'done';
+    d.result = `Pushed · PO id: ${poId ?? 'n/a'}`;
+  } else {
+    d.status = 'failed';
+    d.result = r.data?.message || r.data?.error || r.error || `HTTP ${r.status}`;
+  }
+  renderPoDrafts();
+}
+
+$('generate-po-btn').onclick = generatePoDrafts;
+$('push-all-pos-btn').onclick = async () => {
+  for (let i = 0; i < poDrafts.length; i++) {
+    if (poDrafts[i].status !== 'done') await pushSinglePo(i);
+  }
+};
+$('clear-pos-btn').onclick = () => {
+  if (!poDrafts.length || confirm('Clear all PO drafts?')) {
+    poDrafts = [];
+    $('po-section').style.display = 'none';
   }
 };
 
