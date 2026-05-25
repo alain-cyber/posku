@@ -134,7 +134,7 @@ textarea::placeholder { color: var(--text4); }
     <div class="card-title">Paste or drop email</div>
     <div class="card-sub">One or multiple Wayfair load emails at once</div>
     <textarea id="email-input" placeholder="Paste email body here, or drag and drop a .eml / .txt file onto this card…"></textarea>
-    <div class="hint">Tip: one email at a time works best. For multiple loads in one email, all will be extracted.</div>
+    <div class="hint">Tip: paste the email body text, or drop a <strong>.eml</strong> or <strong>.txt</strong> file. Outlook <strong>.msg</strong> files can't be read directly — in Outlook use <em>File → Save As → .eml</em> or just copy-paste the body.</div>
     <div class="btn-row">
       <button class="btn" id="parse-btn">Parse loads</button>
       <button class="btn ghost" id="clear-input-btn">Clear</button>
@@ -648,12 +648,80 @@ $('file-input').onchange = ev => {
   ev.target.value = '';
 };
 
+// ── .eml MIME decoder (handles quoted-printable + base64 bodies) ─────────────
+function decodeQP(str) {
+  return str.replace(/=\r?\n/g, '').replace(/=([0-9A-Fa-f]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+}
+
+function extractEmlText(raw) {
+  // Split headers from body
+  const sep = raw.indexOf('\r\n\r\n') >= 0 ? '\r\n\r\n' : '\n\n';
+  const splitAt = raw.indexOf(sep);
+  if (splitAt < 0) return raw;
+  const hdrs = raw.slice(0, splitAt).toLowerCase();
+  let body = raw.slice(splitAt + sep.length);
+
+  // Multipart: grab the first text/plain or text/html part
+  const boundaryMatch = hdrs.match(/boundary="?([^"\r\n;]+)"?/);
+  if (boundaryMatch) {
+    const boundary = '--' + boundaryMatch[1];
+    const parts = raw.split(boundary);
+    // prefer text/plain, fall back to text/html
+    const plain = parts.find(p => /content-type:\s*text\/plain/i.test(p));
+    const html  = parts.find(p => /content-type:\s*text\/html/i.test(p));
+    const part  = plain || html;
+    if (part) {
+      const pSep = part.indexOf('\r\n\r\n') >= 0 ? '\r\n\r\n' : '\n\n';
+      const pSplit = part.indexOf(pSep);
+      const pHdrs = part.slice(0, pSplit).toLowerCase();
+      body = part.slice(pSplit + pSep.length).replace(/--$/, '').trim();
+      if (pHdrs.includes('quoted-printable')) body = decodeQP(body);
+      else if (pHdrs.includes('base64')) { try { body = atob(body.replace(/\s/g, '')); } catch {} }
+      if (html && !plain) body = body.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>');
+    }
+    return body;
+  }
+
+  // Simple single-part
+  if (hdrs.includes('quoted-printable')) body = decodeQP(body);
+  else if (hdrs.includes('base64')) { try { body = atob(body.replace(/\s/g, '')); } catch {} }
+  if (hdrs.includes('text/html')) body = body.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ');
+  return body;
+}
+
+function isBinary(content) {
+  // Check for high ratio of non-printable chars — sign of a .msg binary file
+  let nonPrintable = 0;
+  const sample = content.slice(0, 512);
+  for (let i = 0; i < sample.length; i++) {
+    const c = sample.charCodeAt(i);
+    if (c < 9 || (c > 13 && c < 32) || c === 127) nonPrintable++;
+  }
+  return nonPrintable / sample.length > 0.1;
+}
+
 function loadFiles(files) {
   let pending = files.length;
   files.forEach(f => {
+    const ext = f.name.split('.').pop().toLowerCase();
+    if (ext === 'msg') {
+      setStatus($('parse-status'), 'err',
+        `"${f.name}" is an Outlook .msg file (binary format — can't be read here). ` +
+        `In Outlook: File → Save As → choose .eml or .txt, then drop that file. Or just copy-paste the email body.`);
+      if (--pending === 0) { /* don't auto-parse */ }
+      return;
+    }
     const r = new FileReader();
     r.onload = () => {
-      $('email-input').value = (($('email-input').value || '').trimEnd() + '\n\n' + r.result.trim()).trim();
+      let text = r.result;
+      if (isBinary(text)) {
+        setStatus($('parse-status'), 'err',
+          `"${f.name}" appears to be a binary file. Please save the email as .eml or .txt and drop that instead.`);
+        if (--pending === 0) { /* skip */ }
+        return;
+      }
+      if (ext === 'eml') text = extractEmlText(text);
+      $('email-input').value = (($('email-input').value || '').trimEnd() + '\n\n' + text.trim()).trim();
       if (--pending === 0) triggerParse();
     };
     r.readAsText(f);
