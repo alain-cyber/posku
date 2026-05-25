@@ -270,7 +270,8 @@ const SUPPLIERS = {
       if (typeCode === 'A')  return 'WYF Excess & Aged Inventory';
       if (typeCode === 'QC') return 'WYF QC Imperfection Loads';
       // LQ or HDO
-      if (['PR','EKY','KWA'].includes(locCode))  return 'WYF Liquidation Returns - Smaller Items';
+      if (locCode === 'PR')   return 'WYF Liquidation Returns - Smaller Items';
+      if (locCode === 'KWA')  return 'WYF Liquidation Returns - Larger Items';
       return 'WYF Liquidation Returns - Smaller & Larger Items';
     },
 
