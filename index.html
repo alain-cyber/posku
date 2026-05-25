@@ -690,25 +690,38 @@ $('cfg-save').onclick = () => {
 $('cfg-dropdowns').onclick = async () => {
   $('cfg-status').textContent = 'Fetching…';
   const r = await erpRequest('GET', '/api/products/dropdowns');
-  if (!r.ok) { $('cfg-status').textContent = 'Failed: ' + (r.error || r.status); return; }
+  if (!r.ok) { $('cfg-status').textContent = 'Failed: ' + (r.error || r.status); showDropdownResults('Error: ' + (r.error || r.status)); return; }
   const d = r.data;
+  console.log('[Posku] raw dropdowns:', JSON.stringify(d, null, 2));
   const sup = SUPPLIERS.WYF;
   const fmt = (label, arr, ourId) => {
     const match = Array.isArray(arr) ? arr.find(x => x.id === ourId) : null;
     const list  = Array.isArray(arr) ? arr.map(x => `${x.id}=${x.name}`).join(', ') : JSON.stringify(arr);
-    return `${label}: we use ${ourId} (${match ? '✓ ' + match.name : '✗ NOT FOUND'}) | options: ${list}`;
+    return `${label}: using ${ourId} (${match ? '✓ ' + match.name : '✗ ID NOT FOUND'}) — options: ${list}`;
   };
   const lines = [
-    fmt('packing',   d?.packings   ?? d?.packing,   sup.packingTrait),
-    fmt('condition', d?.conditions ?? d?.condition,  63),
-    fmt('manifested',d?.manifested ?? d?.manifest,   603),
-    fmt('store',     d?.stores,                      sup.storeId),
-    fmt('supplier',  d?.suppliers,                   sup.erpSupplier),
+    fmt('packing',    d?.packings   ?? d?.packing,   sup.packingTrait),
+    fmt('condition',  d?.conditions ?? d?.condition,  63),
+    fmt('manifested', d?.manifested ?? d?.manifest,   603),
+    fmt('store',      d?.stores,                      sup.storeId),
+    fmt('supplier',   d?.suppliers,                   sup.erpSupplier),
   ];
-  console.log('[Posku] dropdowns check:\n' + lines.join('\n'));
-  alert('[Posku] Check IDs — see Console (F12) for full list\n\n' + lines.join('\n'));
-  $('cfg-status').textContent = 'Done — see Console';
+  console.log('[Posku] dropdown check:\n' + lines.join('\n'));
+  showDropdownResults(lines.join('\n'));
+  $('cfg-status').textContent = 'Done ✓';
 };
+
+function showDropdownResults(text) {
+  let el = $('dropdown-results');
+  if (!el) {
+    el = document.createElement('pre');
+    el.id = 'dropdown-results';
+    el.style.cssText = 'background:#1a1a1a;color:#ccc;font-size:0.7rem;padding:1rem;margin:0.5rem 0;border-radius:6px;white-space:pre-wrap;word-break:break-all;';
+    document.querySelector('.settings-bar').after(el);
+  }
+  el.textContent = text;
+  el.style.display = 'block';
+}
 
 // ── Drag / drop ───────────────────────────────────────────────────────────────
 const card = $('drop-card');
