@@ -32,7 +32,6 @@
 - Pre-fill PO with what we already know: SKU, supplier, FOB, pallet count
 
 ## Open items (carried over from POC)
-- HDO product naming rule (deferred)
 - Drop `-test` suffix when going live
 - Email parsing for `pallets_qty` (Wayfair emails sometimes include it)
 - Verify hardcoded trait/store/supplier IDs against `/api/products/dropdowns` on staging

@@ -268,10 +268,11 @@ const SUPPLIERS = {
     // Product name derivation
     getProductName(typeCode, locCode) {
       if (!typeCode || !locCode) return '';
-      if (typeCode === 'S')  return 'WYF Salvage Loads';
-      if (typeCode === 'A')  return 'WYF Excess & Aged Inventory';
-      if (typeCode === 'QC') return 'WYF QC Imperfection Loads';
-      // LQ or HDO
+      if (typeCode === 'S')   return 'WYF Salvage Loads';
+      if (typeCode === 'A')   return 'WYF Excess & Aged Inventory';
+      if (typeCode === 'QC')  return 'WYF QC Imperfection Loads';
+      if (typeCode === 'HDO') return 'WYF Liquidation Returns - Larger Items';
+      // LQ — varies by location
       if (locCode === 'PR')   return 'WYF Liquidation Returns - Smaller Items';
       if (locCode === 'KWA')  return 'WYF Liquidation Returns - Larger Items';
       return 'WYF Liquidation Returns - Smaller & Larger Items';
