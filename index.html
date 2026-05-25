@@ -425,25 +425,35 @@ function buildPayload(load) {
   const sup = SUPPLIERS[load.supplierKey] || SUPPLIERS.WYF;
   return {
     data: {
+      // identity
       sku:             load.sku,
       name:            load.name,
       psku:            sup.psku,
       psku_type:       'regular',
-      store_id:        sup.storeId,
-      supplier:        sup.erpSupplier,
-      status_id:       sup.statusId,
       active:          0,
-      cloud:           1,
+      make_an_offer:   false,
+      store_id:        sup.storeId,
+
+      // translation (flat on data per Pattern A — top-level i18n is ignored)
+      lang_id:         1,
+      slug:            load.sku.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+
+      // traits (IDs from /api/products/dropdowns)
+      packing:         sup.packingTrait,
+      condition:       load.condTrait,
+      manifested:      load.manifestTrait,
+
+      // shipping
+      fobStates:       load.fobId ? [load.fobId] : [],
+
+      // supplier
+      supplierId:      sup.erpSupplier,
+
+      // audit + ERP bookkeeping
+      status_id:       sup.statusId,
       user_id:         183,
       user_id_created: 183,
-      fob:             load.fobId,
       peachtree_code:  sup.ptCode,
-    },
-    i18n: {
-      name:      load.name,
-      lang_id:   '1',
-      status_id: '1',
-      slug:      load.sku.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
     },
   };
 }
