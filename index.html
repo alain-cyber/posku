@@ -468,9 +468,11 @@ async function pushLoad(load) {
 
   // 2. Create
   const payload = buildPayload(load);
+  console.log('[Posku] POST payload:', JSON.stringify(payload, null, 2));
   const r = await erpRequest('POST', '/api/products', payload);
+  console.log('[Posku] POST response:', JSON.stringify(r, null, 2));
   if (r.ok) {
-    const erpId = r.data?.id ?? r.data?.data?.id ?? null;
+    const erpId = r.data?.newProductId ?? r.data?.id ?? r.data?.data?.id ?? null;
     return { ok: true, erpId };
   }
   const errMsg = r.data?.message || r.data?.error || (r.error) || `HTTP ${r.status}`;
