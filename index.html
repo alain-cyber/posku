@@ -147,7 +147,7 @@ textarea::placeholder { color: var(--text4); }
     <div class="card-title">Paste or drop email</div>
     <div class="card-sub">One or multiple Wayfair load emails at once</div>
     <textarea id="email-input" placeholder="Paste email body here, or drag and drop a .eml / .txt file onto this card…"></textarea>
-    <div class="hint">Tip: paste the email body text, or drop a <strong>.eml</strong> or <strong>.txt</strong> file. Outlook <strong>.msg</strong> files can't be read directly — in Outlook use <em>File → Save As → .eml</em> or just copy-paste the body.</div>
+    <div class="hint">Tip: paste the email body, or drop a <strong>.eml</strong>, <strong>.txt</strong>, or Outlook <strong>.msg</strong> file.</div>
     <div class="btn-row">
       <button class="btn" id="parse-btn">Parse loads</button>
       <button class="btn ghost" id="clear-input-btn">Clear</button>
@@ -740,21 +740,122 @@ function isBinary(content) {
   return nonPrintable / sample.length > 0.1;
 }
 
+// ── Outlook .msg parser (OLE2 / CFB format) ──────────────────────────────────
+// Reads subject + plain-text body from the binary compound document.
+// Returns { subject, body } strings, or null if the file isn't a valid .msg.
+function parseMsgBuffer(ab) {
+  const dv = new DataView(ab);
+  const u8 = new Uint8Array(ab);
+  if (dv.getUint32(0, false) !== 0xD0CF11E0 || dv.getUint32(4, false) !== 0xA1B11AE1) return null;
+
+  const SS   = 1 << dv.getUint16(30, true);  // sector size (usually 512)
+  const MS   = 1 << dv.getUint16(32, true);  // mini-sector size (usually 64)
+  const MCUT = dv.getUint32(56, true);        // mini-stream cutoff (usually 4096)
+  const DIR0 = dv.getUint32(48, true);        // first directory sector
+  const MF0  = dv.getInt32(60, true);         // first mini-FAT sector
+  const soff = n => (n + 1) * SS;            // byte offset of sector n
+
+  // Build FAT from the 109 DIFAT slots in the header
+  // (covers files up to ~7 MB — plenty for any email)
+  const fat = [];
+  for (let i = 0; i < 109; i++) {
+    const sid = dv.getInt32(76 + i * 4, true);
+    if (sid < 0) break;
+    const base = soff(sid);
+    for (let j = 0; j < SS / 4; j++) fat.push(dv.getInt32(base + j * 4, true));
+  }
+
+  const chain = s => { const r = []; while (s >= 0 && s < 0x7FFFFFFF) { r.push(s); s = fat[s]; } return r; };
+
+  // Read a chain of sectors into a fresh Uint8Array
+  const readFat = (start, size) => {
+    const secs = chain(start);
+    const buf  = new Uint8Array(secs.length * SS);
+    secs.forEach((s, i) => buf.set(u8.subarray(soff(s), soff(s) + SS), i * SS));
+    return buf.subarray(0, Math.min(size, buf.length));
+  };
+
+  // Read directory entries (128 bytes each)
+  const dirBuf = readFat(DIR0, chain(DIR0).length * SS);
+  const dirDV  = new DataView(dirBuf.buffer);  // byteOffset=0 because readFat returns a fresh buffer
+  const entries = [];
+  for (let i = 0; i * 128 < dirBuf.length; i++) {
+    const o    = i * 128;
+    const nLen = dirDV.getUint16(o + 64, true);
+    if (nLen < 2) { entries.push(null); continue; }
+    entries.push({
+      name:  new TextDecoder('utf-16le').decode(dirBuf.subarray(o, o + nLen - 2)),
+      type:  dirBuf[o + 66],
+      child: dirDV.getInt32(o + 76, true),
+      start: dirDV.getInt32(o + 116, true),
+      size:  dirDV.getUint32(o + 120, true),
+    });
+  }
+
+  // Mini-FAT and mini-stream (root entry index 0 holds the mini-stream data)
+  let miniFat = [], miniStream = null;
+  if (MF0 >= 0) {
+    const mfBuf = new Uint8Array(chain(MF0).length * SS);
+    chain(MF0).forEach((s, i) => mfBuf.set(u8.subarray(soff(s), soff(s) + SS), i * SS));
+    const mfDV = new DataView(mfBuf.buffer);
+    for (let i = 0; i < mfBuf.length / 4; i++) miniFat.push(mfDV.getInt32(i * 4, true));
+    const root = entries[0];
+    if (root && root.start >= 0) miniStream = readFat(root.start, root.size);
+  }
+  const mchain = s => { const r = []; while (s >= 0 && s < 0x7FFFFFFF) { r.push(s); s = miniFat[s]; } return r; };
+  const readMini = (start, size) => {
+    const secs = mchain(start);
+    const buf  = new Uint8Array(secs.length * MS);
+    if (miniStream) secs.forEach((s, i) => buf.set(miniStream.subarray(s * MS, Math.min(s * MS + MS, miniStream.length)), i * MS));
+    return buf.subarray(0, Math.min(size, buf.length));
+  };
+
+  // Index all stream entries by name for lookup
+  const byName = new Map();
+  entries.forEach(e => e && e.type === 2 && byName.set(e.name, e));
+
+  const readStream = name => {
+    const e = byName.get(name);
+    if (!e) return null;
+    return (miniStream && e.size < MCUT) ? readMini(e.start, e.size) : readFat(e.start, e.size);
+  };
+
+  // Try Unicode (001F) then ANSI (001E) for a given property ID
+  const prop = propId => {
+    const u16 = readStream(`__substg1.0_${propId}001F`);
+    if (u16) return new TextDecoder('utf-16le').decode(u16).replace(/\0+$/, '');
+    const u8s = readStream(`__substg1.0_${propId}001E`);
+    if (u8s) return new TextDecoder().decode(u8s).replace(/\0+$/, '');
+    return null;
+  };
+
+  return { subject: prop('0037'), body: prop('1000') };
+}
+
 function loadFiles(files) {
   let pending = files.length;
   files.forEach(f => {
     const ext = f.name.split('.').pop().toLowerCase();
     if (ext === 'msg') {
-      // .msg is a binary OLE format — body can't be read directly.
-      // Outlook sets the filename to the email subject, which contains
-      // everything we need: location, type, and load IDs.
-      const subjectText = f.name
-        .replace(/\.msg$/i, '')
-        .replace(/_+/g, ' ')          // Outlook swaps special chars to _
-        .replace(/\s*-\s*\d+$/, '');  // strip Outlook duplicate counter e.g. "-4"
-      $('email-input').value = (($('email-input').value || '').trimEnd() + '\n\n' + subjectText).trim();
-      setStatus($('parse-status'), 'info', `Parsed from filename (msg body is binary). Verify loads look right.`);
-      if (--pending === 0) triggerParse();
+      const r = new FileReader();
+      r.onload = () => {
+        let text = '';
+        try {
+          const parsed = parseMsgBuffer(r.result);
+          if (parsed) {
+            text = [parsed.subject, parsed.body].filter(Boolean).join('\n\n');
+            setStatus($('parse-status'), 'info', `Outlook .msg read — subject + body extracted.`);
+          }
+        } catch (e) { /* fall through to filename fallback */ }
+        if (!text.trim()) {
+          // Filename is the email subject — strip extension, underscores, trailing duplicate counter
+          text = f.name.replace(/\.msg$/i, '').replace(/_+/g, ' ').replace(/\s*-\s*\d+$/, '');
+          setStatus($('parse-status'), 'warn', `Could not read .msg body — parsed from filename only.`);
+        }
+        $('email-input').value = (($('email-input').value || '').trimEnd() + '\n\n' + text.trim()).trim();
+        if (--pending === 0) triggerParse();
+      };
+      r.readAsArrayBuffer(f);
       return;
     }
     const r = new FileReader();
