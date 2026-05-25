@@ -5,7 +5,7 @@
 - User pastes/drops Wayfair load emails → parser generates SKUs
 - Manual "Push to ERP" via viatrading API from the browser
 - CORS bypass via Chrome `--disable-web-security` for testing
-- Dedicated API user `posku_api` (id 183) for audit trail
+- Dedicated API user `posku_api` (id 179) for audit trail
 - Branch: `claude/charming-newton-Z1q4t`
 
 ## Next phases
