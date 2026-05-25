@@ -138,6 +138,7 @@ textarea::placeholder { color: var(--text4); }
   <label>API key</label>
   <input type="password" id="cfg-key" class="key" placeholder="ims_…">
   <button class="btn ghost" id="cfg-save" style="margin-left:0.25rem;">Save</button>
+  <button class="btn ghost" id="cfg-dropdowns" style="margin-left:0.25rem;">Check IDs</button>
   <span id="cfg-status" style="font-family:'DM Mono',monospace;font-size:0.68rem;color:var(--text4);"></span>
 </div>
 
@@ -684,6 +685,29 @@ $('cfg-save').onclick = () => {
   saveCfg({ baseUrl: $('cfg-url').value.trim(), apiKey: $('cfg-key').value.trim() });
   $('cfg-status').textContent = 'Saved ✓';
   setTimeout(() => $('cfg-status').textContent = '', 1500);
+};
+
+$('cfg-dropdowns').onclick = async () => {
+  $('cfg-status').textContent = 'Fetching…';
+  const r = await erpRequest('GET', '/api/products/dropdowns');
+  if (!r.ok) { $('cfg-status').textContent = 'Failed: ' + (r.error || r.status); return; }
+  const d = r.data;
+  const sup = SUPPLIERS.WYF;
+  const fmt = (label, arr, ourId) => {
+    const match = Array.isArray(arr) ? arr.find(x => x.id === ourId) : null;
+    const list  = Array.isArray(arr) ? arr.map(x => `${x.id}=${x.name}`).join(', ') : JSON.stringify(arr);
+    return `${label}: we use ${ourId} (${match ? '✓ ' + match.name : '✗ NOT FOUND'}) | options: ${list}`;
+  };
+  const lines = [
+    fmt('packing',   d?.packings   ?? d?.packing,   sup.packingTrait),
+    fmt('condition', d?.conditions ?? d?.condition,  63),
+    fmt('manifested',d?.manifested ?? d?.manifest,   603),
+    fmt('store',     d?.stores,                      sup.storeId),
+    fmt('supplier',  d?.suppliers,                   sup.erpSupplier),
+  ];
+  console.log('[Posku] dropdowns check:\n' + lines.join('\n'));
+  alert('[Posku] Check IDs — see Console (F12) for full list\n\n' + lines.join('\n'));
+  $('cfg-status').textContent = 'Done — see Console';
 };
 
 // ── Drag / drop ───────────────────────────────────────────────────────────────
