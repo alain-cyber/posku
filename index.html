@@ -518,7 +518,7 @@ function renderLoads() {
           <label>Location code</label>
           <select data-field="locCode">
             <option value="">— unknown —</option>
-            ${Object.keys(FOB_IDS).map(c => `<option value="${c}" ${load.locCode === c ? 'selected' : ''}>${c} — ${FOB_NAMES[c]}</option>`).join('')}
+            ${Object.keys(SUPPLIERS[activeSupplier].fobIds).map(c => `<option value="${c}" ${load.locCode === c ? 'selected' : ''}>${c} — ${SUPPLIERS[activeSupplier].fobNames[c]}</option>`).join('')}
           </select>
         </div>
         <div class="edit-field">
