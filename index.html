@@ -545,6 +545,16 @@ function renderLoads() {
 
     body.appendChild(tr);
     body.appendChild(er);
+
+    if ((load.status === 'failed' || load.status === 'dup') && load.erpResult) {
+      const msgRow = document.createElement('tr');
+      msgRow.innerHTML = `<td colspan="10" style="padding:0.5rem 0.8rem;background:${load.status==='failed'?'var(--red-dim)':'var(--surface2)'};border-bottom:1px solid var(--border);">
+        <span class="mono" style="color:${load.status==='failed'?'var(--red)':'var(--text2)'};font-size:0.74rem;">
+          ${load.status==='failed' ? '✗' : 'ℹ'} ${esc(load.erpResult)}
+        </span>
+      </td>`;
+      body.appendChild(msgRow);
+    }
   });
 
   updateSummary();
