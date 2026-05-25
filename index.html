@@ -3,341 +3,714 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Posku — Capture</title>
+<title>Posku — Wayfair Load Builder</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #f7f6f1;
-    --surface: #ffffff;
-    --surface2: #efeee8;
-    --border: rgba(0,0,0,0.12);
-    --border2: rgba(0,0,0,0.22);
-    --text: #14150f;
-    --text2: #3b3d36;
-    --text3: #696b62;
-    --text4: #9a9c91;
-    --green: #1e7f56;
-    --green-dim: rgba(30,127,86,0.10);
-    --red: #b8392c;
-    --red-dim: rgba(184,57,44,0.10);
-  }
+:root {
+  --bg: #f7f6f1;
+  --surface: #ffffff;
+  --surface2: #efeee8;
+  --surface3: #e3e2db;
+  --border: rgba(0,0,0,0.11);
+  --border2: rgba(0,0,0,0.20);
+  --text: #14150f;
+  --text2: #3b3d36;
+  --text3: #696b62;
+  --text4: #9a9c91;
+  --green: #1e7f56;
+  --green-dim: rgba(30,127,86,0.10);
+  --red: #b8392c;
+  --red-dim: rgba(184,57,44,0.10);
+  --amber: #8a6510;
+  --amber-dim: rgba(138,101,16,0.12);
+  --blue: #1f5fbf;
+  --blue-dim: rgba(31,95,191,0.10);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-serif; min-height: 100vh; }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+.header { padding: 1.5rem 2.5rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
+.eyebrow { font-family: 'DM Mono', monospace; font-size: 0.68rem; letter-spacing: 0.2em; color: var(--text3); text-transform: uppercase; margin-bottom: 0.35rem; }
+h1 { font-family: 'DM Serif Display', serif; font-size: 2rem; font-weight: 400; letter-spacing: -0.01em; line-height: 1; }
+h1 em { font-style: italic; color: var(--text2); }
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Syne', sans-serif;
-    min-height: 100vh;
-  }
+.settings-bar { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 2.5rem; background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.settings-bar label { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: var(--text3); letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; }
+.settings-bar input { background: var(--surface2); border: 1px solid var(--border2); border-radius: 6px; padding: 0.4rem 0.65rem; font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--text); width: 260px; }
+.settings-bar input:focus { outline: none; border-color: var(--green); }
+.settings-bar input.key { width: 360px; }
 
-  .header {
-    padding: 2rem 2.5rem 1.5rem;
-    border-bottom: 1px solid var(--border);
-  }
+main { padding: 2rem 2.5rem; max-width: 1440px; margin: 0 auto; }
 
-  .eyebrow {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.7rem;
-    letter-spacing: 0.2em;
-    color: var(--text3);
-    text-transform: uppercase;
-    margin-bottom: 0.5rem;
-  }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; margin-bottom: 1.5rem; }
+.card.dragging { border-color: var(--green); background: var(--green-dim); }
+.card-title { font-family: 'DM Serif Display', serif; font-size: 1.25rem; margin-bottom: 0.2rem; }
+.card-sub { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--text3); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 1.1rem; }
 
-  h1 {
-    font-family: 'DM Serif Display', serif;
-    font-size: 2.4rem;
-    font-weight: 400;
-    letter-spacing: -0.01em;
-    line-height: 1;
-  }
+textarea { width: 100%; min-height: 200px; background: var(--surface2); color: var(--text); border: 1px dashed var(--border2); border-radius: 10px; padding: 0.9rem 1rem; font-family: 'DM Mono', monospace; font-size: 0.82rem; line-height: 1.55; resize: vertical; transition: border-color 0.15s; }
+textarea:focus { outline: none; border-style: solid; border-color: var(--green); background: #fff; }
+textarea::placeholder { color: var(--text4); }
 
-  h1 em { font-style: italic; color: var(--text2); }
+.btn { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.55rem 0.95rem; background: var(--green-dim); color: var(--green); border: 1px solid rgba(30,127,86,0.35); border-radius: 8px; font-family: 'DM Mono', monospace; font-size: 0.68rem; letter-spacing: 0.15em; text-transform: uppercase; cursor: pointer; transition: background 0.13s, border-color 0.13s; white-space: nowrap; }
+.btn:hover { background: rgba(30,127,86,0.18); border-color: var(--green); }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn.ghost { background: transparent; color: var(--text2); border-color: var(--border2); }
+.btn.ghost:hover { color: var(--text); border-color: var(--text3); background: var(--surface2); }
+.btn.danger { background: var(--red-dim); color: var(--red); border-color: rgba(184,57,44,0.35); }
+.btn.danger:hover { background: rgba(184,57,44,0.18); border-color: var(--red); }
+.btn.amber { background: var(--amber-dim); color: var(--amber); border-color: rgba(138,101,16,0.35); }
+.btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; align-items: center; }
 
-  .sub {
-    color: var(--text2);
-    font-size: 0.95rem;
-    margin-top: 0.75rem;
-    max-width: 640px;
-  }
+.hint { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--text4); margin-top: 0.5rem; }
 
-  main {
-    padding: 2.5rem;
-    max-width: 980px;
-    margin: 0 auto;
-  }
+/* status */
+.status { margin-top: 0.85rem; padding: 0.55rem 0.8rem; border-radius: 7px; font-family: 'DM Mono', monospace; font-size: 0.72rem; letter-spacing: 0.03em; display: none; }
+.status.show { display: block; }
+.status.ok    { background: var(--green-dim); color: var(--green); border: 1px solid rgba(30,127,86,0.4); }
+.status.err   { background: var(--red-dim);   color: var(--red);   border: 1px solid rgba(184,57,44,0.4); }
+.status.warn  { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(138,101,16,0.4); }
+.status.info  { background: var(--blue-dim);  color: var(--blue);  border: 1px solid rgba(31,95,191,0.4); }
 
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 1.75rem;
-    transition: border-color 0.15s ease, background 0.15s ease;
-  }
+/* loads section */
+.loads-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.1rem; }
+.loads-title { font-family: 'DM Serif Display', serif; font-size: 1.3rem; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 
-  .card.dragging {
-    border-color: var(--green);
-    background: var(--green-dim);
-  }
+.table-wrap { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+.table th { text-align: left; font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text3); padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--border2); white-space: nowrap; }
+.table td { padding: 0.65rem 0.6rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table tr:last-child td { border-bottom: none; }
+.table tr:hover td { background: rgba(0,0,0,0.02); }
+.table tr.review td { background: rgba(138,101,16,0.05); }
+.table tr.done td { background: rgba(30,127,86,0.05); }
+.table tr.failed td { background: rgba(184,57,44,0.05); }
 
-  .card-title {
-    font-family: 'DM Serif Display', serif;
-    font-size: 1.4rem;
-    margin-bottom: 0.25rem;
-  }
+.mono { font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--text2); }
+.mono-green { font-family: 'DM Mono', monospace; color: var(--green); font-size: 0.82rem; font-weight: 500; }
+.mono-amber { font-family: 'DM Mono', monospace; color: var(--amber); font-size: 0.78rem; }
+.chip { display: inline-block; padding: 0.18rem 0.48rem; border-radius: 5px; font-family: 'DM Mono', monospace; font-size: 0.62rem; letter-spacing: 0.05em; border: 1px solid var(--border2); background: var(--surface2); color: var(--text3); }
+.chip.green  { background: var(--green-dim);  color: var(--green);  border-color: rgba(30,127,86,0.35); }
+.chip.red    { background: var(--red-dim);    color: var(--red);    border-color: rgba(184,57,44,0.35); }
+.chip.amber  { background: var(--amber-dim);  color: var(--amber);  border-color: rgba(138,101,16,0.35); }
+.chip.blue   { background: var(--blue-dim);   color: var(--blue);   border-color: rgba(31,95,191,0.35); }
 
-  .card-sub {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.72rem;
-    color: var(--text3);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    margin-bottom: 1.5rem;
-  }
+.edit-row { display: none; }
+.edit-row td { padding: 0.5rem 0.6rem; background: var(--surface2); }
+.edit-row.open { display: table-row; }
+.edit-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0.5rem; }
+@media (max-width: 700px) { .edit-grid { grid-template-columns: 1fr 1fr; } }
+.edit-field label { display: block; font-family: 'DM Mono', monospace; font-size: 0.6rem; color: var(--text3); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.3rem; }
+.edit-field select, .edit-field input { width: 100%; background: var(--surface); border: 1px solid var(--border2); border-radius: 6px; padding: 0.4rem 0.6rem; font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--text); }
+.edit-field select:focus, .edit-field input:focus { outline: none; border-color: var(--green); }
+.flags { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: var(--amber); margin-top: 0.25rem; }
 
-  textarea {
-    width: 100%;
-    min-height: 360px;
-    background: var(--surface2);
-    color: var(--text);
-    border: 1px dashed var(--border2);
-    border-radius: 10px;
-    padding: 1rem 1.1rem;
-    font-family: 'DM Mono', monospace;
-    font-size: 0.85rem;
-    line-height: 1.6;
-    resize: vertical;
-    transition: border-color 0.15s ease, background 0.15s ease;
-  }
-
-  textarea:focus {
-    outline: none;
-    border-style: solid;
-    border-color: var(--green);
-    background: #fff;
-  }
-
-  textarea::placeholder { color: var(--text4); }
-
-  .row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-top: 1rem;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-  }
-
-  .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.6rem 1rem;
-    background: var(--green-dim);
-    color: var(--green);
-    border: 1px solid rgba(30,127,86,0.35);
-    border-radius: 8px;
-    font-family: 'DM Mono', monospace;
-    font-size: 0.7rem;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: background 0.15s ease, border-color 0.15s ease;
-  }
-  .btn:hover { background: rgba(30,127,86,0.16); border-color: var(--green); }
-
-  .btn.ghost {
-    background: transparent;
-    color: var(--text2);
-    border-color: var(--border2);
-  }
-  .btn.ghost:hover { color: var(--text); border-color: var(--text3); background: var(--surface2); }
-
-  .btn.danger {
-    background: var(--red-dim);
-    color: var(--red);
-    border-color: rgba(184,57,44,0.35);
-  }
-  .btn.danger:hover { background: rgba(184,57,44,0.16); border-color: var(--red); }
-
-  .meta {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.72rem;
-    color: var(--text3);
-    letter-spacing: 0.05em;
-  }
-
-  .file-list {
-    margin-top: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-  }
-  .file-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.6rem;
-    padding: 0.4rem 0.7rem;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    font-family: 'DM Mono', monospace;
-    font-size: 0.72rem;
-    color: var(--text2);
-    width: fit-content;
-    max-width: 100%;
-  }
-  .file-pill .name { color: var(--text); }
-  .file-pill .size { color: var(--text3); }
-
-  .drop-hint {
-    font-family: 'DM Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--text3);
-    letter-spacing: 0.05em;
-    margin-top: 0.6rem;
-  }
+@media print {
+  .settings-bar, .input-card, .btn-row, .no-print { display: none !important; }
+  body { background: white; }
+}
 </style>
 </head>
 <body>
 
 <header class="header">
-  <div class="eyebrow">Posku · capture</div>
-  <h1>Drop it <em>in here</em></h1>
-  <p class="sub">Paste anything, or drag and drop an email (or any file). It just sits here for now — next steps come later.</p>
+  <div>
+    <div class="eyebrow">Posku · Wayfair</div>
+    <h1>Load SKU <em>builder</em></h1>
+  </div>
 </header>
 
+<div class="settings-bar">
+  <label>ERP base URL</label>
+  <input type="url" id="cfg-url" placeholder="https://viatrading.biz">
+  <label>API key</label>
+  <input type="password" id="cfg-key" class="key" placeholder="ims_…">
+  <button class="btn ghost" id="cfg-save" style="margin-left:0.25rem;">Save</button>
+  <span id="cfg-status" style="font-family:'DM Mono',monospace;font-size:0.68rem;color:var(--text4);"></span>
+</div>
+
 <main>
-  <div class="card" id="drop-card">
-    <div class="card-title">Capture</div>
-    <div class="card-sub">Paste · drop · type</div>
+  <!-- Input card -->
+  <div class="card input-card" id="drop-card">
+    <div class="card-title">Paste or drop email</div>
+    <div class="card-sub">One or multiple Wayfair load emails at once</div>
+    <textarea id="email-input" placeholder="Paste email body here, or drag and drop a .eml / .txt file onto this card…"></textarea>
+    <div class="hint">Tip: one email at a time works best. For multiple loads in one email, all will be extracted.</div>
+    <div class="btn-row">
+      <button class="btn" id="parse-btn">Parse loads</button>
+      <button class="btn ghost" id="clear-input-btn">Clear</button>
+      <input type="file" id="file-input" multiple accept=".eml,.txt,.msg" style="display:none">
+      <button class="btn ghost" id="pick-file-btn">Pick file</button>
+    </div>
+    <div id="parse-status" class="status"></div>
+  </div>
 
-    <textarea id="content" placeholder="Paste info here, or drop a file anywhere on this card…"></textarea>
-    <div class="drop-hint">Tip: drag a <code>.eml</code>, <code>.msg</code>, <code>.txt</code>, <code>.csv</code> or any text file onto this card to load its contents.</div>
-
-    <div id="files" class="file-list"></div>
-
-    <div class="row">
-      <div class="meta" id="meta">0 chars</div>
-      <div class="btn-row">
-        <input type="file" id="file-input" multiple style="display:none">
-        <button class="btn" id="pick">Pick file</button>
-        <button class="btn ghost" id="copy">Copy</button>
-        <button class="btn danger" id="clear">Clear</button>
+  <!-- Loads section -->
+  <div id="loads-section" style="display:none;">
+    <div class="card">
+      <div class="loads-header">
+        <div class="loads-title">
+          Detected loads
+          <span id="summary-chips"></span>
+        </div>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="btn" id="push-all-btn">Push all ready to ERP</button>
+          <button class="btn ghost" id="clear-loads-btn">Clear loads</button>
+        </div>
       </div>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Load ID</th>
+              <th>Location</th>
+              <th>Type</th>
+              <th>Generated SKU</th>
+              <th>Product name</th>
+              <th>FOB state</th>
+              <th>Condition</th>
+              <th>Manifest</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="loads-body"></tbody>
+        </table>
+      </div>
+      <div id="push-status" class="status" style="margin-top:1rem;"></div>
     </div>
   </div>
 </main>
 
 <script>
 (() => {
-  const LS_KEY = 'posku.capture.v1';
-  const $ = (id) => document.getElementById(id);
-  const ta = $('content');
-  const card = $('drop-card');
-  const meta = $('meta');
-  const files = $('files');
+const LS_CFG = 'posku.wyfcfg.v2';
 
-  const fmtSize = (n) => n < 1024 ? n + ' B' : n < 1024 * 1024 ? (n / 1024).toFixed(1) + ' KB' : (n / 1024 / 1024).toFixed(1) + ' MB';
+// ── ERP constants (from BigQuery airbyte_sync) ──────────────────────────────
+const STORE_ID       = 89;
+const SUPPLIER_ID    = 770;
+const PSKU           = 'LOAD-WYF';
+const PT_CODE        = 'LOAD-WYF';
+const STATUS_ID      = 2;    // matches existing WYF products
+const PACKING_TRAIT  = 198;  // Load
 
-  ta.value = localStorage.getItem(LS_KEY) || '';
-  updateMeta();
+const FOB_IDS = {
+  PR: 5, LA: 5, JFL: 9, AMD: 20, RIL: 13,
+  LTX: 43, KWA: 47, EKY: 17, MCDO: 10,
+  CI: 51,   // CA-Los Angeles (City of Industry area)
+  POR: 37,  // Oregon
+};
 
-  ta.addEventListener('input', () => {
-    localStorage.setItem(LS_KEY, ta.value);
-    updateMeta();
+const FOB_NAMES = {
+  PR: 'California', LA: 'California', JFL: 'Florida', AMD: 'Maryland',
+  RIL: 'Illinois', LTX: 'Texas', KWA: 'Washington', EKY: 'Kentucky',
+  MCDO: 'Georgia', CI: 'CA-Los Angeles', POR: 'Oregon',
+};
+
+// Condition trait IDs (from products_traits joined to products_combined_view)
+const CONDITION_TRAITS = { LQ: 63, S: 63, HDO: 63, A: 61, QC: 62 };
+const CONDITION_NAMES  = { LQ: 'Customer Returns', S: 'Customer Returns', HDO: 'Customer Returns', A: 'New Overstock', QC: 'Shelf Pulls' };
+
+// Manifest trait IDs
+const MANIFEST_TRAIT = { S: 514 }; // Salvage = Unmanifested; all others = 603
+const MANIFEST_NAMES = { S: 'Unmanifested' };
+
+// HDO locations — type is always HDO, inferred from location
+const HDO_LOCS = new Set(['CI', 'POR']);
+
+// ── Location patterns (order matters — more specific first) ─────────────────
+const LOCATIONS = [
+  { patterns: ['perris sp', 'perris lp', 'perris'],   code: 'PR',   label: 'Perris CA' },
+  { patterns: ['jacksonville'],                         code: 'JFL',  label: 'Jacksonville FL' },
+  { patterns: ['aberdeen'],                             code: 'AMD',  label: 'Aberdeen MD' },
+  { patterns: ['romeoville'],                           code: 'RIL',  label: 'Romeoville IL' },
+  { patterns: ['lancaster, tx', 'lancaster tx', 'lancaster, t', 'lancaster'], code: 'LTX', label: 'Lancaster TX' },
+  { patterns: ['lathrop'],                              code: 'LA',   label: 'Lathrop CA' },
+  { patterns: ['kent, wa', 'kent wa', 'kent'],          code: 'KWA',  label: 'Kent WA' },
+  { patterns: ['city of industry', 'coi'],              code: 'CI',   label: 'City of Industry CA' },
+  { patterns: ['portland, or', 'portland or', 'portland'], code: 'POR', label: 'Portland OR' },
+  { patterns: ['mcdonough, ga', 'mcdonough ga', 'mcdonough'], code: 'MCDO', label: 'McDonough GA' },
+  { patterns: ['kentucky', 'hebron', 'erlanger', 'walton', 'florence, ky', 'edgewood'], code: 'EKY', label: 'Kentucky' },
+];
+
+// ── Type patterns ────────────────────────────────────────────────────────────
+const TYPES = [
+  { patterns: ['liquidation', ' lq ', '(lq)', '[lq]', 'lq-', '-lq'], code: 'LQ',  label: 'Liquidation' },
+  { patterns: ['salvage', 'slvg', '(salvage)', '[salvage]'],           code: 'S',   label: 'Salvage' },
+  { patterns: ['aged like new', 'aged '],                              code: 'A',   label: 'Aged' },
+  { patterns: ['qc rejects', 'qc reject', ' qc ', '(qc)', '[qc]'],   code: 'QC',  label: 'QC' },
+  { patterns: [' hdo ', '(hdo)', '[hdo]', 'hdo-', '-hdo'],            code: 'HDO', label: 'HDO' },
+];
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function loadCfg() {
+  try { return JSON.parse(localStorage.getItem(LS_CFG)) || {}; } catch { return {}; }
+}
+function saveCfg(c) { localStorage.setItem(LS_CFG, JSON.stringify(c)); }
+
+function setStatus(el, kind, msg) { el.className = 'status show ' + kind; el.textContent = msg; }
+function clearStatus(el) { el.className = 'status'; }
+
+// ── Product name logic ───────────────────────────────────────────────────────
+function getProductName(typeCode, locCode) {
+  if (!typeCode || !locCode) return '';
+  if (typeCode === 'S')   return 'WYF Salvage Loads';
+  if (typeCode === 'A')   return 'WYF Excess & Aged Inventory';
+  if (typeCode === 'QC')  return 'WYF QC Imperfection Loads';
+  // LQ or HDO
+  if (locCode === 'PR')                        return 'WYF Liquidation Returns - Smaller Items';
+  if (['CI','POR','KWA'].includes(locCode))    return 'WYF Liquidation Returns - Larger Items';
+  return 'WYF Liquidation Returns - Large and Smaller Items';
+}
+
+function buildSKU(locCode, typeCode, loadId) {
+  return 'WYF' + locCode + typeCode + loadId + '-test';
+}
+
+// ── Parser ───────────────────────────────────────────────────────────────────
+function detectLocation(text) {
+  const lower = text.toLowerCase();
+  for (const loc of LOCATIONS) {
+    if (loc.patterns.some(p => lower.includes(p))) return loc.code;
+  }
+  return null;
+}
+
+function detectType(text, locCode) {
+  if (locCode && HDO_LOCS.has(locCode)) return 'HDO';
+  const lower = text.toLowerCase();
+  for (const t of TYPES) {
+    if (t.patterns.some(p => lower.includes(p))) return t.code;
+  }
+  return null;
+}
+
+function extractLoadIds(text) {
+  const ids = new Set();
+  const patterns = [
+    // "Load ID: 50544" / "Load #50544" / "Load Number 50544"
+    /\bload\s+(?:id|number|no\.?|#)?\s*[:\-#]?\s*([A-Z]{0,3}\d{4,6})\b/gi,
+    // standalone load numbers in context
+    /\b((?:LQ|SL|QC|AG)\d{3,6})\b/gi,
+    // "#50544"
+    /#\s*(\d{4,6})\b/g,
+    // "Load 50544"
+    /\bload\s+(\d{4,6})\b/gi,
+  ];
+  for (const rx of patterns) {
+    let m;
+    while ((m = rx.exec(text)) !== null) {
+      const id = m[1].trim().toUpperCase();
+      if (id.length >= 4) ids.add(id);
+    }
+  }
+  return [...ids];
+}
+
+let loads = [];
+
+function parseEmail(text) {
+  if (!text.trim()) return [];
+  const locCode  = detectLocation(text);
+  const typeCode = detectType(text, locCode);
+  const rawIds   = extractLoadIds(text);
+
+  if (!rawIds.length) return [];
+
+  return rawIds.map(loadId => {
+    const flags = [];
+    if (!locCode)  flags.push('Location not recognized — check the email');
+    if (!typeCode) flags.push('Load type missing — check the email');
+    const sku  = locCode && typeCode ? buildSKU(locCode, typeCode, loadId) : null;
+    const name = getProductName(typeCode, locCode);
+    return {
+      id: 'load_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+      loadId,
+      locCode,
+      typeCode,
+      sku,
+      name,
+      fobId:         locCode ? FOB_IDS[locCode]          : null,
+      fobName:       locCode ? FOB_NAMES[locCode]        : '—',
+      condTrait:     typeCode ? CONDITION_TRAITS[typeCode] : null,
+      condName:      typeCode ? CONDITION_NAMES[typeCode]  : '—',
+      manifestTrait: typeCode ? (MANIFEST_TRAIT[typeCode] || 603) : null,
+      manifestName:  typeCode ? (MANIFEST_NAMES[typeCode] || 'Manifested') : '—',
+      flags,
+      status: flags.length ? 'review' : 'ready',
+      erpResult: null,
+    };
+  });
+}
+
+// ── ERP API ──────────────────────────────────────────────────────────────────
+async function erpRequest(method, path, body) {
+  const cfg = loadCfg();
+  if (!cfg.apiKey) return { ok: false, error: 'No API key configured. Set it in the settings bar above.' };
+  const base = (cfg.baseUrl || 'https://viatrading.biz').replace(/\/+$/, '');
+  try {
+    const opts = {
+      method,
+      headers: { 'Content-Type': 'application/json', 'api-key': cfg.apiKey },
+    };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(base + path, opts);
+    let json = null;
+    try { json = await res.json(); } catch {}
+    return { ok: res.ok, status: res.status, data: json };
+  } catch (err) {
+    return { ok: false, error: err.message || 'Network error' };
+  }
+}
+
+async function checkSKUExists(sku) {
+  const r = await erpRequest('GET', '/api/products?sku=' + encodeURIComponent(sku));
+  if (!r.ok && !r.status) return { error: r.error };
+  // 404 → not found → safe to create. 200 with empty → safe. 200 with data → duplicate.
+  if (r.status === 404) return { exists: false };
+  if (r.ok && r.data) {
+    const arr = Array.isArray(r.data) ? r.data : (Array.isArray(r.data?.data) ? r.data.data : null);
+    if (arr !== null) return { exists: arr.length > 0 };
+    // If it's an object with an id, it exists
+    if (r.data?.id || r.data?.sku) return { exists: true };
+  }
+  return { exists: false };
+}
+
+function buildPayload(load) {
+  return {
+    data: {
+      sku:             load.sku,
+      name:            load.name,
+      psku:            PSKU,
+      psku_type:       'regular',
+      store_id:        STORE_ID,
+      supplier:        SUPPLIER_ID,
+      status_id:       STATUS_ID,
+      active:          0,
+      cloud:           1,
+      user_id:         1,
+      user_id_created: 1,
+      fob:             load.fobId,
+      peachtree_code:  PT_CODE,
+    },
+    i18n: {
+      name:      load.name,
+      lang_id:   '1',
+      status_id: '1',
+      slug:      load.sku.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    },
+  };
+}
+
+async function pushLoad(load) {
+  if (!load.sku) return { ok: false, error: 'SKU not generated — fix location/type first.' };
+
+  // 1. Dedup check
+  const dup = await checkSKUExists(load.sku);
+  if (dup.error) return { ok: false, error: dup.error };
+  if (dup.exists) return { ok: false, skipped: true, error: `SKU ${load.sku} already exists in ERP.` };
+
+  // 2. Create
+  const payload = buildPayload(load);
+  const r = await erpRequest('POST', '/api/products', payload);
+  if (r.ok) {
+    const erpId = r.data?.id ?? r.data?.data?.id ?? null;
+    return { ok: true, erpId };
+  }
+  const errMsg = r.data?.message || r.data?.error || (r.error) || `HTTP ${r.status}`;
+  return { ok: false, error: errMsg };
+}
+
+// ── Renderer ─────────────────────────────────────────────────────────────────
+function renderLoads() {
+  const body = $('loads-body');
+  body.innerHTML = '';
+  loads.forEach((load, idx) => {
+    // main row
+    const tr = document.createElement('tr');
+    tr.id = 'row-' + idx;
+    tr.className = load.status === 'review' ? 'review' : (load.status === 'done' ? 'done' : (load.status === 'failed' ? 'failed' : ''));
+
+    const statusChip = () => {
+      if (load.status === 'done')   return `<span class="chip green">pushed</span>`;
+      if (load.status === 'failed') return `<span class="chip red">failed</span>`;
+      if (load.status === 'review') return `<span class="chip amber">review</span>`;
+      if (load.status === 'pushing') return `<span class="chip blue">pushing…</span>`;
+      if (load.status === 'dup')    return `<span class="chip">duplicate</span>`;
+      return `<span class="chip green" style="background:var(--green-dim);color:var(--green);">ready</span>`;
+    };
+
+    tr.innerHTML = `
+      <td class="mono">${esc(load.loadId)}</td>
+      <td><span class="mono">${esc(load.locCode || '—')}</span></td>
+      <td><span class="mono">${esc(load.typeCode || '—')}</span></td>
+      <td>${load.sku ? `<span class="mono-green">${esc(load.sku)}</span>` : `<span class="mono-amber">—</span>`}</td>
+      <td style="font-size:0.8rem;color:var(--text2);max-width:220px;">${esc(load.name || '—')}</td>
+      <td class="mono">${esc(load.fobName)}</td>
+      <td style="font-size:0.78rem;">${esc(load.condName)}</td>
+      <td style="font-size:0.78rem;">${esc(load.manifestName)}</td>
+      <td>${statusChip()}</td>
+      <td style="white-space:nowrap;">
+        ${load.status !== 'done' && load.status !== 'pushing' ? `
+          <button class="btn small" data-push="${idx}" ${!load.sku ? 'disabled' : ''}>Push</button>
+          <button class="btn ghost small" data-edit="${idx}">Edit</button>
+        ` : ''}
+        <button class="btn danger small" data-remove="${idx}">×</button>
+      </td>`;
+
+    // edit row
+    const er = document.createElement('tr');
+    er.id = 'edit-' + idx;
+    er.className = 'edit-row';
+    er.innerHTML = `<td colspan="10">
+      <div class="edit-grid">
+        <div class="edit-field">
+          <label>Load ID</label>
+          <input type="text" data-field="loadId" value="${esc(load.loadId)}">
+        </div>
+        <div class="edit-field">
+          <label>Location code</label>
+          <select data-field="locCode">
+            <option value="">— unknown —</option>
+            ${Object.keys(FOB_IDS).map(c => `<option value="${c}" ${load.locCode === c ? 'selected' : ''}>${c} — ${FOB_NAMES[c]}</option>`).join('')}
+          </select>
+        </div>
+        <div class="edit-field">
+          <label>Type code</label>
+          <select data-field="typeCode">
+            <option value="">— unknown —</option>
+            <option value="LQ"  ${load.typeCode==='LQ'  ? 'selected' : ''}>LQ — Liquidation</option>
+            <option value="S"   ${load.typeCode==='S'   ? 'selected' : ''}>S — Salvage</option>
+            <option value="A"   ${load.typeCode==='A'   ? 'selected' : ''}>A — Aged</option>
+            <option value="QC"  ${load.typeCode==='QC'  ? 'selected' : ''}>QC — QC Rejects</option>
+            <option value="HDO" ${load.typeCode==='HDO' ? 'selected' : ''}>HDO</option>
+          </select>
+        </div>
+        <div class="edit-field" style="align-self:end;">
+          <label>&nbsp;</label>
+          <div style="display:flex;gap:0.4rem;">
+            <button class="btn" data-apply="${idx}">Apply</button>
+            <button class="btn ghost" data-cancel="${idx}">Cancel</button>
+          </div>
+        </div>
+      </div>
+      ${load.flags.length ? `<div class="flags">⚠ ${load.flags.join(' · ')}</div>` : ''}
+    </td>`;
+
+    body.appendChild(tr);
+    body.appendChild(er);
   });
 
-  function updateMeta() {
-    const v = ta.value;
-    const lines = v ? v.split('\n').length : 0;
-    meta.textContent = `${v.length.toLocaleString()} chars · ${lines.toLocaleString()} lines`;
-  }
+  updateSummary();
+  attachHandlers();
+}
 
-  // --- Drag and drop ---
-  ['dragenter', 'dragover'].forEach(e => card.addEventListener(e, (ev) => {
-    ev.preventDefault();
-    card.classList.add('dragging');
-  }));
-  ['dragleave', 'drop'].forEach(e => card.addEventListener(e, (ev) => {
-    if (e === 'dragleave' && card.contains(ev.relatedTarget)) return;
-    card.classList.remove('dragging');
-  }));
-  card.addEventListener('drop', (ev) => {
-    ev.preventDefault();
-    const list = [...(ev.dataTransfer.files || [])];
-    if (list.length) loadFiles(list);
-    else {
-      const text = ev.dataTransfer.getData('text');
-      if (text) appendText(text);
-    }
+function updateSummary() {
+  const ready   = loads.filter(l => l.status === 'ready').length;
+  const review  = loads.filter(l => l.status === 'review').length;
+  const done    = loads.filter(l => l.status === 'done').length;
+  const failed  = loads.filter(l => l.status === 'failed').length;
+  const chips = [];
+  if (ready)  chips.push(`<span class="chip green">${ready} ready</span>`);
+  if (review) chips.push(`<span class="chip amber">${review} needs review</span>`);
+  if (done)   chips.push(`<span class="chip" style="background:var(--green-dim);color:var(--green);border-color:rgba(30,127,86,.35);">${done} pushed</span>`);
+  if (failed) chips.push(`<span class="chip red">${failed} failed</span>`);
+  $('summary-chips').innerHTML = chips.join(' ');
+}
+
+function attachHandlers() {
+  $('loads-body').querySelectorAll('[data-push]').forEach(b => {
+    b.onclick = async () => {
+      const idx = +b.dataset.push;
+      await doPush([idx]);
+    };
   });
+  $('loads-body').querySelectorAll('[data-edit]').forEach(b => {
+    b.onclick = () => {
+      const idx = +b.dataset.edit;
+      $('edit-' + idx).classList.toggle('open');
+    };
+  });
+  $('loads-body').querySelectorAll('[data-cancel]').forEach(b => {
+    b.onclick = () => {
+      $('edit-' + +b.dataset.cancel).classList.remove('open');
+    };
+  });
+  $('loads-body').querySelectorAll('[data-apply]').forEach(b => {
+    b.onclick = () => {
+      const idx = +b.dataset.apply;
+      const er = $('edit-' + idx);
+      const loadId  = er.querySelector('[data-field="loadId"]').value.trim().toUpperCase();
+      const locCode = er.querySelector('[data-field="locCode"]').value;
+      const typeCode = er.querySelector('[data-field="typeCode"]').value;
+      const load = loads[idx];
+      load.loadId   = loadId  || load.loadId;
+      load.locCode  = locCode  || null;
+      load.typeCode = typeCode || null;
+      load.sku          = load.locCode && load.typeCode ? buildSKU(load.locCode, load.typeCode, load.loadId) : null;
+      load.name         = getProductName(load.typeCode, load.locCode);
+      load.fobId        = load.locCode ? FOB_IDS[load.locCode] : null;
+      load.fobName      = load.locCode ? FOB_NAMES[load.locCode] : '—';
+      load.condTrait    = load.typeCode ? CONDITION_TRAITS[load.typeCode] : null;
+      load.condName     = load.typeCode ? CONDITION_NAMES[load.typeCode] : '—';
+      load.manifestTrait = load.typeCode ? (MANIFEST_TRAIT[load.typeCode] || 603) : null;
+      load.manifestName  = load.typeCode ? (MANIFEST_NAMES[load.typeCode] || 'Manifested') : '—';
+      load.flags = [];
+      if (!load.locCode)  load.flags.push('Location not set');
+      if (!load.typeCode) load.flags.push('Type not set');
+      load.status = load.flags.length ? 'review' : 'ready';
+      er.classList.remove('open');
+      renderLoads();
+    };
+  });
+  $('loads-body').querySelectorAll('[data-remove]').forEach(b => {
+    b.onclick = () => {
+      loads.splice(+b.dataset.remove, 1);
+      if (!loads.length) $('loads-section').style.display = 'none';
+      else renderLoads();
+    };
+  });
+}
 
-  // --- File picker ---
-  $('pick').onclick = () => $('file-input').click();
-  $('file-input').onchange = (ev) => {
-    const list = [...(ev.target.files || [])];
-    if (list.length) loadFiles(list);
-    ev.target.value = '';
-  };
-
-  function loadFiles(list) {
-    list.forEach(f => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const text = typeof reader.result === 'string' ? reader.result : '';
-        appendText(`\n\n===== ${f.name} (${fmtSize(f.size)}) =====\n${text}`);
-        addPill(f);
-      };
-      reader.readAsText(f);
-    });
+async function doPush(indices) {
+  const cfg = loadCfg();
+  if (!cfg.apiKey) {
+    setStatus($('push-status'), 'err', 'API key not set. Enter it in the settings bar and click Save.');
+    return;
   }
-
-  function appendText(t) {
-    ta.value = (ta.value ? ta.value.trimEnd() + '\n' : '') + t.trimStart();
-    localStorage.setItem(LS_KEY, ta.value);
-    updateMeta();
-  }
-
-  function addPill(f) {
-    const pill = document.createElement('div');
-    pill.className = 'file-pill';
-    pill.innerHTML = `<span class="name"></span><span class="size"></span>`;
-    pill.querySelector('.name').textContent = f.name;
-    pill.querySelector('.size').textContent = fmtSize(f.size);
-    files.appendChild(pill);
-  }
-
-  // --- Buttons ---
-  $('copy').onclick = async () => {
-    if (!ta.value) return;
-    try {
-      await navigator.clipboard.writeText(ta.value);
-      flash($('copy'), 'Copied');
-    } catch {
-      ta.select();
-      document.execCommand('copy');
-      flash($('copy'), 'Copied');
+  clearStatus($('push-status'));
+  for (const idx of indices) {
+    const load = loads[idx];
+    if (!load || load.status === 'done') continue;
+    load.status = 'pushing';
+    renderLoads();
+    const result = await pushLoad(load);
+    if (result.ok) {
+      load.status = 'done';
+      load.erpResult = `ERP id: ${result.erpId ?? 'n/a'}`;
+    } else if (result.skipped) {
+      load.status = 'dup';
+      load.erpResult = result.error;
+    } else {
+      load.status = 'failed';
+      load.erpResult = result.error;
     }
-  };
-
-  $('clear').onclick = () => {
-    if (!ta.value && !files.children.length) return;
-    if (!confirm('Clear everything?')) return;
-    ta.value = '';
-    files.innerHTML = '';
-    localStorage.removeItem(LS_KEY);
-    updateMeta();
-  };
-
-  function flash(btn, msg) {
-    const orig = btn.textContent;
-    btn.textContent = msg;
-    setTimeout(() => btn.textContent = orig, 1100);
+    renderLoads();
   }
+  const done = loads.filter(l => l.status === 'done').length;
+  const failed = loads.filter(l => l.status === 'failed').length;
+  const dup = loads.filter(l => l.status === 'dup').length;
+  const parts = [];
+  if (done)   parts.push(`${done} pushed OK`);
+  if (dup)    parts.push(`${dup} duplicate(s) skipped`);
+  if (failed) parts.push(`${failed} failed`);
+  if (parts.length) setStatus($('push-status'), failed ? 'err' : 'ok', parts.join(' · '));
+}
+
+// ── Settings bar ─────────────────────────────────────────────────────────────
+function initSettings() {
+  const cfg = loadCfg();
+  $('cfg-url').value = cfg.baseUrl || 'https://viatrading.biz';
+  $('cfg-key').value = cfg.apiKey  || '';
+}
+
+$('cfg-save').onclick = () => {
+  saveCfg({ baseUrl: $('cfg-url').value.trim(), apiKey: $('cfg-key').value.trim() });
+  $('cfg-status').textContent = 'Saved ✓';
+  setTimeout(() => $('cfg-status').textContent = '', 1500);
+};
+
+// ── Drag / drop ───────────────────────────────────────────────────────────────
+const card = $('drop-card');
+['dragenter','dragover'].forEach(e => card.addEventListener(e, ev => { ev.preventDefault(); card.classList.add('dragging'); }));
+['dragleave','drop'].forEach(e => card.addEventListener(e, ev => {
+  if (e === 'dragleave' && card.contains(ev.relatedTarget)) return;
+  card.classList.remove('dragging');
+}));
+card.addEventListener('drop', ev => {
+  ev.preventDefault();
+  const files = [...(ev.dataTransfer.files || [])];
+  if (files.length) {
+    loadFiles(files);
+  } else {
+    const text = ev.dataTransfer.getData('text');
+    if (text) $('email-input').value = (($('email-input').value || '') + '\n\n' + text).trim();
+  }
+});
+
+$('pick-file-btn').onclick = () => $('file-input').click();
+$('file-input').onchange = ev => {
+  loadFiles([...(ev.target.files || [])]);
+  ev.target.value = '';
+};
+
+function loadFiles(files) {
+  let pending = files.length;
+  files.forEach(f => {
+    const r = new FileReader();
+    r.onload = () => {
+      $('email-input').value = (($('email-input').value || '').trimEnd() + '\n\n' + r.result.trim()).trim();
+      if (--pending === 0) triggerParse();
+    };
+    r.readAsText(f);
+  });
+}
+
+// ── Parse ────────────────────────────────────────────────────────────────────
+function triggerParse() {
+  const text = $('email-input').value.trim();
+  clearStatus($('parse-status'));
+  if (!text) { setStatus($('parse-status'), 'warn', 'Nothing to parse.'); return; }
+
+  const found = parseEmail(text);
+  if (!found.length) {
+    setStatus($('parse-status'), 'warn', 'No load IDs found. Make sure the email includes a load number (e.g. "Load ID: 50544").');
+    return;
+  }
+
+  // Merge: avoid duplicates by loadId+locCode+typeCode
+  const existing = new Set(loads.map(l => l.loadId + '|' + l.locCode + '|' + l.typeCode));
+  const added = found.filter(l => !existing.has(l.loadId + '|' + l.locCode + '|' + l.typeCode));
+
+  loads.push(...added);
+  $('loads-section').style.display = '';
+  renderLoads();
+
+  const reviewCount = added.filter(l => l.flags.length).length;
+  const msg = `Found ${added.length} load(s)` +
+    (found.length > added.length ? `, ${found.length - added.length} already in list` : '') +
+    (reviewCount ? ` · ${reviewCount} need review` : '');
+  setStatus($('parse-status'), reviewCount ? 'warn' : 'ok', msg);
+}
+
+$('parse-btn').onclick = triggerParse;
+$('email-input').addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') triggerParse(); });
+
+$('clear-input-btn').onclick = () => {
+  $('email-input').value = '';
+  clearStatus($('parse-status'));
+};
+
+$('push-all-btn').onclick = async () => {
+  const readyIdx = loads.map((l,i) => l.status === 'ready' ? i : -1).filter(i => i >= 0);
+  if (!readyIdx.length) { setStatus($('push-status'), 'warn', 'No ready loads to push.'); return; }
+  await doPush(readyIdx);
+};
+
+$('clear-loads-btn').onclick = () => {
+  if (!loads.length || confirm('Clear all detected loads?')) {
+    loads = [];
+    $('loads-section').style.display = 'none';
+    clearStatus($('push-status'));
+  }
+};
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+initSettings();
 })();
 </script>
 </body>
