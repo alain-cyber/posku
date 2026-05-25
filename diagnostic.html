@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Posku Diagnostics</title>
+<style>
+  body { font-family: 'DM Mono', monospace; background: #111; color: #ccc; padding: 2rem; margin: 0; }
+  h1 { color: #fff; margin: 0 0 0.25rem; }
+  .sub { color: #666; font-size: 0.8rem; margin-bottom: 2rem; }
+  .section { margin-bottom: 2rem; }
+  .section h2 { color: #aaa; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid #333; padding-bottom: 0.5rem; margin-bottom: 1rem; }
+  pre { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 1rem; white-space: pre-wrap; word-break: break-all; font-size: 0.72rem; color: #ccc; margin: 0; }
+  .ok   { color: #4ade80; }
+  .warn { color: #fbbf24; }
+  .err  { color: #f87171; }
+  .btn  { background: #222; border: 1px solid #444; color: #ccc; padding: 0.4rem 1rem; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 0.8rem; margin-right: 0.5rem; }
+  .btn:hover { background: #333; }
+  #copy-btn { float: right; }
+</style>
+</head>
+<body>
+<h1>Posku Diagnostics</h1>
+<p class="sub">Share this entire page with your developer to debug ERP push issues.</p>
+
+<button class="btn" onclick="runAll()">&#8635; Re-run all checks</button>
+<button class="btn" id="copy-btn" onclick="copyAll()">Copy all results</button>
+
+<div id="results"></div>
+
+<script>
+const LS_CFG = 'posku.cfg.v3';
+
+const WYF_IDS = {
+  packingTrait:  198,
+  storeId:       89,
+  erpSupplier:   770,
+  statusId:      2,
+  conditionIds:  { LQ: 63, S: 63, HDO: 63, A: 61, QC: 62 },
+  manifestIds:   { default: 603, S: 514 },
+  fobIds:        { PR: 5, LA: 5, JFL: 9, AMD: 20, RIL: 13, LTX: 43, KWA: 47, EKY: 17, MCDO: 10, CI: 51, POR: 37 },
+};
+
+function loadCfg() {
+  try { return JSON.parse(localStorage.getItem(LS_CFG)) || {}; } catch { return {}; }
+}
+
+function mask(key) {
+  if (!key) return '(not set)';
+  return key.slice(0, 4) + '****' + key.slice(-4);
+}
+
+async function apiGet(path) {
+  const cfg = loadCfg();
+  const base = (cfg.baseUrl || 'https://viatrading.biz').replace(/\/+$/, '');
+  try {
+    const res = await fetch(base + path, { headers: { 'api-key': cfg.apiKey, 'Content-Type': 'application/json' } });
+    const json = await res.json().catch(() => null);
+    return { ok: res.ok, status: res.status, data: json };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+function section(title, content) {
+  return `<div class="section"><h2>${title}</h2><pre>${content}</pre></div>`;
+}
+
+function checkId(label, arr, id) {
+  if (!Array.isArray(arr)) return `<span class="warn">${label}: ${id} — could not check (unexpected response shape)</span>`;
+  const match = arr.find(x => x.id == id);
+  return match
+    ? `<span class="ok">✓ ${label}: ${id} = "${match.name}"</span>`
+    : `<span class="err">✗ ${label}: ${id} NOT FOUND in environment</span>`;
+}
+
+async function runAll() {
+  const out = document.getElementById('results');
+  out.innerHTML = '<pre style="color:#666">Running checks…</pre>';
+
+  const cfg = loadCfg();
+  const lines = [];
+
+  // ── 1. Config ──────────────────────────────────────────────────────────────
+  lines.push(section('1 · Config (from localStorage)', [
+    `Base URL : ${cfg.baseUrl || 'https://viatrading.biz (default)'}`,
+    `API key  : ${mask(cfg.apiKey)}`,
+    `Key set  : ${cfg.apiKey ? 'yes' : 'NO — set it in the main app settings bar'}`,
+  ].join('\n')));
+
+  // ── 2. Hardcoded IDs we send ───────────────────────────────────────────────
+  lines.push(section('2 · Hardcoded IDs in Posku (WYF supplier)', JSON.stringify(WYF_IDS, null, 2)));
+
+  // ── 3. Sample push payload ─────────────────────────────────────────────────
+  const samplePayload = {
+    data: {
+      sku: 'WYFPRLQ50432-TEST',
+      name: 'WYF Liquidation Returns - Smaller Items',
+      psku: 'LOAD-WYF', psku_type: 'regular',
+      active: 0, make_an_offer: false,
+      store_id: 89, lang_id: 1, slug: 'wyfprlq50432-test',
+      packing: 198, condition: 63, manifested: 603,
+      fobStates: [5],
+      supplierId: 770,
+      status_id: 2, user_id: 183, user_id_created: 183,
+      peachtree_code: 'LOAD-WYF',
+    }
+  };
+  lines.push(section('3 · Sample push payload (PR / LQ load)', JSON.stringify(samplePayload, null, 2)));
+
+  // ── 4. Dropdowns ───────────────────────────────────────────────────────────
+  if (!cfg.apiKey) {
+    lines.push(section('4 · GET /api/products/dropdowns', '<span class="err">Skipped — no API key set</span>'));
+  } else {
+    const r = await apiGet('/api/products/dropdowns');
+    if (!r.ok) {
+      lines.push(section('4 · GET /api/products/dropdowns',
+        `<span class="err">FAILED — HTTP ${r.status || 'n/a'}: ${r.error || JSON.stringify(r.data)}</span>`));
+    } else {
+      const d = r.data;
+      const validation = [
+        checkId('packing (198=Load)',        d?.packings   ?? d?.packing,   198),
+        checkId('condition (63=Cust.Ret.)',   d?.conditions ?? d?.condition,  63),
+        checkId('condition (61=New Over.)',   d?.conditions ?? d?.condition,  61),
+        checkId('condition (62=Shelf Pulls)', d?.conditions ?? d?.condition,  62),
+        checkId('manifested (603=Manifested)',d?.manifested ?? d?.manifest,  603),
+        checkId('manifested (514=Unmanif.)', d?.manifested ?? d?.manifest,  514),
+        checkId('store (89)',                 d?.stores,                      89),
+        checkId('supplier (770=Wayfair)',     d?.suppliers,                  770),
+      ].join('\n');
+      lines.push(section('4 · ID validation vs environment', validation));
+      lines.push(section('4b · Raw /api/products/dropdowns response', JSON.stringify(d, null, 2)));
+    }
+  }
+
+  // ── 5. Test SKU existence check ────────────────────────────────────────────
+  if (cfg.apiKey) {
+    const r = await apiGet('/api/products?sku=WYFPRLQ50432-TEST');
+    lines.push(section('5 · GET /api/products?sku=WYFPRLQ50432-TEST (dedup check)',
+      `HTTP ${r.status}\n${JSON.stringify(r.data, null, 2)}`));
+  } else {
+    lines.push(section('5 · Dedup check', '<span class="err">Skipped — no API key</span>'));
+  }
+
+  out.innerHTML = lines.join('');
+}
+
+function copyAll() {
+  const text = document.getElementById('results').innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    document.getElementById('copy-btn').textContent = 'Copied ✓';
+    setTimeout(() => document.getElementById('copy-btn').textContent = 'Copy all results', 2000);
+  });
+}
+
+runAll();
+</script>
+</body>
+</html>
