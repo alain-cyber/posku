@@ -423,7 +423,6 @@ async function checkSKUExists(sku) {
 
 function buildPayload(load) {
   const sup = SUPPLIERS[load.supplierKey] || SUPPLIERS.WYF;
-  const traitIds = [sup.packingTrait, load.condTrait, load.manifestTrait].filter(Boolean);
   return {
     data: {
       sku:             load.sku,
@@ -437,6 +436,7 @@ function buildPayload(load) {
       cloud:           1,
       user_id:         183,
       user_id_created: 183,
+      fob:             load.fobId,
       peachtree_code:  sup.ptCode,
     },
     i18n: {
@@ -445,10 +445,6 @@ function buildPayload(load) {
       status_id: '1',
       slug:      load.sku.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
     },
-    fob_link: load.fobId ? [
-      { state_id: load.fobId, status_id: 1, user_id: 183 },
-    ] : [],
-    traits_link: traitIds.map(id => ({ product_trait_id: id, status_id: 1, user_id: 183 })),
   };
 }
 
