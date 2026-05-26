@@ -110,6 +110,10 @@ textarea::placeholder { color: var(--text4); }
 .edit-field select:focus, .edit-field input:focus { outline: none; border-color: var(--green); }
 .flags { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: var(--amber); margin-top: 0.25rem; }
 
+.details-row td.details-strip { padding: 0.45rem 0.6rem 0.75rem; background: rgba(0,0,0,0.015); border-bottom: 1px solid var(--border); display: block; line-height: 1.7; }
+.chip-mini { display: inline-block; font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text3); background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 0.12rem 0.4rem; margin-right: 0.35rem; }
+.chip-mini b { color: var(--text2); font-weight: 500; margin-right: 0.25rem; }
+
 /* PO draft cards */
 .po-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem 1.2rem; margin-bottom: 1rem; }
 .po-card.done { background: var(--green-dim); border-color: rgba(30,127,86,0.4); }
@@ -752,6 +756,30 @@ function renderLoads() {
     </td>`;
 
     body.appendChild(tr);
+
+    // Always-visible details strip — shows ALL fields going into the push
+    const dr = document.createElement('tr');
+    dr.className = 'details-row';
+    const sup2 = SUPPLIERS[load.supplierKey] || SUPPLIERS.WYF;
+    const slug = load.sku ? load.sku.toLowerCase().replace(/[^a-z0-9]+/g, '-') : '—';
+    dr.innerHTML = `<td colspan="11" class="details-strip">
+      <span class="chip-mini"><b>active</b> ${load.active ?? 1}</span>
+      <span class="chip-mini"><b>packing</b> ${sup2.packingTrait} (Load)</span>
+      <span class="chip-mini"><b>condition</b> ${load.condTrait ?? '—'}</span>
+      <span class="chip-mini"><b>manifested</b> ${load.manifestTrait ?? '—'}</span>
+      <span class="chip-mini"><b>fobStates</b> [${load.fobId ?? ''}]</span>
+      <span class="chip-mini"><b>store_id</b> ${sup2.storeId}</span>
+      <span class="chip-mini"><b>supplierId</b> ${sup2.erpSupplier} (Wayfair)</span>
+      <span class="chip-mini"><b>psku</b> ${sup2.psku}</span>
+      <span class="chip-mini"><b>peachtree_code</b> ${sup2.ptCode}</span>
+      <span class="chip-mini"><b>status_id</b> ${sup2.statusId}</span>
+      <span class="chip-mini"><b>user_id</b> 179</span>
+      <span class="chip-mini"><b>lang_id</b> 1</span>
+      <span class="chip-mini"><b>psku_type</b> regular</span>
+      <span class="chip-mini"><b>make_an_offer</b> false</span>
+      <span class="chip-mini"><b>slug</b> ${esc(slug)}</span>
+    </td>`;
+    body.appendChild(dr);
     body.appendChild(er);
 
     if ((load.status === 'failed' || load.status === 'dup') && load.erpResult) {
