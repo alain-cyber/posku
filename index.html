@@ -152,6 +152,34 @@ textarea::placeholder { color: var(--text4); }
 .select-col { width: 28px; padding-left: 0.6rem !important; }
 .select-col input { transform: scale(1.1); cursor: pointer; }
 
+/* Config section */
+.cfg-section { padding: 1.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 1.5rem; }
+.cfg-section .cfg-title { font-family: 'DM Serif Display', serif; font-size: 1.25rem; margin-bottom: 0.25rem; }
+.cfg-section .cfg-sub { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: var(--text3); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 1.2rem; }
+.cfg-block { margin-bottom: 1.4rem; }
+.cfg-block h3 { font-family: 'DM Mono', monospace; font-size: 0.7rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text2); margin-bottom: 0.7rem; padding-bottom: 0.45rem; border-bottom: 1px solid var(--border); }
+.cfg-hint { font-family: 'DM Mono', monospace; font-size: 0.66rem; color: var(--text3); margin-bottom: 0.6rem; line-height: 1.5; }
+.cfg-hint code { background: var(--surface2); padding: 0.05rem 0.35rem; border-radius: 3px; color: var(--text2); font-size: 0.72rem; }
+.cfg-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem 0.8rem; }
+@media (max-width: 900px) { .cfg-row { grid-template-columns: repeat(2, 1fr); } }
+.cfg-field { display: flex; flex-direction: column; }
+.cfg-field label { font-family: 'DM Mono', monospace; font-size: 0.6rem; color: var(--text3); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.3rem; }
+.cfg-field input, .cfg-field textarea { background: var(--surface2); border: 1px solid var(--border2); border-radius: 6px; padding: 0.42rem 0.6rem; font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--text); width: 100%; }
+.cfg-field textarea { min-height: 60px; resize: vertical; }
+.cfg-field input:focus, .cfg-field textarea:focus { outline: none; border-color: var(--green); }
+.cfg-table-wrap { overflow-x: auto; }
+.cfg-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.cfg-table th { text-align: left; font-family: 'DM Mono', monospace; font-size: 0.58rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text3); padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--border2); white-space: nowrap; }
+.cfg-table td { padding: 0.28rem 0.4rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.cfg-table input { background: var(--surface); border: 1px solid var(--border2); border-radius: 5px; padding: 0.32rem 0.5rem; font-family: 'DM Mono', monospace; font-size: 0.74rem; color: var(--text); width: 100%; }
+.cfg-table input:focus { outline: none; border-color: var(--green); }
+.cfg-table .narrow { max-width: 80px; }
+.cfg-table .x-col { width: 30px; text-align: center; }
+.cfg-table .x-btn { background: transparent; border: none; color: var(--red); cursor: pointer; font-size: 1.1rem; padding: 0; line-height: 1; }
+.cfg-table .x-btn:hover { color: var(--text); }
+.cfg-actions { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.cfg-status { font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--text3); margin-left: 0.5rem; }
+
 @media print {
   .settings-bar, .input-card, .btn-row, .no-print { display: none !important; }
   body { background: white; }
@@ -181,11 +209,15 @@ textarea::placeholder { color: var(--text4); }
   <input type="password" id="cfg-key" class="key" placeholder="ims_…">
   <button class="btn ghost" id="cfg-save" style="margin-left:0.25rem;">Save</button>
   <button class="btn ghost" id="cfg-dropdowns" style="margin-left:0.25rem;">Check IDs</button>
+  <button class="btn ghost" id="cfg-rules-btn" style="margin-left:0.25rem;">Wayfair rules ⚙</button>
   <a href="diagnostic.html" target="_blank" class="btn ghost" style="margin-left:0.25rem;text-decoration:none;">Diagnostics →</a>
   <span id="cfg-status" style="font-family:'DM Mono',monospace;font-size:0.68rem;color:var(--text4);"></span>
 </div>
 
 <main>
+  <!-- Rules / Config section (toggle) -->
+  <div class="cfg-section" id="cfg-section" style="display:none;"></div>
+
   <!-- Input card -->
   <div class="card input-card" id="drop-card">
     <div class="card-title">Paste or drop email</div>
@@ -338,9 +370,11 @@ const SUPPLIERS = {
       return 'WYF Liquidation Returns - Smaller & Larger Items';
     },
 
-    // SKU builder
+    // SKU template — tokens: {loc} {type} {loadId}
+    skuTemplate: 'WYF{loc}{type}{loadId}-test',
     buildSKU(locCode, typeCode, loadId) {
-      return 'WYF' + locCode + typeCode + loadId + '-test';
+      const tpl = this.skuTemplate || 'WYF{loc}{type}{loadId}-test';
+      return tpl.replace('{loc}', locCode || '').replace('{type}', typeCode || '').replace('{loadId}', loadId || '');
     },
   },
 
@@ -405,6 +439,87 @@ function loadCfg() {
   try { return JSON.parse(localStorage.getItem(LS_CFG)) || {}; } catch { return {}; }
 }
 function saveCfg(c) { localStorage.setItem(LS_CFG, JSON.stringify(c)); }
+
+// ── Rules override (localStorage, browser-local) ─────────────────────────────
+const LS_RULES = 'posku.rules.v1';
+function loadRulesOverride() {
+  try { return JSON.parse(localStorage.getItem(LS_RULES)) || {}; } catch { return {}; }
+}
+function saveRulesOverride(o) { localStorage.setItem(LS_RULES, JSON.stringify(o)); }
+function clearRulesOverride() { localStorage.removeItem(LS_RULES); }
+
+function applyRulesOverride() {
+  const ov = loadRulesOverride();
+  if (!ov.WYF) return;
+  const w = ov.WYF;
+  const wyf = SUPPLIERS.WYF;
+  if (w.skuTemplate) wyf.skuTemplate = w.skuTemplate;
+  ['erpSupplier','storeId','psku','ptCode','statusId','packingTrait','defaultManifestTrait','defaultManifestName'].forEach(k => {
+    if (w[k] !== undefined && w[k] !== '') wyf[k] = (typeof wyf[k] === 'number') ? Number(w[k]) : w[k];
+  });
+  if (Array.isArray(w.locations) && w.locations.length) {
+    wyf.fobIds = {}; wyf.fobNames = {}; wyf.locations = [];
+    w.locations.forEach(loc => {
+      if (!loc.code) return;
+      wyf.fobIds[loc.code] = Number(loc.fobId) || null;
+      wyf.fobNames[loc.code] = loc.fobName || loc.code;
+      wyf.locations.push({
+        patterns: (loc.patterns || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
+        code: loc.code, label: loc.label || loc.code,
+      });
+    });
+  }
+  if (Array.isArray(w.types) && w.types.length) {
+    wyf.conditionTraits = {}; wyf.conditionNames = {};
+    wyf.manifestTraits = {}; wyf.manifestNames = {};
+    wyf.types = [];
+    w.types.forEach(t => {
+      if (!t.code) return;
+      wyf.conditionTraits[t.code] = Number(t.conditionTrait) || null;
+      wyf.conditionNames[t.code]  = t.conditionName || '';
+      if (t.manifestTrait) {
+        wyf.manifestTraits[t.code] = Number(t.manifestTrait);
+        wyf.manifestNames[t.code]  = t.manifestName || 'Unmanifested';
+      }
+      wyf.types.push({
+        patterns: (t.patterns || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
+        code: t.code, label: t.label || t.code,
+      });
+    });
+  }
+  if (Array.isArray(w.hdoLocations)) {
+    wyf.hdoLocations = new Set(w.hdoLocations.map(s => s.trim()).filter(Boolean));
+  }
+}
+
+function currentRulesAsEditable() {
+  // Snapshot the live SUPPLIERS.WYF (which already reflects saved overrides) as an editable plain object
+  const w = SUPPLIERS.WYF;
+  return {
+    skuTemplate:  w.skuTemplate,
+    erpSupplier:  w.erpSupplier,
+    storeId:      w.storeId,
+    psku:         w.psku,
+    ptCode:       w.ptCode,
+    statusId:     w.statusId,
+    packingTrait: w.packingTrait,
+    locations: w.locations.map(loc => ({
+      code: loc.code, label: loc.label,
+      fobId:   w.fobIds[loc.code]   ?? '',
+      fobName: w.fobNames[loc.code] ?? '',
+      patterns: (loc.patterns || []).join(', '),
+    })),
+    types: w.types.map(t => ({
+      code: t.code, label: t.label,
+      conditionTrait: w.conditionTraits[t.code] ?? '',
+      conditionName:  w.conditionNames[t.code]  ?? '',
+      manifestTrait:  w.manifestTraits[t.code]  ?? '',
+      manifestName:   w.manifestNames[t.code]   ?? '',
+      patterns: (t.patterns || []).join(', '),
+    })),
+    hdoLocations: [...(w.hdoLocations || [])],
+  };
+}
 
 function setStatus(el, kind, msg) { el.className = 'status show ' + kind; el.textContent = msg; }
 function clearStatus(el) { el.className = 'status'; }
@@ -1483,6 +1598,212 @@ $('clear-pos-btn').onclick = () => {
   }
 };
 
+// ── Rules editor ─────────────────────────────────────────────────────────────
+let cfgDraft = null;  // working copy while editing
+
+function renderRulesEditor() {
+  const sec = $('cfg-section');
+  if (sec.style.display === '' || sec.style.display === 'block') {
+    sec.style.display = 'none';
+    return;
+  }
+  cfgDraft = currentRulesAsEditable();
+  drawCfgUI();
+  sec.style.display = 'block';
+  sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function drawCfgUI() {
+  const sec = $('cfg-section');
+  const d = cfgDraft;
+  const hasOverride = !!localStorage.getItem(LS_RULES);
+
+  sec.innerHTML = `
+    <div class="cfg-title">Wayfair rules</div>
+    <div class="cfg-sub">Browser-local · saved to your browser only (other users see defaults)</div>
+
+    <div class="cfg-block">
+      <h3>SKU formula</h3>
+      <div class="cfg-hint">Tokens: <code>{loc}</code> <code>{type}</code> <code>{loadId}</code>. Anything else is literal text (including the <code>-test</code> suffix).</div>
+      <div class="cfg-row">
+        <div class="cfg-field" style="grid-column:span 2;">
+          <label>Template</label>
+          <input type="text" data-c="skuTemplate" value="${esc(d.skuTemplate)}">
+        </div>
+        <div class="cfg-field" style="grid-column:span 2;">
+          <label>Preview (example: PR + LQ + 50432)</label>
+          <input type="text" id="cfg-sku-preview" value="${esc(d.skuTemplate.replace('{loc}','PR').replace('{type}','LQ').replace('{loadId}','50432'))}" disabled style="background:var(--surface3);color:var(--text2);">
+        </div>
+      </div>
+    </div>
+
+    <div class="cfg-block">
+      <h3>Locked constants pushed on every SKU</h3>
+      <div class="cfg-row">
+        <div class="cfg-field"><label>Supplier ID</label><input type="number" data-c="erpSupplier" value="${esc(d.erpSupplier)}"></div>
+        <div class="cfg-field"><label>Store ID</label><input type="number" data-c="storeId" value="${esc(d.storeId)}"></div>
+        <div class="cfg-field"><label>Status ID</label><input type="number" data-c="statusId" value="${esc(d.statusId)}"></div>
+        <div class="cfg-field"><label>Packing trait</label><input type="number" data-c="packingTrait" value="${esc(d.packingTrait)}"></div>
+        <div class="cfg-field"><label>PSKU</label><input type="text" data-c="psku" value="${esc(d.psku)}"></div>
+        <div class="cfg-field"><label>Peachtree code</label><input type="text" data-c="ptCode" value="${esc(d.ptCode)}"></div>
+      </div>
+    </div>
+
+    <div class="cfg-block">
+      <h3>Locations</h3>
+      <div class="cfg-hint">Used to detect the warehouse location from the email and to populate <code>fobStates</code>. Patterns are comma-separated; each row is one location.</div>
+      <div class="cfg-table-wrap">
+        <table class="cfg-table">
+          <thead><tr>
+            <th class="narrow">Code</th>
+            <th>Label</th>
+            <th class="narrow">FOB id</th>
+            <th>FOB name</th>
+            <th>Detection patterns (lowercase, comma-separated)</th>
+            <th class="x-col"></th>
+          </tr></thead>
+          <tbody id="cfg-loc-body">
+            ${d.locations.map((loc, i) => locRow(loc, i)).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:0.5rem;"><button class="btn ghost" id="cfg-add-loc">+ Add location</button></div>
+    </div>
+
+    <div class="cfg-block">
+      <h3>Load types</h3>
+      <div class="cfg-hint">Each type maps to a condition trait id (e.g. <code>63 = Customer Returns</code>). Leave <code>Manifest override</code> blank to use the default <code>603 (Manifested)</code> — Salvage typically sets it to <code>514 (Unmanifested)</code>.</div>
+      <div class="cfg-table-wrap">
+        <table class="cfg-table">
+          <thead><tr>
+            <th class="narrow">Code</th>
+            <th>Label</th>
+            <th class="narrow">Cond id</th>
+            <th>Cond name</th>
+            <th class="narrow">Manifest id (override)</th>
+            <th>Manifest name (override)</th>
+            <th>Detection patterns</th>
+            <th class="x-col"></th>
+          </tr></thead>
+          <tbody id="cfg-type-body">
+            ${d.types.map((t, i) => typeRow(t, i)).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:0.5rem;"><button class="btn ghost" id="cfg-add-type">+ Add type</button></div>
+    </div>
+
+    <div class="cfg-block">
+      <h3>HDO locations</h3>
+      <div class="cfg-hint">Locations that are always classified as HDO regardless of email text. Comma-separated location codes.</div>
+      <div class="cfg-row">
+        <div class="cfg-field" style="grid-column:span 4;">
+          <input type="text" id="cfg-hdo" value="${esc(d.hdoLocations.join(', '))}">
+        </div>
+      </div>
+    </div>
+
+    <div class="cfg-actions">
+      <button class="btn" id="cfg-save-btn">Save rules</button>
+      <button class="btn ghost" id="cfg-reset-btn" ${hasOverride ? '' : 'disabled'}>Reset to defaults</button>
+      <button class="btn ghost" id="cfg-close-btn">Close</button>
+      <span class="cfg-status" id="cfg-save-status">${hasOverride ? 'Currently using saved overrides.' : 'Using built-in defaults.'}</span>
+    </div>
+  `;
+  bindCfgHandlers();
+}
+
+function locRow(loc, i) {
+  return `<tr data-li="${i}">
+    <td class="narrow"><input data-lk="code" value="${esc(loc.code)}"></td>
+    <td><input data-lk="label" value="${esc(loc.label)}"></td>
+    <td class="narrow"><input data-lk="fobId" type="number" value="${esc(loc.fobId)}"></td>
+    <td><input data-lk="fobName" value="${esc(loc.fobName)}"></td>
+    <td><input data-lk="patterns" value="${esc(loc.patterns)}"></td>
+    <td class="x-col"><button class="x-btn" data-loc-del="${i}" title="Remove">×</button></td>
+  </tr>`;
+}
+
+function typeRow(t, i) {
+  return `<tr data-ti="${i}">
+    <td class="narrow"><input data-tk="code" value="${esc(t.code)}"></td>
+    <td><input data-tk="label" value="${esc(t.label)}"></td>
+    <td class="narrow"><input data-tk="conditionTrait" type="number" value="${esc(t.conditionTrait)}"></td>
+    <td><input data-tk="conditionName" value="${esc(t.conditionName)}"></td>
+    <td class="narrow"><input data-tk="manifestTrait" type="number" value="${esc(t.manifestTrait)}" placeholder="(default)"></td>
+    <td><input data-tk="manifestName" value="${esc(t.manifestName)}" placeholder="(default)"></td>
+    <td><input data-tk="patterns" value="${esc(t.patterns)}"></td>
+    <td class="x-col"><button class="x-btn" data-type-del="${i}" title="Remove">×</button></td>
+  </tr>`;
+}
+
+function bindCfgHandlers() {
+  // Top-level fields
+  $('cfg-section').querySelectorAll('input[data-c]').forEach(el => {
+    el.oninput = () => {
+      const k = el.dataset.c;
+      cfgDraft[k] = ['erpSupplier','storeId','statusId','packingTrait'].includes(k) ? Number(el.value) : el.value;
+      if (k === 'skuTemplate') {
+        $('cfg-sku-preview').value = cfgDraft.skuTemplate.replace('{loc}','PR').replace('{type}','LQ').replace('{loadId}','50432');
+      }
+    };
+  });
+  // Locations
+  $('cfg-loc-body').querySelectorAll('input[data-lk]').forEach(el => {
+    el.oninput = () => {
+      const i = +el.closest('tr').dataset.li;
+      cfgDraft.locations[i][el.dataset.lk] = el.value;
+    };
+  });
+  $('cfg-loc-body').querySelectorAll('[data-loc-del]').forEach(b => {
+    b.onclick = () => {
+      cfgDraft.locations.splice(+b.dataset.locDel, 1);
+      drawCfgUI();
+    };
+  });
+  $('cfg-add-loc').onclick = () => {
+    cfgDraft.locations.push({ code: '', label: '', fobId: '', fobName: '', patterns: '' });
+    drawCfgUI();
+  };
+  // Types
+  $('cfg-type-body').querySelectorAll('input[data-tk]').forEach(el => {
+    el.oninput = () => {
+      const i = +el.closest('tr').dataset.ti;
+      cfgDraft.types[i][el.dataset.tk] = el.value;
+    };
+  });
+  $('cfg-type-body').querySelectorAll('[data-type-del]').forEach(b => {
+    b.onclick = () => {
+      cfgDraft.types.splice(+b.dataset.typeDel, 1);
+      drawCfgUI();
+    };
+  });
+  $('cfg-add-type').onclick = () => {
+    cfgDraft.types.push({ code: '', label: '', conditionTrait: '', conditionName: '', manifestTrait: '', manifestName: '', patterns: '' });
+    drawCfgUI();
+  };
+  // HDO
+  $('cfg-hdo').oninput = () => {
+    cfgDraft.hdoLocations = $('cfg-hdo').value.split(',').map(s => s.trim()).filter(Boolean);
+  };
+  // Actions
+  $('cfg-save-btn').onclick = () => {
+    saveRulesOverride({ WYF: cfgDraft });
+    applyRulesOverride();
+    $('cfg-save-status').textContent = `Saved ✓ at ${new Date().toLocaleTimeString()}`;
+    // Re-render any existing loads with new rules
+    if (loads.length) renderLoads();
+  };
+  $('cfg-reset-btn').onclick = () => {
+    if (!confirm('Reset to built-in defaults? Your saved rules will be lost.')) return;
+    clearRulesOverride();
+    location.reload();
+  };
+  $('cfg-close-btn').onclick = () => { $('cfg-section').style.display = 'none'; };
+}
+
+$('cfg-rules-btn').onclick = renderRulesEditor;
+
 // ── Supplier tabs ─────────────────────────────────────────────────────────────
 document.querySelectorAll('.stab[data-supplier]').forEach(tab => {
   tab.onclick = () => {
@@ -1506,6 +1827,7 @@ document.querySelectorAll('.stab[data-supplier]').forEach(tab => {
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+applyRulesOverride();
 initSettings();
 })();
 </script>
