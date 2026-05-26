@@ -116,6 +116,12 @@ textarea::placeholder { color: var(--text4); }
 .chip-mini b { color: var(--text2); font-weight: 500; }
 .chip-mini i { color: var(--green); font-style: normal; font-weight: 500; }
 .chip-mini em { color: var(--text3); font-style: normal; }
+.chip-mini.more { cursor: help; position: relative; }
+.chip-mini.more .tip { display: none; position: absolute; left: 0; top: calc(100% + 4px); z-index: 10; min-width: 300px; max-width: 460px; background: #1a1a1a; color: #e4e4e4; border: 1px solid #333; border-radius: 6px; padding: 0.7rem 0.85rem; font-size: 0.66rem; line-height: 1.65; white-space: normal; box-shadow: 0 6px 24px rgba(0,0,0,0.3); }
+.chip-mini.more .tip .row { display: flex; gap: 0.6rem; }
+.chip-mini.more .tip b { color: #a9c9ff; font-weight: 500; min-width: 110px; display: inline-block; }
+.chip-mini.more .tip i { color: #7fe1b1; font-style: normal; }
+.chip-mini.more:hover .tip { display: block; }
 
 /* PO draft cards */
 .po-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem 1.2rem; margin-bottom: 1rem; }
@@ -772,16 +778,20 @@ function renderLoads() {
         <span class="chip-mini"><b>condition</b> <i>${load.condTrait ?? '—'}</i> <em>(${esc(load.condName || '—')})</em></span>
         <span class="chip-mini"><b>manifested</b> <i>${load.manifestTrait ?? '—'}</i> <em>(${esc(load.manifestName || '—')})</em></span>
         <span class="chip-mini"><b>fobStates</b> <i>[${load.fobId ?? ''}]</i> <em>(${esc(load.fobName || '—')})</em></span>
-        <span class="chip-mini"><b>store_id</b> <i>${sup2.storeId}</i></span>
         <span class="chip-mini"><b>supplierId</b> <i>${sup2.erpSupplier}</i> <em>(Wayfair)</em></span>
-        <span class="chip-mini"><b>psku</b> <i>${esc(sup2.psku)}</i></span>
-        <span class="chip-mini"><b>peachtree_code</b> <i>${esc(sup2.ptCode)}</i></span>
-        <span class="chip-mini"><b>status_id</b> <i>${sup2.statusId}</i></span>
-        <span class="chip-mini"><b>user_id</b> <i>179</i> <em>(posku_api)</em></span>
-        <span class="chip-mini"><b>lang_id</b> <i>1</i> <em>(English)</em></span>
-        <span class="chip-mini"><b>psku_type</b> <i>regular</i></span>
-        <span class="chip-mini"><b>make_an_offer</b> <i>false</i></span>
-        <span class="chip-mini"><b>slug</b> <i>${esc(slug)}</i></span>
+        <span class="chip-mini more">+ ${8} more fields ▾
+          <div class="tip">
+            <div class="row"><b>store_id</b> <i>${sup2.storeId}</i></div>
+            <div class="row"><b>psku</b> <i>${esc(sup2.psku)}</i></div>
+            <div class="row"><b>peachtree_code</b> <i>${esc(sup2.ptCode)}</i></div>
+            <div class="row"><b>status_id</b> <i>${sup2.statusId}</i></div>
+            <div class="row"><b>user_id</b> <i>179 (posku_api)</i></div>
+            <div class="row"><b>lang_id</b> <i>1 (English)</i></div>
+            <div class="row"><b>psku_type</b> <i>regular</i></div>
+            <div class="row"><b>make_an_offer</b> <i>false</i></div>
+            <div class="row"><b>slug</b> <i>${esc(slug)}</i></div>
+          </div>
+        </span>
       </div>
     </td>`;
     body.appendChild(dr);
