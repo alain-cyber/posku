@@ -635,17 +635,27 @@ function parseEmail(text, supplierKey) {
 }
 
 // ── ERP API ──────────────────────────────────────────────────────────────────
+// Hosted on Cloudflare Pages: hits same-origin /api/* (Pages Function proxies
+// to viatrading.biz with the server-side API key). Local file mode falls back
+// to the configured base URL + browser-stored api-key.
+const IS_LOCAL_FILE = location.protocol === 'file:';
+
 async function erpRequest(method, path, body) {
   const cfg = loadCfg();
-  if (!cfg.apiKey) return { ok: false, error: 'No API key configured. Set it in the settings bar above.' };
-  const base = (cfg.baseUrl || 'https://viatrading.biz').replace(/\/+$/, '');
+  let url;
+  const headers = { 'Content-Type': 'application/json' };
+  if (IS_LOCAL_FILE) {
+    if (!cfg.apiKey) return { ok: false, error: 'No API key configured. Set it in the settings bar above.' };
+    const base = (cfg.baseUrl || 'https://viatrading.biz').replace(/\/+$/, '');
+    url = base + path;
+    headers['api-key'] = cfg.apiKey;
+  } else {
+    url = path;  // proxied by /functions/api/[[path]].js
+  }
   try {
-    const opts = {
-      method,
-      headers: { 'Content-Type': 'application/json', 'api-key': cfg.apiKey },
-    };
+    const opts = { method, headers };
     if (body) opts.body = JSON.stringify(body);
-    const res = await fetch(base + path, opts);
+    const res = await fetch(url, opts);
     let json = null;
     try { json = await res.json(); } catch {}
     return { ok: res.ok, status: res.status, data: json };
@@ -1095,6 +1105,13 @@ function initSettings() {
   const cfg = loadCfg();
   $('cfg-url').value = cfg.baseUrl || 'https://viatrading.biz';
   $('cfg-key').value = cfg.apiKey  || '';
+  // On Cloudflare Pages the API key lives as a server-side secret; hide the
+  // browser-side key + base URL fields and show a status pill instead.
+  if (!IS_LOCAL_FILE) {
+    ['cfg-url','cfg-key','cfg-save'].forEach(id => { const el = $(id); if (el) el.style.display = 'none'; });
+    document.querySelectorAll('.settings-bar label').forEach(l => { l.style.display = 'none'; });
+    $('cfg-status').innerHTML = '<span class="chip green" style="background:var(--green-dim);color:var(--green);">Cloudflare proxy · key on server</span>';
+  }
 }
 
 $('cfg-save').onclick = () => {

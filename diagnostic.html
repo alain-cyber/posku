@@ -49,11 +49,21 @@ function mask(key) {
   return key.slice(0, 4) + '****' + key.slice(-4);
 }
 
+const IS_LOCAL_FILE = location.protocol === 'file:';
+
 async function apiGet(path) {
   const cfg = loadCfg();
-  const base = (cfg.baseUrl || 'https://viatrading.biz').replace(/\/+$/, '');
+  let url;
+  const headers = { 'Content-Type': 'application/json' };
+  if (IS_LOCAL_FILE) {
+    const base = (cfg.baseUrl || 'https://viatrading.biz').replace(/\/+$/, '');
+    url = base + path;
+    headers['api-key'] = cfg.apiKey;
+  } else {
+    url = path;  // proxied by Pages Function
+  }
   try {
-    const res = await fetch(base + path, { headers: { 'api-key': cfg.apiKey, 'Content-Type': 'application/json' } });
+    const res = await fetch(url, { headers });
     const json = await res.json().catch(() => null);
     return { ok: res.ok, status: res.status, data: json };
   } catch (e) {
@@ -81,10 +91,11 @@ async function runAll() {
   const lines = [];
 
   // ── 1. Config ──────────────────────────────────────────────────────────────
-  lines.push(section('1 · Config (from localStorage)', [
-    `Base URL : ${cfg.baseUrl || 'https://viatrading.biz (default)'}`,
-    `API key  : ${mask(cfg.apiKey)}`,
-    `Key set  : ${cfg.apiKey ? 'yes' : 'NO — set it in the main app settings bar'}`,
+  lines.push(section('1 · Config', [
+    `Mode     : ${IS_LOCAL_FILE ? 'Local file (key in browser, hits viatrading.biz directly)' : 'Cloudflare Pages (key on server, proxied via /api/*)'}`,
+    `Base URL : ${IS_LOCAL_FILE ? (cfg.baseUrl || 'https://viatrading.biz (default)') : 'same-origin (Pages Function)'}`,
+    `API key  : ${IS_LOCAL_FILE ? mask(cfg.apiKey) : '(stored as server-side secret VIA_API_KEY)'}`,
+    `Key set  : ${IS_LOCAL_FILE ? (cfg.apiKey ? 'yes' : 'NO — set it in the main app settings bar') : 'managed by Cloudflare'}`,
   ].join('\n')));
 
   // ── 2. Hardcoded IDs we send ───────────────────────────────────────────────
@@ -108,7 +119,7 @@ async function runAll() {
   lines.push(section('3 · Sample push payload (PR / LQ load)', JSON.stringify(samplePayload, null, 2)));
 
   // ── 4. Dropdowns ───────────────────────────────────────────────────────────
-  if (!cfg.apiKey) {
+  if (IS_LOCAL_FILE && !cfg.apiKey) {
     lines.push(section('4 · GET /api/products/dropdowns', '<span class="err">Skipped — no API key set</span>'));
   } else {
     const r = await apiGet('/api/products/dropdowns');
@@ -133,7 +144,7 @@ async function runAll() {
   }
 
   // ── 5. Test SKU existence check ────────────────────────────────────────────
-  if (cfg.apiKey) {
+  if (!IS_LOCAL_FILE || cfg.apiKey) {
     const r = await apiGet('/api/products?sku=WYFPRLQ50432-TEST');
     lines.push(section('5 · GET /api/products?sku=WYFPRLQ50432-TEST (dedup check)',
       `HTTP ${r.status}\n${JSON.stringify(r.data, null, 2)}`));

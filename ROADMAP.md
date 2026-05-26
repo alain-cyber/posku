@@ -10,13 +10,11 @@
 
 ## Next phases
 
-### Phase 1 — Cloudflare hosting
-- Deploy `index.html` as a Cloudflare Pages site
-- Restrict access via **Cloudflare Access** (Zero Trust) — Google OAuth, allowlist viatrading email domain
-- Move ERP calls behind a **Cloudflare Worker** so:
-  - API key lives as a Worker secret (never reaches browser)
-  - CORS goes away (Worker is same-origin as the page)
-  - One server-side place for retry / logging / dedup
+### Phase 1 — Cloudflare hosting (in progress)
+- ✅ `functions/api/[[path]].js` Pages Function proxies `/api/*` → `viatrading.biz`, injects `VIA_API_KEY` secret
+- ✅ `index.html` + `diagnostic.html` auto-detect local-file vs hosted and swap API client accordingly
+- ⏳ Dashboard steps (one-time): connect repo, set `VIA_API_KEY` env var, enable Cloudflare Access — see `CLOUDFLARE_SETUP.md`
+- 🔜 Cloudflare Access (Zero Trust) — Google OAuth, viatrading group allowlist
 
 ### Phase 2 — Gmail auto-intake
 - User applies a Gmail label (e.g. `posku-intake`) to Wayfair load emails
