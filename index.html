@@ -428,6 +428,33 @@ const PO_DEFAULTS = {
       { id: 66,  name: 'LTL' },
     ],
     typeLabel: { LQ: 'Liquidation', S: 'Salvage', QC: 'QC', A: 'Excess', HDO: 'HDO' },
+
+    // Status IDs per Via Trading docs
+    statuses: [
+      { id: 2, name: 'Pending' },
+      { id: 7, name: 'Scheduled' },
+      { id: 1, name: 'Staged (triggers inventory side effects)' },
+      { id: 4, name: 'Arrived' },
+      { id: 8, name: 'Arrived yard' },
+      { id: 5, name: 'Picked up' },
+      { id: 6, name: 'Released' },
+      { id: 3, name: 'Canceled' },
+    ],
+
+    // Facility name per location (text column on PO)
+    facilityByLoc: {
+      PR:   'Perris',
+      LA:   'Sun Valley',
+      KWA:  'Romeoville',
+      RIL:  'Romeoville',
+      JFL:  'Jacksonville',
+      AMD:  'Aberdeen',
+      LTX:  'Lancaster',
+      EKY:  'Kentucky',
+      MCDO: 'McDonough',
+      CI:   'PeriGold TX',
+      POR:  'Portland',
+    },
   },
 };
 
@@ -1391,7 +1418,26 @@ function createDraftFromLoad(load) {
     loadId:           load.loadId,
     typeLabel,
     locCode:          load.locCode,
-    // editable fields (only what the API contract accepts today)
+    // NEED fields (per Via Trading PO API docs)
+    po_number:        `${load.loadId} (${typeLabel})`,  // can be cleared to auto-number
+    facility:         def.facilityByLoc?.[load.locCode] || '',
+    status_id:        2,            // Pending (NEED — send explicitly)
+    scheduled_date:   todayISO(7),  // dock arrival
+    tentative_schedule: true,
+    dock_id:          '',
+    trailer:          '',
+    docked_in:        '',
+    docked_out:       '',
+    docked_date:      '',
+    pallets_received: 0,
+    amount:           0,
+    shipping_quote:   0,
+    merch_staging_id: '',
+    pt:               '',
+    legacy_id:        '',
+    legacy_carrier_id:  '',
+    legacy_supplier_id: '',
+    // Already in original contract
     note:             '',
     supplier_invoice_number: '',
     order_date:       todayISO(0),
@@ -1406,9 +1452,10 @@ function createDraftFromLoad(load) {
     item_price:       0,
     item_pallets_qty: 0,
     item_supplier_sku: '',
-    // status
-    status:           'draft',
+    // UI-only
+    status:           'draft',  // local UI status, not API status_id
     result:           null,
+    showAdvanced:     false,
   };
 }
 
@@ -1446,10 +1493,29 @@ function renderPoDrafts() {
       </div>
 
       <div class="po-grid">
+        <div class="po-field wide"><label>PO number <span style="color:var(--text4);">(leave blank for auto-number = new id)</span></label><input type="text" data-po="${idx}" data-k="po_number" value="${esc(d.po_number)}"></div>
+        <div class="po-field"><label>Facility</label><input type="text" data-po="${idx}" data-k="facility" value="${esc(d.facility)}" list="po-facilities"></div>
+        <div class="po-field">
+          <label>Status</label>
+          <select data-po="${idx}" data-k="status_id">
+            ${def.statuses.map(s => `<option value="${s.id}" ${d.status_id === s.id ? 'selected' : ''}>${s.id} — ${esc(s.name)}</option>`).join('')}
+          </select>
+        </div>
+
         <div class="po-field"><label>Order date</label><input type="date" data-po="${idx}" data-k="order_date" value="${esc(d.order_date)}"></div>
         <div class="po-field"><label>Due date</label><input type="date" data-po="${idx}" data-k="due_date" value="${esc(d.due_date)}"></div>
         <div class="po-field"><label>Delivery date</label><input type="date" data-po="${idx}" data-k="delivery_date" value="${esc(d.delivery_date)}"></div>
+        <div class="po-field"><label>Scheduled date (dock arrival)</label><input type="date" data-po="${idx}" data-k="scheduled_date" value="${esc(d.scheduled_date)}"></div>
+
+        <div class="po-field"><label>Tentative schedule</label>
+          <select data-po="${idx}" data-k="tentative_schedule">
+            <option value="true"  ${d.tentative_schedule ? 'selected' : ''}>true</option>
+            <option value="false" ${!d.tentative_schedule ? 'selected' : ''}>false</option>
+          </select>
+        </div>
         <div class="po-field"><label>Sub total ($)</label><input type="number" step="0.01" data-po="${idx}" data-k="sub_total" value="${esc(d.sub_total)}"></div>
+        <div class="po-field"><label>Amount ($)</label><input type="number" step="0.01" data-po="${idx}" data-k="amount" value="${esc(d.amount)}"></div>
+        <div class="po-field"><label>Shipping quote ($)</label><input type="number" step="0.01" data-po="${idx}" data-k="shipping_quote" value="${esc(d.shipping_quote)}"></div>
 
         <div class="po-field wide">
           <label>Shipping method</label>
@@ -1471,6 +1537,24 @@ function renderPoDrafts() {
         <div class="po-field full"><label>Note</label><textarea data-po="${idx}" data-k="note" placeholder="optional">${esc(d.note)}</textarea></div>
       </div>
 
+      <div style="margin-top:0.7rem;">
+        <button class="btn ghost" data-po-toggle-adv="${idx}" style="font-size:0.64rem;">${d.showAdvanced ? '− Hide' : '+ Show'} advanced / workflow fields</button>
+      </div>
+      ${d.showAdvanced ? `
+      <div class="po-grid" style="margin-top:0.7rem;background:var(--surface3);padding:0.9rem;border-radius:8px;">
+        <div class="po-field"><label>Dock id</label><input type="number" data-po="${idx}" data-k="dock_id" value="${esc(d.dock_id)}"></div>
+        <div class="po-field"><label>Trailer</label><input type="text" data-po="${idx}" data-k="trailer" value="${esc(d.trailer)}"></div>
+        <div class="po-field"><label>Docked in (datetime)</label><input type="datetime-local" data-po="${idx}" data-k="docked_in" value="${esc(d.docked_in)}"></div>
+        <div class="po-field"><label>Docked out (datetime)</label><input type="datetime-local" data-po="${idx}" data-k="docked_out" value="${esc(d.docked_out)}"></div>
+        <div class="po-field"><label>Docked date</label><input type="date" data-po="${idx}" data-k="docked_date" value="${esc(d.docked_date)}"></div>
+        <div class="po-field"><label>Pallets received</label><input type="number" min="0" data-po="${idx}" data-k="pallets_received" value="${esc(d.pallets_received)}"></div>
+        <div class="po-field"><label>Merch staging id</label><input type="number" data-po="${idx}" data-k="merch_staging_id" value="${esc(d.merch_staging_id)}"></div>
+        <div class="po-field"><label>PT (string)</label><input type="text" data-po="${idx}" data-k="pt" value="${esc(d.pt)}"></div>
+        <div class="po-field"><label>Legacy id</label><input type="number" data-po="${idx}" data-k="legacy_id" value="${esc(d.legacy_id)}"></div>
+        <div class="po-field"><label>Legacy carrier id</label><input type="number" data-po="${idx}" data-k="legacy_carrier_id" value="${esc(d.legacy_carrier_id)}"></div>
+        <div class="po-field"><label>Legacy supplier id</label><input type="number" data-po="${idx}" data-k="legacy_supplier_id" value="${esc(d.legacy_supplier_id)}"></div>
+      </div>` : ''}
+
       <div class="po-line">
         <div class="po-line-title">Line item · ${esc(d.sku)}</div>
         <div class="po-grid">
@@ -1489,20 +1573,34 @@ function renderPoDrafts() {
         ${d.result ? `<span class="po-result ${d.status === 'failed' ? 'err' : 'ok'}">${esc(d.result)}</span>` : ''}
       </div>
     </div>`;
-  }).join('');
+  }).join('') + `
+    <datalist id="po-facilities">
+      ${Object.values(def.facilityByLoc || {}).filter((v,i,a)=>a.indexOf(v)===i).map(f => `<option value="${esc(f)}">`).join('')}
+    </datalist>`;
   attachPoHandlers();
 }
 
 function attachPoHandlers() {
+  const NUMERIC_PO_KEYS = new Set([
+    'sub_total','item_qty','item_price','item_pallets_qty','shipping_company_id',
+    'status_id','amount','shipping_quote','dock_id','pallets_received',
+    'merch_staging_id','legacy_id','legacy_carrier_id','legacy_supplier_id',
+  ]);
   $('po-list').querySelectorAll('input[data-po], select[data-po], textarea[data-po]').forEach(el => {
     el.oninput = el.onchange = () => {
       const idx = +el.dataset.po;
       const k = el.dataset.k;
       let v = el.value;
-      if (['sub_total','item_qty','item_price','item_pallets_qty','shipping_company_id'].includes(k)) {
-        v = Number(v);
-      }
+      if (NUMERIC_PO_KEYS.has(k)) v = (v === '' ? '' : Number(v));
+      else if (k === 'tentative_schedule') v = (v === 'true');
       poDrafts[idx][k] = v;
+    };
+  });
+  $('po-list').querySelectorAll('[data-po-toggle-adv]').forEach(b => {
+    b.onclick = () => {
+      const idx = +b.dataset['poToggleAdv'];
+      poDrafts[idx].showAdvanced = !poDrafts[idx].showAdvanced;
+      renderPoDrafts();
     };
   });
   $('po-list').querySelectorAll('[data-method]').forEach(b => {
@@ -1544,24 +1642,52 @@ function buildPoPayload(d) {
   if (d.productId)         item.product_id    = d.productId;
   if (d.item_supplier_sku) item.supplier_sku  = d.item_supplier_sku;
 
-  return {
-    data: {
-      user_name:               def.user_name,
-      supplier_id:             def.supplier_id,
-      legacy_user_id:          def.legacy_user_id,
-      order_date:              d.order_date,
-      due_date:                d.due_date,
-      delivery_date:           d.delivery_date,
-      shipping_method_id:      Number(d.shipping_method_id),
-      shipping_company_id:     Number(d.shipping_company_id),
-      sub_total:               Number(d.sub_total) || 0,
-      note:                    d.note || '',
-      supplier_invoice_number: d.supplier_invoice_number || '',
-      billing_address:         d.billing_address,
-      shipping_address:        d.shipping_address,
-      items:                   [item],
-    },
+  const data = {
+    // identity
+    user_name:               def.user_name,
+    supplier_id:             def.supplier_id,
+    legacy_user_id:          def.legacy_user_id,
+    // NEED header fields per Via Trading PO API docs
+    facility:                d.facility || '',
+    status_id:               Number(d.status_id) || 2,
+    scheduled_date:          d.scheduled_date || '',
+    tentative_schedule:      !!d.tentative_schedule,
+    // dates
+    order_date:              d.order_date,
+    due_date:                d.due_date,
+    delivery_date:           d.delivery_date,
+    // shipping
+    shipping_method_id:      Number(d.shipping_method_id),
+    shipping_company_id:     Number(d.shipping_company_id),
+    // amounts
+    sub_total:               Number(d.sub_total) || 0,
+    amount:                  Number(d.amount) || 0,
+    shipping_quote:          Number(d.shipping_quote) || 0,
+    // notes / invoice
+    note:                    d.note || '',
+    supplier_invoice_number: d.supplier_invoice_number || '',
+    billing_address:         d.billing_address,
+    shipping_address:        d.shipping_address,
+    items:                   [item],
   };
+  // po_number — only send if non-empty (otherwise API auto-numbers = new id)
+  if ((d.po_number || '').trim()) data.po_number = d.po_number.trim();
+  // Workflow / advanced fields — only send if user filled them
+  const advanced = ['dock_id','trailer','docked_in','docked_out','docked_date',
+                    'pallets_received','merch_staging_id','pt',
+                    'legacy_id','legacy_carrier_id','legacy_supplier_id'];
+  advanced.forEach(k => {
+    const v = d[k];
+    if (v === '' || v === null || v === undefined) return;
+    if (['dock_id','pallets_received','merch_staging_id','legacy_id','legacy_carrier_id','legacy_supplier_id'].includes(k)) {
+      const n = Number(v);
+      if (Number.isFinite(n)) data[k] = n;
+    } else {
+      data[k] = v;
+    }
+  });
+
+  return { data };
 }
 
 async function pushSinglePo(idx) {
@@ -1575,8 +1701,10 @@ async function pushSinglePo(idx) {
   const r = await erpRequest('POST', '/api/purchase-orders', payload);
   console.log('[Posku] POST /api/purchase-orders response:', JSON.stringify(r, null, 2));
   if (r.ok) {
-    const poId = r.data?.id ?? r.data?.data?.id ?? r.data?.po_id ?? r.data?.newPurchaseOrderId ?? null;
+    // Per docs: success returns { "newId": 12345 }
+    const poId = r.data?.newId ?? r.data?.id ?? r.data?.data?.id ?? null;
     d.status = 'done';
+    d.poId = poId;
     d.result = `Pushed · PO id: ${poId ?? 'n/a'}`;
   } else {
     d.status = 'failed';
