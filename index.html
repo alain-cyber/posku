@@ -522,7 +522,7 @@ function buildPayload(load) {
       name:            load.name,
       psku:            sup.psku,
       psku_type:       'regular',
-      active:          1,
+      active:          load.active ?? 1,
       make_an_offer:   false,
       store_id:        sup.storeId,
 
@@ -609,43 +609,146 @@ function renderLoads() {
         <button class="btn danger small" data-remove="${idx}">×</button>
       </td>`;
 
-    // edit row
+    // edit / review row — shows ALL fields being pushed
     const er = document.createElement('tr');
     er.id = 'edit-' + idx;
     er.className = 'edit-row';
-    er.innerHTML = `<td colspan="11">
-      <div class="edit-grid">
-        <div class="edit-field">
-          <label>Load ID</label>
-          <input type="text" data-field="loadId" value="${esc(load.loadId)}">
+    const sup = SUPPLIERS[activeSupplier] || SUPPLIERS.WYF;
+    const condOpts  = Object.entries(sup.conditionTraits).map(([tc, id]) =>
+      `<option value="${tc}" ${load.typeCode === tc ? 'selected' : ''}>${tc} → id ${id} (${sup.conditionNames[tc]})</option>`).join('');
+    const manifestDefault = load.typeCode ? (sup.manifestTraits[load.typeCode] || 603) : 603;
+    const manifestDefaultName = load.typeCode ? (sup.manifestNames[load.typeCode] || 'Manifested') : 'Manifested';
+    er.innerHTML = `<td colspan="11" style="padding:0;">
+      <div style="background:var(--surface2);border-bottom:1px solid var(--border2);padding:1rem 1.1rem;">
+
+        <div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--text3);margin-bottom:0.8rem;">
+          SKU payload review — all fields below will be sent to ERP on push
         </div>
-        <div class="edit-field">
-          <label>Location code</label>
-          <select data-field="locCode">
-            <option value="">— unknown —</option>
-            ${Object.keys(SUPPLIERS[activeSupplier].fobIds).map(c => `<option value="${c}" ${load.locCode === c ? 'selected' : ''}>${c} — ${SUPPLIERS[activeSupplier].fobNames[c]}</option>`).join('')}
-          </select>
-        </div>
-        <div class="edit-field">
-          <label>Type code</label>
-          <select data-field="typeCode">
-            <option value="">— unknown —</option>
-            <option value="LQ"  ${load.typeCode==='LQ'  ? 'selected' : ''}>LQ — Liquidation</option>
-            <option value="S"   ${load.typeCode==='S'   ? 'selected' : ''}>S — Salvage</option>
-            <option value="A"   ${load.typeCode==='A'   ? 'selected' : ''}>A — Aged</option>
-            <option value="QC"  ${load.typeCode==='QC'  ? 'selected' : ''}>QC — QC Rejects</option>
-            <option value="HDO" ${load.typeCode==='HDO' ? 'selected' : ''}>HDO</option>
-          </select>
-        </div>
-        <div class="edit-field" style="align-self:end;">
-          <label>&nbsp;</label>
-          <div style="display:flex;gap:0.4rem;">
-            <button class="btn" data-apply="${idx}">Apply</button>
-            <button class="btn ghost" data-cancel="${idx}">Cancel</button>
+
+        <div class="po-grid" style="grid-template-columns:repeat(4,1fr);">
+
+          <div class="po-field">
+            <label>Load ID</label>
+            <input type="text" data-field="loadId" value="${esc(load.loadId)}">
           </div>
+
+          <div class="po-field">
+            <label>Location code</label>
+            <select data-field="locCode">
+              <option value="">— unknown —</option>
+              ${Object.keys(sup.fobIds).map(c => `<option value="${c}" ${load.locCode === c ? 'selected' : ''}>${c} — ${sup.fobNames[c]}</option>`).join('')}
+            </select>
+          </div>
+
+          <div class="po-field">
+            <label>Type code</label>
+            <select data-field="typeCode">
+              <option value="">— unknown —</option>
+              <option value="LQ"  ${load.typeCode==='LQ'  ? 'selected' : ''}>LQ — Liquidation</option>
+              <option value="S"   ${load.typeCode==='S'   ? 'selected' : ''}>S — Salvage</option>
+              <option value="A"   ${load.typeCode==='A'   ? 'selected' : ''}>A — Aged</option>
+              <option value="QC"  ${load.typeCode==='QC'  ? 'selected' : ''}>QC — QC Rejects</option>
+              <option value="HDO" ${load.typeCode==='HDO' ? 'selected' : ''}>HDO</option>
+            </select>
+          </div>
+
+          <div class="po-field">
+            <label>Generated SKU <span style="color:var(--amber);">(auto)</span></label>
+            <input type="text" data-field="sku" value="${esc(load.sku || '')}" style="color:var(--green);font-weight:500;">
+          </div>
+
+          <div class="po-field" style="grid-column:span 2;">
+            <label>Product name</label>
+            <select data-field="name">
+              <option value="WYF Liquidation Returns - Smaller Items"         ${load.name==='WYF Liquidation Returns - Smaller Items'         ? 'selected' : ''}>WYF Liquidation Returns - Smaller Items</option>
+              <option value="WYF Liquidation Returns - Larger Items"          ${load.name==='WYF Liquidation Returns - Larger Items'          ? 'selected' : ''}>WYF Liquidation Returns - Larger Items</option>
+              <option value="WYF Liquidation Returns - Smaller &amp; Larger Items" ${load.name==='WYF Liquidation Returns - Smaller & Larger Items' ? 'selected' : ''}>WYF Liquidation Returns - Smaller &amp; Larger Items</option>
+              <option value="WYF Salvage Loads"                               ${load.name==='WYF Salvage Loads'                               ? 'selected' : ''}>WYF Salvage Loads</option>
+              <option value="WYF Excess &amp; Aged Inventory"                 ${load.name==='WYF Excess & Aged Inventory'                     ? 'selected' : ''}>WYF Excess &amp; Aged Inventory</option>
+              <option value="WYF QC Imperfection Loads"                       ${load.name==='WYF QC Imperfection Loads'                       ? 'selected' : ''}>WYF QC Imperfection Loads</option>
+              <option value="WYF Liquidation Returns - Larger Items"          ${load.name==='WYF Liquidation Returns - Larger Items'          ? 'selected' : ''}>WYF Liquidation Returns - Larger Items (HDO)</option>
+            </select>
+          </div>
+
+          <div class="po-field">
+            <label>Active</label>
+            <select data-field="active">
+              <option value="1" selected>1 — Active</option>
+              <option value="0">0 — Inactive</option>
+            </select>
+          </div>
+
+          <div class="po-field">
+            <label>Condition (trait id)</label>
+            <select data-field="condTrait">
+              <option value="63" ${load.condTrait===63?'selected':''}>63 — Customer Returns</option>
+              <option value="61" ${load.condTrait===61?'selected':''}>61 — New Overstock</option>
+              <option value="62" ${load.condTrait===62?'selected':''}>62 — Shelf Pulls</option>
+            </select>
+          </div>
+
+          <div class="po-field">
+            <label>Manifested (trait id)</label>
+            <select data-field="manifestTrait">
+              <option value="603" ${load.manifestTrait===603?'selected':''}>603 — Manifested</option>
+              <option value="514" ${load.manifestTrait===514?'selected':''}>514 — Unmanifested</option>
+            </select>
+          </div>
+
+          <div class="po-field">
+            <label>FOB state (id)</label>
+            <select data-field="fobId">
+              <option value="">— none —</option>
+              ${Object.entries(sup.fobIds).map(([c,id]) => `<option value="${id}" ${load.fobId===id && load.locCode===c ? 'selected' : ''}>${c} → id ${id} (${sup.fobNames[c]})</option>`).join('')}
+            </select>
+          </div>
+
+          <div class="po-field">
+            <label>Packing trait <span style="color:var(--text4);">(locked)</span></label>
+            <input type="text" value="${sup.packingTrait} — Load" disabled style="background:var(--surface3);color:var(--text3);cursor:default;">
+          </div>
+
+          <div class="po-field">
+            <label>Store ID <span style="color:var(--text4);">(locked)</span></label>
+            <input type="text" value="${sup.storeId}" disabled style="background:var(--surface3);color:var(--text3);cursor:default;">
+          </div>
+
+          <div class="po-field">
+            <label>Supplier ID <span style="color:var(--text4);">(locked)</span></label>
+            <input type="text" value="${sup.erpSupplier} — Wayfair" disabled style="background:var(--surface3);color:var(--text3);cursor:default;">
+          </div>
+
+          <div class="po-field">
+            <label>PSKU <span style="color:var(--text4);">(locked)</span></label>
+            <input type="text" value="${sup.psku}" disabled style="background:var(--surface3);color:var(--text3);cursor:default;">
+          </div>
+
+          <div class="po-field">
+            <label>Peachtree code <span style="color:var(--text4);">(locked)</span></label>
+            <input type="text" value="${sup.ptCode}" disabled style="background:var(--surface3);color:var(--text3);cursor:default;">
+          </div>
+
+          <div class="po-field">
+            <label>Status ID <span style="color:var(--text4);">(locked)</span></label>
+            <input type="text" value="${sup.statusId}" disabled style="background:var(--surface3);color:var(--text3);cursor:default;">
+          </div>
+
+          <div class="po-field">
+            <label>User ID <span style="color:var(--text4);">(locked)</span></label>
+            <input type="text" value="179" disabled style="background:var(--surface3);color:var(--text3);cursor:default;">
+          </div>
+
+          <div class="po-field" style="align-self:end;">
+            <label>&nbsp;</label>
+            <div style="display:flex;gap:0.4rem;">
+              <button class="btn" data-apply="${idx}">Apply & close</button>
+              <button class="btn ghost" data-cancel="${idx}">Cancel</button>
+            </div>
+          </div>
+
         </div>
+        ${load.flags.length ? `<div class="flags" style="margin-top:0.6rem;">⚠ ${load.flags.join(' · ')}</div>` : ''}
       </div>
-      ${load.flags.length ? `<div class="flags">⚠ ${load.flags.join(' · ')}</div>` : ''}
     </td>`;
 
     body.appendChild(tr);
@@ -718,17 +821,25 @@ function attachHandlers() {
       const er = $('edit-' + idx);
       const load = loads[idx];
       const sup = SUPPLIERS[load.supplierKey] || SUPPLIERS.WYF;
-      load.loadId  = er.querySelector('[data-field="loadId"]').value.trim().toUpperCase() || load.loadId;
-      load.locCode  = er.querySelector('[data-field="locCode"]').value  || null;
-      load.typeCode = er.querySelector('[data-field="typeCode"]').value || null;
-      load.sku           = load.locCode && load.typeCode ? sup.buildSKU(load.locCode, load.typeCode, load.loadId) : null;
-      load.name          = sup.getProductName(load.typeCode, load.locCode);
-      load.fobId         = load.locCode ? sup.fobIds[load.locCode] : null;
-      load.fobName       = load.locCode ? sup.fobNames[load.locCode] : '—';
-      load.condTrait     = load.typeCode ? sup.conditionTraits[load.typeCode] : null;
-      load.condName      = load.typeCode ? sup.conditionNames[load.typeCode]  : '—';
-      load.manifestTrait = load.typeCode ? (sup.manifestTraits[load.typeCode] || 603) : null;
-      load.manifestName  = load.typeCode ? (sup.manifestNames[load.typeCode]  || 'Manifested') : '—';
+      const f = k => er.querySelector(`[data-field="${k}"]`)?.value ?? null;
+      load.loadId  = (f('loadId') || '').trim().toUpperCase() || load.loadId;
+      load.locCode  = f('locCode')  || null;
+      load.typeCode = f('typeCode') || null;
+      // If locCode/typeCode changed re-derive; otherwise respect manual overrides from the review card
+      const autoSku = load.locCode && load.typeCode ? sup.buildSKU(load.locCode, load.typeCode, load.loadId) : null;
+      load.sku      = f('sku') || autoSku || load.sku;
+      load.name     = f('name') || sup.getProductName(load.typeCode, load.locCode);
+      load.active   = Number(f('active') ?? 1);
+      // Traits — user may have manually overridden; fall back to derived
+      const condVal = f('condTrait');
+      load.condTrait = condVal ? Number(condVal) : (load.typeCode ? sup.conditionTraits[load.typeCode] : null);
+      load.condName  = {63:'Customer Returns',61:'New Overstock',62:'Shelf Pulls'}[load.condTrait] || '—';
+      const manVal = f('manifestTrait');
+      load.manifestTrait = manVal ? Number(manVal) : (load.typeCode ? (sup.manifestTraits[load.typeCode]||603) : null);
+      load.manifestName  = {603:'Manifested',514:'Unmanifested'}[load.manifestTrait] || '—';
+      const fobVal = f('fobId');
+      load.fobId   = fobVal ? Number(fobVal) : (load.locCode ? sup.fobIds[load.locCode] : null);
+      load.fobName = load.locCode ? sup.fobNames[load.locCode] : '—';
       load.flags = [];
       if (!load.locCode)  load.flags.push('Location not set');
       if (!load.typeCode) load.flags.push('Type not set');
