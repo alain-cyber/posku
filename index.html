@@ -110,9 +110,12 @@ textarea::placeholder { color: var(--text4); }
 .edit-field select:focus, .edit-field input:focus { outline: none; border-color: var(--green); }
 .flags { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: var(--amber); margin-top: 0.25rem; }
 
-.details-row td.details-strip { padding: 0.45rem 0.6rem 0.75rem; background: rgba(0,0,0,0.015); border-bottom: 1px solid var(--border); display: block; line-height: 1.7; }
-.chip-mini { display: inline-block; font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text3); background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 0.12rem 0.4rem; margin-right: 0.35rem; }
-.chip-mini b { color: var(--text2); font-weight: 500; margin-right: 0.25rem; }
+.details-row td.details-strip { padding: 0.55rem 0.8rem 0.85rem; background: rgba(0,0,0,0.025); border-bottom: 1px solid var(--border); }
+.chips-wrap { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.chip-mini { display: inline-flex; align-items: baseline; gap: 0.3rem; font-family: 'DM Mono', monospace; font-size: 0.66rem; color: var(--text3); background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 0.2rem 0.55rem; white-space: nowrap; line-height: 1.3; }
+.chip-mini b { color: var(--text2); font-weight: 500; }
+.chip-mini i { color: var(--green); font-style: normal; font-weight: 500; }
+.chip-mini em { color: var(--text3); font-style: normal; }
 
 /* PO draft cards */
 .po-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem 1.2rem; margin-bottom: 1rem; }
@@ -763,21 +766,23 @@ function renderLoads() {
     const sup2 = SUPPLIERS[load.supplierKey] || SUPPLIERS.WYF;
     const slug = load.sku ? load.sku.toLowerCase().replace(/[^a-z0-9]+/g, '-') : '—';
     dr.innerHTML = `<td colspan="11" class="details-strip">
-      <span class="chip-mini"><b>active</b> ${load.active ?? 1}</span>
-      <span class="chip-mini"><b>packing</b> ${sup2.packingTrait} (Load)</span>
-      <span class="chip-mini"><b>condition</b> ${load.condTrait ?? '—'}</span>
-      <span class="chip-mini"><b>manifested</b> ${load.manifestTrait ?? '—'}</span>
-      <span class="chip-mini"><b>fobStates</b> [${load.fobId ?? ''}]</span>
-      <span class="chip-mini"><b>store_id</b> ${sup2.storeId}</span>
-      <span class="chip-mini"><b>supplierId</b> ${sup2.erpSupplier} (Wayfair)</span>
-      <span class="chip-mini"><b>psku</b> ${sup2.psku}</span>
-      <span class="chip-mini"><b>peachtree_code</b> ${sup2.ptCode}</span>
-      <span class="chip-mini"><b>status_id</b> ${sup2.statusId}</span>
-      <span class="chip-mini"><b>user_id</b> 179</span>
-      <span class="chip-mini"><b>lang_id</b> 1</span>
-      <span class="chip-mini"><b>psku_type</b> regular</span>
-      <span class="chip-mini"><b>make_an_offer</b> false</span>
-      <span class="chip-mini"><b>slug</b> ${esc(slug)}</span>
+      <div class="chips-wrap">
+        <span class="chip-mini"><b>active</b> <i>${load.active ?? 1}</i> <em>(${(load.active ?? 1) ? 'Active' : 'Inactive'})</em></span>
+        <span class="chip-mini"><b>packing</b> <i>${sup2.packingTrait}</i> <em>(Load)</em></span>
+        <span class="chip-mini"><b>condition</b> <i>${load.condTrait ?? '—'}</i> <em>(${esc(load.condName || '—')})</em></span>
+        <span class="chip-mini"><b>manifested</b> <i>${load.manifestTrait ?? '—'}</i> <em>(${esc(load.manifestName || '—')})</em></span>
+        <span class="chip-mini"><b>fobStates</b> <i>[${load.fobId ?? ''}]</i> <em>(${esc(load.fobName || '—')})</em></span>
+        <span class="chip-mini"><b>store_id</b> <i>${sup2.storeId}</i></span>
+        <span class="chip-mini"><b>supplierId</b> <i>${sup2.erpSupplier}</i> <em>(Wayfair)</em></span>
+        <span class="chip-mini"><b>psku</b> <i>${esc(sup2.psku)}</i></span>
+        <span class="chip-mini"><b>peachtree_code</b> <i>${esc(sup2.ptCode)}</i></span>
+        <span class="chip-mini"><b>status_id</b> <i>${sup2.statusId}</i></span>
+        <span class="chip-mini"><b>user_id</b> <i>179</i> <em>(posku_api)</em></span>
+        <span class="chip-mini"><b>lang_id</b> <i>1</i> <em>(English)</em></span>
+        <span class="chip-mini"><b>psku_type</b> <i>regular</i></span>
+        <span class="chip-mini"><b>make_an_offer</b> <i>false</i></span>
+        <span class="chip-mini"><b>slug</b> <i>${esc(slug)}</i></span>
+      </div>
     </td>`;
     body.appendChild(dr);
     body.appendChild(er);
