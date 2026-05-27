@@ -762,46 +762,27 @@ function parseEmail(text, supplierKey) {
   });
 }
 
-// Parse a Sam's Club "liquidation order is ready" email.
-// Looks for one or more 16-digit manifest numbers, derives the club code from
-// the first 4 digits, and creates a load per manifest. SEQ is auto-assigned
-// from sup.lastKnownMaxSeq + already-parsed loads in the current session,
-// so the user just clicks push (or overrides in the review card).
+// Parse a Sam's Club "liquidation order is ready" email — sync stub that
+// returns loads with seq/sku unfilled. The async assignSamsSequences() step
+// in triggerParse() hits the ERP for the real per-club max and fills them in.
 function parseSamsEmail(text, sup) {
   const ids = new Set();
   const rx = /\b(\d{16})\b/g;
   let m; while ((m = rx.exec(text)) !== null) ids.add(m[1]);
   if (!ids.size) return [];
-
-  // Per-club running counter for this parse — starts at max(known, anything
-  // already in `loads`) and increments for each new load from that club.
-  const sessionMax = {};
-  for (const l of loads) {
-    if (l.supplierKey !== 'SMS' || !l.locCode) continue;
-    const n = parseInt(l.seq, 10);
-    if (Number.isFinite(n)) sessionMax[l.locCode] = Math.max(sessionMax[l.locCode] || 0, n);
-  }
-  const nextSeq = (code) => {
-    const base = Math.max(sup.lastKnownMaxSeq?.[code] || 0, sessionMax[code] || 0);
-    sessionMax[code] = base + 1;
-    return base + 1;
-  };
-
   return [...ids].map(manifest => {
     const clubNum = manifest.slice(0, 4);
     const code    = sup.clubByManifest[clubNum] || null;
-    const seq     = code ? nextSeq(code) : null;
     const flags   = [];
     if (!code) flags.push(`Unknown Sam's Club #${clubNum} — add to clubByManifest`);
-    const sku = code && seq ? sup.buildSKU(code, null, null, seq) : null;
     return {
       id:           'load_' + Date.now() + '_' + Math.random().toString(36).slice(2),
       supplierKey:  'SMS',
       loadId:       manifest,
       locCode:      code,
       typeCode:     'GM',
-      seq,
-      sku,
+      seq:          null,         // filled in by assignSamsSequences()
+      sku:          null,
       name:         'General Merchandise',
       fobId:         code ? sup.fobIds[code]   : null,
       fobName:       code ? sup.fobNames[code] : '—',
@@ -810,10 +791,66 @@ function parseSamsEmail(text, sup) {
       manifestTrait: 603,
       manifestName:  'Manifested',
       flags,
-      status:    flags.length ? 'review' : 'ready',
+      status:    'review',
       erpResult: null,
     };
   });
+}
+
+// Look up the current max SEQ for one club code by asking the ERP for every
+// SMS<code>* product, then taking the largest numeric tail. Falls back to
+// sup.lastKnownMaxSeq if the API returns nothing usable.
+async function fetchMaxSeqForClub(code, sup) {
+  const prefix = 'SMS' + code;
+  const r = await erpRequest('GET', '/api/products?sku=' + encodeURIComponent(prefix));
+  let max = sup.lastKnownMaxSeq?.[code] || 0;
+  const arr = Array.isArray(r.data) ? r.data
+            : Array.isArray(r.data?.data) ? r.data.data
+            : Array.isArray(r.data?.products) ? r.data.products
+            : null;
+  if (arr && arr.length) {
+    for (const row of arr) {
+      const sku = row?.sku || row?.SKU || '';
+      // Tolerate "-test" suffix and any extra letters after the digits
+      const m = sku.match(new RegExp('^' + prefix + '(\\d+)'));
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > max) max = n;
+      }
+    }
+  } else if (r.data?.sku) {
+    // Single-row response shape
+    const m = String(r.data.sku).match(new RegExp('^' + prefix + '(\\d+)'));
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return max;
+}
+
+// Assign SEQ + SKU to each pending SMS load by fetching the real max per
+// distinct club code from the ERP (one call per club, in parallel), then
+// incrementing within the batch for repeat clubs.
+async function assignSamsSequences(pending) {
+  const sup = SUPPLIERS.SMS;
+  const codes = [...new Set(pending.map(l => l.locCode).filter(Boolean))];
+  const maxes = {};
+  await Promise.all(codes.map(async code => {
+    try { maxes[code] = await fetchMaxSeqForClub(code, sup); }
+    catch (err) { maxes[code] = sup.lastKnownMaxSeq?.[code] || 0; }
+  }));
+  // Also respect SEQs already in the loads list (loads not yet pushed)
+  for (const l of loads) {
+    if (l.supplierKey !== 'SMS' || !l.locCode) continue;
+    const n = parseInt(l.seq, 10);
+    if (Number.isFinite(n)) maxes[l.locCode] = Math.max(maxes[l.locCode] || 0, n);
+  }
+  for (const l of pending) {
+    if (!l.locCode) continue;
+    const next = (maxes[l.locCode] || 0) + 1;
+    maxes[l.locCode] = next;
+    l.seq    = next;
+    l.sku    = sup.buildSKU(l.locCode, null, null, next);
+    l.status = l.flags.length ? 'review' : 'ready';
+  }
 }
 
 // ── ERP API ──────────────────────────────────────────────────────────────────
@@ -1628,7 +1665,7 @@ function loadFiles(files) {
 }
 
 // ── Parse ────────────────────────────────────────────────────────────────────
-function triggerParse() {
+async function triggerParse() {
   const text = $('email-input').value.trim();
   clearStatus($('parse-status'));
   if (!text) { setStatus($('parse-status'), 'warn', 'Nothing to parse.'); return; }
@@ -1637,6 +1674,13 @@ function triggerParse() {
   if (!found.length) {
     setStatus($('parse-status'), 'warn', 'No load IDs found. Make sure the email includes a load number (e.g. "Load ID: 50544").');
     return;
+  }
+
+  // Sam's flow: hit the ERP for the real per-club max SEQ before assigning,
+  // so multi-user workflows stay collision-free without a shared local cache.
+  if (activeSupplier === 'SMS') {
+    setStatus($('parse-status'), 'info', `Fetching current max SKUs for ${new Set(found.map(l => l.locCode).filter(Boolean)).size} club(s)…`);
+    await assignSamsSequences(found);
   }
 
   // Merge: avoid duplicates by loadId+locCode+typeCode
