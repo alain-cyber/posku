@@ -1436,7 +1436,7 @@ function createDraftFromLoad(load) {
     typeLabel,
     locCode:          load.locCode,
     // NEED fields (per Via Trading PO API docs)
-    po_number:        `${load.loadId} (${typeLabel})`,  // can be cleared to auto-number
+    po_number:        load.sku,  // default = SKU; can be cleared to auto-number
     facility:         def.facilityByLoc?.[load.locCode] || '',
     status_id:        2,            // Pending (NEED — send explicitly)
     scheduled_date:   todayISO(7),  // dock arrival
