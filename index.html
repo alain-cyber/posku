@@ -1946,7 +1946,7 @@ async function inboxFetch() {
   setStatus($('inbox-status'), 'info', `Fetching messages with label "${label}"…`);
   let res;
   try {
-    res = await fetch(url);
+    res = await fetch(url, { cache: 'no-store' });
   } catch (err) {
     setStatus($('inbox-status'), 'err', `Network error: ${err.message}`);
     return;
