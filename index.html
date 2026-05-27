@@ -1090,7 +1090,7 @@ $('select-all').onchange = () => {
 
 async function doPush(indices) {
   const cfg = loadCfg();
-  if (!cfg.apiKey) {
+  if (IS_LOCAL_FILE && !cfg.apiKey) {
     setStatus($('push-status'), 'err', 'API key not set. Enter it in the settings bar and click Save.');
     return;
   }
