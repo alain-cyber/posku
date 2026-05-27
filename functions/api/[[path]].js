@@ -1,29 +1,43 @@
 // Cloudflare Pages Function — Posku API proxy.
 //
-// Forwards any /api/* request from the browser to viatrading.biz/api/*,
-// injecting the API key from the Pages env var VIA_API_KEY.
-// The browser never sees the API key, and same-origin avoids CORS.
+// Forwards any /api/* request from the browser to the selected upstream
+// (TEST BIZ or LIVE OPS), injecting the matching server-side API key.
+// The browser never sees the keys, and same-origin avoids CORS.
+//
+// Environment selection:
+//   Header `X-Posku-Env: test` → viatrading.biz       with env.BIZ_API
+//   Header `X-Posku-Env: live` → ops.viatrading.com   with env.ops_api_key
+//   Missing/unknown → defaults to test (safer).
 
-const TARGET_ORIGIN = 'https://viatrading.biz';
+const ENVIRONMENTS = {
+  test: { origin: 'https://viatrading.biz',     keyVar: 'BIZ_API' },
+  live: { origin: 'https://ops.viatrading.com', keyVar: 'ops_api_key' },
+};
 
 export async function onRequest(context) {
   const { request, env, params } = context;
 
-  if (!env.VIA_API_KEY) {
-    return jsonError(500, 'Server missing VIA_API_KEY environment variable');
+  const envName = (request.headers.get('X-Posku-Env') || 'test').toLowerCase();
+  const target = ENVIRONMENTS[envName];
+  if (!target) {
+    return jsonError(400, `Unknown environment "${envName}". Use "test" or "live".`);
+  }
+
+  const apiKey = env[target.keyVar];
+  if (!apiKey) {
+    return jsonError(500, `Server missing ${target.keyVar} environment variable for ${envName} mode`);
   }
 
   const segments = Array.isArray(params.path)
     ? params.path
     : (params.path ? [params.path] : []);
   const reqUrl = new URL(request.url);
-  const targetUrl = TARGET_ORIGIN + '/api/' + segments.join('/') + reqUrl.search;
+  const targetUrl = target.origin + '/api/' + segments.join('/') + reqUrl.search;
 
   const headers = new Headers();
-  headers.set('api-key', env.VIA_API_KEY);
+  headers.set('api-key', apiKey);
   const ct = request.headers.get('Content-Type');
   headers.set('Content-Type', ct || 'application/json');
-  // Pass through Accept so we honor JSON / text preferences from the client.
   const accept = request.headers.get('Accept');
   if (accept) headers.set('Accept', accept);
 
@@ -36,7 +50,7 @@ export async function onRequest(context) {
   try {
     upstream = await fetch(targetUrl, init);
   } catch (err) {
-    return jsonError(502, `Upstream fetch failed: ${err.message}`);
+    return jsonError(502, `Upstream fetch failed (${envName}): ${err.message}`);
   }
 
   const respBody = await upstream.text();
@@ -45,6 +59,7 @@ export async function onRequest(context) {
     headers: {
       'Content-Type': upstream.headers.get('Content-Type') || 'application/json',
       'Cache-Control': 'no-store',
+      'X-Posku-Env-Used': envName,
     },
   });
 }
