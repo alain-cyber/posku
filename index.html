@@ -1520,8 +1520,6 @@ function renderPoDrafts() {
         </div>
 
         <div class="po-field"><label>Order date</label><input type="date" data-po="${idx}" data-k="order_date" value="${esc(d.order_date)}"></div>
-        <div class="po-field"><label>Due date</label><input type="date" data-po="${idx}" data-k="due_date" value="${esc(d.due_date)}"></div>
-        <div class="po-field"><label>Delivery date</label><input type="date" data-po="${idx}" data-k="delivery_date" value="${esc(d.delivery_date)}"></div>
         <div class="po-field"><label>Scheduled date (dock arrival)</label><input type="date" data-po="${idx}" data-k="scheduled_date" value="${esc(d.scheduled_date)}"></div>
 
         <div class="po-field"><label>Tentative schedule</label>
@@ -1530,8 +1528,6 @@ function renderPoDrafts() {
             <option value="false" ${!d.tentative_schedule ? 'selected' : ''}>false</option>
           </select>
         </div>
-        <div class="po-field"><label>Sub total ($)</label><input type="number" step="0.01" data-po="${idx}" data-k="sub_total" value="${esc(d.sub_total)}"></div>
-        <div class="po-field"><label>Amount ($)</label><input type="number" step="0.01" data-po="${idx}" data-k="amount" value="${esc(d.amount)}"></div>
         <div class="po-field"><label>Shipping quote ($)</label><input type="number" step="0.01" data-po="${idx}" data-k="shipping_quote" value="${esc(d.shipping_quote)}"></div>
 
         <div class="po-field wide">
@@ -1548,7 +1544,6 @@ function renderPoDrafts() {
           </select>
         </div>
 
-        <div class="po-field full"><label>Supplier invoice #</label><input type="text" data-po="${idx}" data-k="supplier_invoice_number" value="${esc(d.supplier_invoice_number)}" placeholder="optional"></div>
         <div class="po-field full"><label>Billing address</label><textarea data-po="${idx}" data-k="billing_address">${esc(d.billing_address)}</textarea></div>
         <div class="po-field full"><label>Shipping address (Via Trading DC)</label><textarea data-po="${idx}" data-k="shipping_address">${esc(d.shipping_address)}</textarea></div>
         <div class="po-field full"><label>Note</label><textarea data-po="${idx}" data-k="note" placeholder="optional">${esc(d.note)}</textarea></div>
@@ -1648,6 +1643,10 @@ function attachPoHandlers() {
 
 function buildPoPayload(d) {
   const def = PO_DEFAULTS[activeSupplier] || PO_DEFAULTS.WYF;
+  // All header dates default to push date. Order date is still user-editable;
+  // due/delivery dates are no longer shown in the UI but the API still gets a
+  // value so the request doesn't break.
+  const pushDate = todayISO(0);
   const item = {
     sku:           d.sku,
     product_name:  d.productName,
@@ -1669,10 +1668,10 @@ function buildPoPayload(d) {
     status_id:               Number(d.status_id) || 2,
     scheduled_date:          d.scheduled_date || '',
     tentative_schedule:      !!d.tentative_schedule,
-    // dates
-    order_date:              d.order_date,
-    due_date:                d.due_date,
-    delivery_date:           d.delivery_date,
+    // dates — all default to push date; only order_date is user-editable
+    order_date:              d.order_date || pushDate,
+    due_date:                pushDate,
+    delivery_date:           pushDate,
     // shipping
     shipping_method_id:      Number(d.shipping_method_id),
     shipping_company_id:     Number(d.shipping_company_id),
