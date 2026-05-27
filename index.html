@@ -463,6 +463,18 @@ const SUPPLIERS = {
 
     getProductName() { return 'General Merchandise'; },
 
+    // Last-known max SEQ per club (seeded from the xlsx + warehouse sync as of
+    // 2026-05-27). Used to auto-assign the next SEQ when an email is parsed.
+    // If the real ERP has advanced beyond these (manual SKU creation, etc.),
+    // the dedup check will catch the collision and you'll see an error — just
+    // bump the SEQ in the review card and re-push.
+    lastKnownMaxSeq: {
+      BIL: 800,  CB:  754,  CHE: 328,  CON: 764,  DEN: 69,
+      FMS: 551,  FUL: 857,  GRF: 228,  HAR: 29,   IF:  142,
+      LAR: 32,   LAY: 1071, LB:  1195, LOG: 384,  LT:  47,
+      MCA: 33,   PRO: 352,  RDL: 216,  RVE: 783,  RVS: 698, SIO: 402,
+    },
+
     // SKU template — Sam's uses {loc} (club code) + {seq}
     skuTemplate: 'SMS{loc}{seq}',
     buildSKU(locCode, _typeCode, _loadId, seq) {
@@ -752,37 +764,53 @@ function parseEmail(text, supplierKey) {
 
 // Parse a Sam's Club "liquidation order is ready" email.
 // Looks for one or more 16-digit manifest numbers, derives the club code from
-// the first 4 digits, and creates a load per manifest. SEQ is left blank for
-// the user to fill in inline (we don't have an ERP-side max lookup yet).
+// the first 4 digits, and creates a load per manifest. SEQ is auto-assigned
+// from sup.lastKnownMaxSeq + already-parsed loads in the current session,
+// so the user just clicks push (or overrides in the review card).
 function parseSamsEmail(text, sup) {
   const ids = new Set();
-  // Subject form: "manifest 6345052637228626"  /  bare 16-digit numbers
   const rx = /\b(\d{16})\b/g;
   let m; while ((m = rx.exec(text)) !== null) ids.add(m[1]);
   if (!ids.size) return [];
+
+  // Per-club running counter for this parse — starts at max(known, anything
+  // already in `loads`) and increments for each new load from that club.
+  const sessionMax = {};
+  for (const l of loads) {
+    if (l.supplierKey !== 'SMS' || !l.locCode) continue;
+    const n = parseInt(l.seq, 10);
+    if (Number.isFinite(n)) sessionMax[l.locCode] = Math.max(sessionMax[l.locCode] || 0, n);
+  }
+  const nextSeq = (code) => {
+    const base = Math.max(sup.lastKnownMaxSeq?.[code] || 0, sessionMax[code] || 0);
+    sessionMax[code] = base + 1;
+    return base + 1;
+  };
+
   return [...ids].map(manifest => {
     const clubNum = manifest.slice(0, 4);
     const code    = sup.clubByManifest[clubNum] || null;
+    const seq     = code ? nextSeq(code) : null;
     const flags   = [];
     if (!code) flags.push(`Unknown Sam's Club #${clubNum} — add to clubByManifest`);
-    flags.push('Sequence number required — enter it before push');
+    const sku = code && seq ? sup.buildSKU(code, null, null, seq) : null;
     return {
       id:           'load_' + Date.now() + '_' + Math.random().toString(36).slice(2),
       supplierKey:  'SMS',
-      loadId:       manifest,           // used as the tracking ID for display
-      locCode:      code,               // club code
-      typeCode:     'GM',               // only one type
-      seq:          '',                 // user must enter
-      sku:          null,               // built on apply
+      loadId:       manifest,
+      locCode:      code,
+      typeCode:     'GM',
+      seq,
+      sku,
       name:         'General Merchandise',
       fobId:         code ? sup.fobIds[code]   : null,
       fobName:       code ? sup.fobNames[code] : '—',
-      condTrait:     63,                // Customer Returns
+      condTrait:     63,
       condName:      'Customer Returns',
-      manifestTrait: 603,               // Manifested
+      manifestTrait: 603,
       manifestName:  'Manifested',
       flags,
-      status:    'review',
+      status:    flags.length ? 'review' : 'ready',
       erpResult: null,
     };
   });
