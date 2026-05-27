@@ -254,6 +254,35 @@ textarea::placeholder { color: var(--text4); }
   <!-- Rules / Config section (toggle) -->
   <div class="cfg-section" id="cfg-section" style="display:none;"></div>
 
+  <!-- Inbox fetch card -->
+  <div class="card input-card" id="inbox-card">
+    <div class="card-title">Fetch from inbox</div>
+    <div class="card-sub" id="inbox-card-sub">Pulls Gmail messages with the configured label, parses, and pre-fills loads — review before push</div>
+    <div class="po-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;align-items:end;gap:0.75rem;">
+      <div class="po-field">
+        <label>Gmail label</label>
+        <input type="text" id="inbox-label" value="posku" placeholder="posku">
+      </div>
+      <div class="po-field">
+        <label>From (after)</label>
+        <input type="date" id="inbox-after">
+      </div>
+      <div class="po-field">
+        <label>To (before)</label>
+        <input type="date" id="inbox-before">
+      </div>
+      <div class="po-field">
+        <label>&nbsp;</label>
+        <div style="display:flex;gap:0.4rem;">
+          <button class="btn" id="inbox-fetch-btn">Fetch &amp; generate</button>
+          <button class="btn ghost" id="inbox-today-btn" title="Set From = today">Today</button>
+          <button class="btn ghost" id="inbox-week-btn" title="Set From = 7 days ago">7d</button>
+        </div>
+      </div>
+    </div>
+    <div id="inbox-status" class="status" style="margin-top:0.75rem;"></div>
+  </div>
+
   <!-- Input card -->
   <div class="card input-card" id="drop-card">
     <div class="card-title">Paste or drop email</div>
@@ -345,6 +374,7 @@ const SUPPLIERS = {
     ptCode:      'LOAD-WYF',
     statusId:    2,
     packingTrait: 88,   // Load (verified via /api/products/dropdowns)
+    gmailLabel:  'posku',  // override in rules if a different label is used
 
     // FOB state IDs (from airbyte_sync.products_fob_states)
     fobIds: {
@@ -435,6 +465,7 @@ const SUPPLIERS = {
     ptCode:      'LOAD-SAMS',
     statusId:    2,
     packingTrait: 203,  // LTL (verified against live SMS products in warehouse)
+    gmailLabel:  'posku',
 
     // Club code → FOB state ID  (codes go INTO the SKU)
     fobIds: {
@@ -1785,6 +1816,92 @@ async function triggerParse() {
 }
 
 $('parse-btn').onclick = triggerParse;
+
+// ── Inbox (Gmail) fetcher ───────────────────────────────────────────────────
+function fmtDateInput(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+function setupInboxDefaults() {
+  const today = new Date();
+  $('inbox-after').value  = fmtDateInput(today);
+  $('inbox-before').value = fmtDateInput(today);
+}
+function setInboxRange(daysBack) {
+  const today = new Date();
+  const from = new Date(today); from.setDate(from.getDate() - daysBack);
+  $('inbox-after').value  = fmtDateInput(from);
+  $('inbox-before').value = fmtDateInput(today);
+}
+
+async function inboxFetch() {
+  const sup = SUPPLIERS[activeSupplier];
+  const label  = $('inbox-label').value.trim() || sup.gmailLabel || 'posku';
+  const after  = $('inbox-after').value;
+  // Gmail's "before:" is exclusive — bump by 1 day so a same-day "to" includes today.
+  let before = $('inbox-before').value;
+  if (before) {
+    const b = new Date(before); b.setDate(b.getDate() + 1);
+    before = fmtDateInput(b);
+  }
+  const params = new URLSearchParams({ label });
+  if (after)  params.set('after', after);
+  if (before) params.set('before', before);
+
+  setStatus($('inbox-status'), 'info', `Fetching messages with label "${label}"…`);
+  let res;
+  try {
+    res = await fetch('/api/gmail/messages?' + params.toString());
+  } catch (err) {
+    setStatus($('inbox-status'), 'err', `Network error: ${err.message}`);
+    return;
+  }
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || !j.ok) {
+    setStatus($('inbox-status'), 'err', j.error || `HTTP ${res.status}`);
+    return;
+  }
+  const msgs = j.messages || [];
+  if (!msgs.length) {
+    setStatus($('inbox-status'), 'warn', `No messages found for query: ${j.query}`);
+    return;
+  }
+
+  // Parse every message body with the current supplier's parser; merge results.
+  setStatus($('inbox-status'), 'info', `Parsing ${msgs.length} message(s) with the ${sup.label} parser…`);
+  const allFound = [];
+  for (const m of msgs) {
+    const blob = `${m.subject}\n\n${m.body || m.snippet}`;
+    const found = parseEmail(blob, activeSupplier);
+    allFound.push(...found);
+  }
+  if (!allFound.length) {
+    setStatus($('inbox-status'), 'warn', `Fetched ${msgs.length} message(s) but none matched the ${sup.label} parser. Try a different label or check the email format.`);
+    return;
+  }
+
+  if (activeSupplier === 'SMS') {
+    setStatus($('inbox-status'), 'info', `Fetching current max SKUs for ${new Set(allFound.map(l => l.locCode).filter(Boolean)).size} club(s)…`);
+    await assignSamsSequences(allFound);
+  }
+
+  const existing = new Set(loads.map(l => l.loadId + '|' + l.locCode + '|' + l.typeCode));
+  const added = allFound.filter(l => !existing.has(l.loadId + '|' + l.locCode + '|' + l.typeCode));
+  loads.push(...added);
+  $('loads-section').style.display = '';
+  renderLoads();
+
+  const dupSkipped = allFound.length - added.length;
+  const tail = dupSkipped ? `, ${dupSkipped} already in list` : '';
+  setStatus($('inbox-status'), 'ok', `Added ${added.length} load(s) from ${msgs.length} message(s)${tail}. Review and push.`);
+}
+
+setupInboxDefaults();
+$('inbox-fetch-btn').onclick = inboxFetch;
+$('inbox-today-btn').onclick = () => setInboxRange(0);
+$('inbox-week-btn').onclick  = () => setInboxRange(7);
 $('email-input').addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') triggerParse(); });
 
 $('clear-input-btn').onclick = () => {
