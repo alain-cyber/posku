@@ -330,6 +330,12 @@ const SUPPLIERS = {
     manifestTraits: { S: 514 },  // Salvage = Unmanifested
     manifestNames:  { S: 'Unmanifested' },
 
+    // Taxonomy / product categories (IDs from products_segments table)
+    //   201 = Furniture       (applied to ALL WYF loads — matches 100% of live WYF rows)
+    //   56  = Load Center     (added only when load is manifested — matches ~90% of live WYF rows)
+    categoryIds:           [201],
+    manifestedCategoryIds: [56],
+
     // Locations where type is always HDO (inferred from location, not email text)
     hdoLocations: new Set(['CI', 'POR']),
 
@@ -680,6 +686,14 @@ async function checkSKUExists(sku) {
 
 function buildPayload(load) {
   const sup = SUPPLIERS[load.supplierKey] || SUPPLIERS.WYF;
+
+  // Categories: always include defaults; add manifested-only categories when applicable.
+  // (manifestTrait === 603 means Manifested; 514 is Unmanifested.)
+  const categories = [...(sup.categoryIds || [])];
+  if (load.manifestTrait === 603 && Array.isArray(sup.manifestedCategoryIds)) {
+    categories.push(...sup.manifestedCategoryIds);
+  }
+
   return {
     data: {
       // identity
@@ -699,6 +713,9 @@ function buildPayload(load) {
       packing:         sup.packingTrait,
       condition:       load.condTrait,
       manifested:      load.manifestTrait,
+
+      // taxonomy (IDs from products_segments — verify API field name on first push)
+      productCategories: categories,
 
       // shipping
       fobStates:       load.fobId ? [load.fobId] : [],
@@ -931,6 +948,13 @@ function renderLoads() {
         <span class="chip-mini"><b>manifested</b> <i>${load.manifestTrait ?? '—'}</i> <em>(${esc(load.manifestName || '—')})</em></span>
         <span class="chip-mini"><b>fobStates</b> <i>[${load.fobId ?? ''}]</i> <em>(${esc(load.fobName || '—')})</em></span>
         <span class="chip-mini"><b>supplierId</b> <i>${sup2.erpSupplier}</i> <em>(Wayfair)</em></span>
+        ${(() => {
+          const cats = [...(sup2.categoryIds || [])];
+          if (load.manifestTrait === 603 && Array.isArray(sup2.manifestedCategoryIds)) cats.push(...sup2.manifestedCategoryIds);
+          const labels = { 201: 'Furniture', 56: 'Load Center' };
+          const named  = cats.map(id => `${id}=${labels[id] || '?'}`).join(', ');
+          return `<span class="chip-mini"><b>productCategories</b> <i>[${cats.join(',')}]</i> <em>(${named})</em></span>`;
+        })()}
         <span class="chip-mini more">+ ${8} more fields ▾
           <div class="tip">
             <div class="row"><b>store_id</b> <i>${sup2.storeId}</i></div>
