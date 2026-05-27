@@ -207,9 +207,9 @@ textarea::placeholder { color: var(--text4); }
 
 <nav class="supplier-tabs">
   <button class="stab active" data-supplier="WYF">Wayfair</button>
+  <button class="stab" data-supplier="SMS">Sam's Club</button>
   <button class="stab soon" disabled>Harbor Freight <span class="chip" style="font-size:0.55rem;padding:0.1rem 0.35rem;">soon</span></button>
   <button class="stab soon" disabled>Amazon <span class="chip" style="font-size:0.55rem;padding:0.1rem 0.35rem;">soon</span></button>
-  <button class="stab soon" disabled>Walmart <span class="chip" style="font-size:0.55rem;padding:0.1rem 0.35rem;">soon</span></button>
 </nav>
 
 <div class="settings-bar">
@@ -236,7 +236,7 @@ textarea::placeholder { color: var(--text4); }
   <!-- Input card -->
   <div class="card input-card" id="drop-card">
     <div class="card-title">Paste or drop email</div>
-    <div class="card-sub">One or multiple Wayfair load emails at once</div>
+    <div class="card-sub" id="input-card-sub">One or multiple Wayfair load emails at once</div>
     <textarea id="email-input" placeholder="Paste email body here, or drag and drop a .eml / .txt file onto this card…"></textarea>
     <div class="hint">Tip: paste the email body, or drop a <strong>.eml</strong>, <strong>.txt</strong>, or Outlook <strong>.msg</strong> file.</div>
     <div class="btn-row">
@@ -391,11 +391,85 @@ const SUPPLIERS = {
       return 'WYF Liquidation Returns - Smaller & Larger Items';
     },
 
-    // SKU template — tokens: {loc} {type} {loadId}
-    skuTemplate: 'WYF{loc}{type}{loadId}-test',
-    buildSKU(locCode, typeCode, loadId) {
-      const tpl = this.skuTemplate || 'WYF{loc}{type}{loadId}-test';
-      return tpl.replace('{loc}', locCode || '').replace('{type}', typeCode || '').replace('{loadId}', loadId || '');
+    // SKU template — tokens: {loc} {type} {loadId} {seq}
+    // The "-test" suffix is appended automatically when the env switch is on TEST.
+    // On LIVE it is stripped — see withEnvSuffix() / loadEnv().
+    skuTemplate: 'WYF{loc}{type}{loadId}',
+    buildSKU(locCode, typeCode, loadId, seq) {
+      const tpl = this.skuTemplate || 'WYF{loc}{type}{loadId}';
+      return tpl
+        .replace('{loc}',    locCode || '')
+        .replace('{type}',   typeCode || '')
+        .replace('{loadId}', loadId || '')
+        .replace('{seq}',    seq != null ? String(seq) : '');
+    },
+  },
+
+  // ── Sam's Club ────────────────────────────────────────────────────────────
+  SMS: {
+    label: "Sam's Club",
+    erpSupplier: 1205,  // Wal-Mart SAMS CLUB
+    storeId:     18,
+    psku:        'LOAD-SMSST',
+    ptCode:      'LOAD-SAMS',
+    statusId:    2,
+    packingTrait: 203,  // LTL (verified against live SMS products in warehouse)
+
+    // Club code → FOB state ID  (codes go INTO the SKU)
+    fobIds: {
+      DEN: 6,  LOG: 44, BIL: 26, HAR: 43, IF:  12,
+      RVS: 5,  GRF: 26, CHE: 50, SIO: 15, CB:  15,
+      CON: 5,  LB:  5,  FUL: 5,  FMS: 5,  RVE: 5,
+      LT:  6,  LAY: 44, RDL: 44, PRO: 44, LAR: 43, MCA: 43,
+    },
+    fobNames: {
+      DEN: 'Colorado',     LOG: 'Utah',         BIL: 'Montana',      HAR: 'Texas',
+      IF:  'Idaho',        RVS: 'California',   GRF: 'Montana',      CHE: 'Wyoming',
+      SIO: 'Iowa',         CB:  'Iowa',         CON: 'California',   LB:  'California',
+      FUL: 'California',   FMS: 'California',   RVE: 'California',   LT:  'Colorado',
+      LAY: 'Utah',         RDL: 'Utah',         PRO: 'Utah',         LAR: 'Texas',
+      MCA: 'Texas',
+    },
+    // Pretty city label for each club code
+    clubCities: {
+      DEN: 'Denver, CO',      LOG: 'Logan, UT',       BIL: 'Billings, MT',     HAR: 'Harlingen, TX',
+      IF:  'Idaho Falls, ID', RVS: 'Riverside, CA',   GRF: 'Great Falls, MT',  CHE: 'Cheyenne, WY',
+      SIO: 'Sioux City, IA',  CB:  'Council Bluffs, IA', CON: 'Concord, CA',   LB:  'Long Beach, CA',
+      FUL: 'Fullerton, CA',   FMS: 'Folsom, CA',      RVE: 'Roseville, CA',    LT:  'Lone Tree, CO',
+      LAY: 'Layton, UT',      RDL: 'Riverdale, UT',   PRO: 'Provo, UT',        LAR: 'Laredo, TX',
+      MCA: 'McAllen, TX',
+    },
+    // First 4 digits of manifest # → club code
+    clubByManifest: {
+      '4777':'DEN', '4786':'LOG', '4805':'BIL', '6269':'HAR', '6345':'IF',
+      '6378':'RVS', '6379':'GRF', '6430':'CHE', '6432':'SIO', '6472':'CB',
+      '6612':'CON', '6613':'LB',  '6616':'FUL', '6620':'FMS', '6621':'RVE',
+      '6634':'LT',  '6682':'LAY', '6684':'RDL', '6685':'PRO', '8156':'LAR', '8250':'MCA',
+    },
+
+    // Only one "type" — all Sam's loads are Customer Returns / Manifested
+    conditionTraits: { GM: 63 },
+    conditionNames:  { GM: 'Customer Returns' },
+    manifestTraits:  {},                    // none — always default 603 (Manifested)
+    manifestNames:   {},
+
+    // Categories applied to every Sam's load (mirrors 99% of live SMS rows)
+    //   191 = Assorted Mixed Lots, 56 = Load Center
+    categoryIds:           [191, 56],
+    manifestedCategoryIds: [],
+
+    locations: [],  // not used — clubs auto-detected from manifest #
+    types: [],      // not used — always GM
+
+    getProductName() { return 'General Merchandise'; },
+
+    // SKU template — Sam's uses {loc} (club code) + {seq}
+    skuTemplate: 'SMS{loc}{seq}',
+    buildSKU(locCode, _typeCode, _loadId, seq) {
+      const tpl = this.skuTemplate || 'SMS{loc}{seq}';
+      return tpl
+        .replace('{loc}',  locCode || '')
+        .replace('{seq}',  seq != null && seq !== '' ? String(seq) : '');
     },
   },
 
@@ -495,6 +569,17 @@ function loadEnv() {
   return v === 'live' ? 'live' : 'test';
 }
 function saveEnv(v) { localStorage.setItem(LS_ENV, v === 'live' ? 'live' : 'test'); }
+
+// On TEST every pushed SKU gets a "-test" suffix so it never collides with the
+// real catalog; on LIVE we strip it. Use this anywhere a SKU is rendered or
+// pushed — base SKUs in `load.sku` are stored without the suffix.
+function withEnvSuffix(sku) {
+  if (!sku) return sku;
+  const isTest = loadEnv() === 'test';
+  const has = sku.endsWith('-test');
+  if (isTest)  return has ? sku : sku + '-test';
+  return has ? sku.slice(0, -'-test'.length) : sku;
+}
 
 // ── Rules override (localStorage, browser-local) ─────────────────────────────
 const LS_RULES = 'posku.rules.v1';
@@ -630,6 +715,8 @@ function parseEmail(text, supplierKey) {
   const sup = SUPPLIERS[supplierKey];
   if (!sup) return [];
 
+  if (supplierKey === 'SMS') return parseSamsEmail(text, sup);
+
   const locCode  = detectLocation(text, sup);
   const typeCode = detectType(text, locCode, sup);
   const rawIds   = extractLoadIds(text);
@@ -658,6 +745,44 @@ function parseEmail(text, supplierKey) {
       manifestName:  typeCode ? (sup.manifestNames[typeCode]  || 'Manifested') : '—',
       flags,
       status:    flags.length ? 'review' : 'ready',
+      erpResult: null,
+    };
+  });
+}
+
+// Parse a Sam's Club "liquidation order is ready" email.
+// Looks for one or more 16-digit manifest numbers, derives the club code from
+// the first 4 digits, and creates a load per manifest. SEQ is left blank for
+// the user to fill in inline (we don't have an ERP-side max lookup yet).
+function parseSamsEmail(text, sup) {
+  const ids = new Set();
+  // Subject form: "manifest 6345052637228626"  /  bare 16-digit numbers
+  const rx = /\b(\d{16})\b/g;
+  let m; while ((m = rx.exec(text)) !== null) ids.add(m[1]);
+  if (!ids.size) return [];
+  return [...ids].map(manifest => {
+    const clubNum = manifest.slice(0, 4);
+    const code    = sup.clubByManifest[clubNum] || null;
+    const flags   = [];
+    if (!code) flags.push(`Unknown Sam's Club #${clubNum} — add to clubByManifest`);
+    flags.push('Sequence number required — enter it before push');
+    return {
+      id:           'load_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+      supplierKey:  'SMS',
+      loadId:       manifest,           // used as the tracking ID for display
+      locCode:      code,               // club code
+      typeCode:     'GM',               // only one type
+      seq:          '',                 // user must enter
+      sku:          null,               // built on apply
+      name:         'General Merchandise',
+      fobId:         code ? sup.fobIds[code]   : null,
+      fobName:       code ? sup.fobNames[code] : '—',
+      condTrait:     63,                // Customer Returns
+      condName:      'Customer Returns',
+      manifestTrait: 603,               // Manifested
+      manifestName:  'Manifested',
+      flags,
+      status:    'review',
       erpResult: null,
     };
   });
@@ -720,10 +845,13 @@ function buildPayload(load) {
     categories.push(...sup.manifestedCategoryIds);
   }
 
+  // Apply env-driven suffix: TEST → "...-test", LIVE → no suffix.
+  const finalSku = withEnvSuffix(load.sku);
+
   return {
     data: {
       // identity
-      sku:             load.sku,
+      sku:             finalSku,
       name:            load.name,
       psku:            sup.psku,
       psku_type:       'regular',
@@ -733,7 +861,7 @@ function buildPayload(load) {
 
       // translation (flat on data per Pattern A — top-level i18n is ignored)
       lang_id:         1,
-      slug:            load.sku.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      slug:            finalSku.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
 
       // traits (IDs from /api/products/dropdowns)
       packing:         sup.packingTrait,
@@ -761,10 +889,13 @@ function buildPayload(load) {
 async function pushLoad(load) {
   if (!load.sku) return { ok: false, error: 'SKU not generated — fix location/type first.' };
 
+  // Apply env-driven suffix before any ERP call (also what gets sent in the payload).
+  const liveSku = withEnvSuffix(load.sku);
+
   // 1. Dedup check
-  const dup = await checkSKUExists(load.sku);
+  const dup = await checkSKUExists(liveSku);
   if (dup.error) return { ok: false, error: dup.error };
-  if (dup.exists) return { ok: false, skipped: true, error: `SKU ${load.sku} already exists in ERP.` };
+  if (dup.exists) return { ok: false, skipped: true, error: `SKU ${liveSku} already exists in ERP.` };
 
   // 2. Create
   const payload = buildPayload(load);
@@ -803,7 +934,7 @@ function renderLoads() {
       <td class="mono">${esc(load.loadId)}</td>
       <td><span class="mono">${esc(load.locCode || '—')}</span></td>
       <td><span class="mono">${esc(load.typeCode || '—')}</span></td>
-      <td>${load.sku ? `<span class="mono-green">${esc(load.sku)}</span>` : `<span class="mono-amber">—</span>`}</td>
+      <td>${load.sku ? `<span class="mono-green">${esc(withEnvSuffix(load.sku))}</span>` : `<span class="mono-amber">—</span>`}</td>
       <td style="font-size:0.8rem;color:var(--text2);max-width:220px;">${esc(load.name || '—')}</td>
       <td class="mono">${esc(load.fobName)}</td>
       <td style="font-size:0.78rem;">${esc(load.condName)}</td>
@@ -821,11 +952,10 @@ function renderLoads() {
     const er = document.createElement('tr');
     er.id = 'edit-' + idx;
     er.className = 'edit-row';
-    const sup = SUPPLIERS[activeSupplier] || SUPPLIERS.WYF;
+    const sup = SUPPLIERS[load.supplierKey] || SUPPLIERS[activeSupplier] || SUPPLIERS.WYF;
+    const isSams = load.supplierKey === 'SMS';
     const condOpts  = Object.entries(sup.conditionTraits).map(([tc, id]) =>
       `<option value="${tc}" ${load.typeCode === tc ? 'selected' : ''}>${tc} → id ${id} (${sup.conditionNames[tc]})</option>`).join('');
-    const manifestDefault = load.typeCode ? (sup.manifestTraits[load.typeCode] || 603) : 603;
-    const manifestDefaultName = load.typeCode ? (sup.manifestNames[load.typeCode] || 'Manifested') : 'Manifested';
     er.innerHTML = `<td colspan="11" style="padding:0;">
       <div style="background:var(--surface2);border-bottom:1px solid var(--border2);padding:1rem 1.1rem;">
 
@@ -836,18 +966,24 @@ function renderLoads() {
         <div class="po-grid" style="grid-template-columns:repeat(4,1fr);">
 
           <div class="po-field">
-            <label>Load ID</label>
+            <label>${isSams ? 'Manifest #' : 'Load ID'}</label>
             <input type="text" data-field="loadId" value="${esc(load.loadId)}">
           </div>
 
           <div class="po-field">
-            <label>Location code</label>
+            <label>${isSams ? 'Club code' : 'Location code'}</label>
             <select data-field="locCode">
               <option value="">— unknown —</option>
-              ${Object.keys(sup.fobIds).map(c => `<option value="${c}" ${load.locCode === c ? 'selected' : ''}>${c} — ${sup.fobNames[c]}</option>`).join('')}
+              ${Object.keys(sup.fobIds).map(c => `<option value="${c}" ${load.locCode === c ? 'selected' : ''}>${c} — ${isSams ? (sup.clubCities?.[c] || sup.fobNames[c]) : sup.fobNames[c]}</option>`).join('')}
             </select>
           </div>
 
+          ${isSams ? `
+          <div class="po-field">
+            <label>Sequence <span style="color:var(--amber);">(required)</span></label>
+            <input type="number" data-field="seq" value="${esc(load.seq ?? '')}" placeholder="e.g. 143" min="1" step="1">
+          </div>
+          ` : `
           <div class="po-field">
             <label>Type code</label>
             <select data-field="typeCode">
@@ -859,12 +995,19 @@ function renderLoads() {
               <option value="HDO" ${load.typeCode==='HDO' ? 'selected' : ''}>HDO</option>
             </select>
           </div>
+          `}
 
           <div class="po-field">
             <label>Generated SKU <span style="color:var(--amber);">(auto)</span></label>
-            <input type="text" data-field="sku" value="${esc(load.sku || '')}" style="color:var(--green);font-weight:500;">
+            <input type="text" data-field="sku" value="${esc(load.sku ? withEnvSuffix(load.sku) : '')}" style="color:var(--green);font-weight:500;">
           </div>
 
+          ${isSams ? `
+          <div class="po-field" style="grid-column:span 2;">
+            <label>Product name <span style="color:var(--text4);">(constant)</span></label>
+            <input type="text" data-field="name" value="${esc(load.name)}" disabled style="background:var(--surface3);color:var(--text3);cursor:default;">
+          </div>
+          ` : `
           <div class="po-field" style="grid-column:span 2;">
             <label>Product name</label>
             <select data-field="name">
@@ -877,6 +1020,7 @@ function renderLoads() {
               <option value="WYF Liquidation Returns - Larger Items"          ${load.name==='WYF Liquidation Returns - Larger Items'          ? 'selected' : ''}>WYF Liquidation Returns - Larger Items (HDO)</option>
             </select>
           </div>
+          `}
 
           <div class="po-field">
             <label>Active</label>
@@ -923,7 +1067,7 @@ function renderLoads() {
 
           <div class="po-field">
             <label>Supplier ID <span style="color:var(--text4);">(locked)</span></label>
-            <input type="text" value="${sup.erpSupplier} — Wayfair" disabled style="background:var(--surface3);color:var(--text3);cursor:default;">
+            <input type="text" value="${sup.erpSupplier} — ${esc(sup.label)}" disabled style="background:var(--surface3);color:var(--text3);cursor:default;">
           </div>
 
           <div class="po-field">
@@ -965,19 +1109,20 @@ function renderLoads() {
     const dr = document.createElement('tr');
     dr.className = 'details-row';
     const sup2 = SUPPLIERS[load.supplierKey] || SUPPLIERS.WYF;
-    const slug = load.sku ? load.sku.toLowerCase().replace(/[^a-z0-9]+/g, '-') : '—';
+    const finalSku = load.sku ? withEnvSuffix(load.sku) : null;
+    const slug = finalSku ? finalSku.toLowerCase().replace(/[^a-z0-9]+/g, '-') : '—';
     dr.innerHTML = `<td colspan="11" class="details-strip">
       <div class="chips-wrap">
         <span class="chip-mini"><b>active</b> <i>${load.active ?? 1}</i> <em>(${(load.active ?? 1) ? 'Active' : 'Inactive'})</em></span>
-        <span class="chip-mini"><b>packing</b> <i>${sup2.packingTrait}</i> <em>(Load)</em></span>
+        <span class="chip-mini"><b>packing</b> <i>${sup2.packingTrait}</i> <em>(${load.supplierKey==='SMS'?'LTL':'Load'})</em></span>
         <span class="chip-mini"><b>condition</b> <i>${load.condTrait ?? '—'}</i> <em>(${esc(load.condName || '—')})</em></span>
         <span class="chip-mini"><b>manifested</b> <i>${load.manifestTrait ?? '—'}</i> <em>(${esc(load.manifestName || '—')})</em></span>
         <span class="chip-mini"><b>fobStates</b> <i>[${load.fobId ?? ''}]</i> <em>(${esc(load.fobName || '—')})</em></span>
-        <span class="chip-mini"><b>supplierId</b> <i>${sup2.erpSupplier}</i> <em>(Wayfair)</em></span>
+        <span class="chip-mini"><b>supplierId</b> <i>${sup2.erpSupplier}</i> <em>(${esc(sup2.label)})</em></span>
         ${(() => {
           const cats = [...(sup2.categoryIds || [])];
           if (load.manifestTrait === 603 && Array.isArray(sup2.manifestedCategoryIds)) cats.push(...sup2.manifestedCategoryIds);
-          const labels = { 201: 'Furniture', 56: 'Load Center' };
+          const labels = { 201: 'Furniture', 56: 'Load Center', 191: 'Assorted Mixed Lots' };
           const named  = cats.map(id => `${id}=${labels[id] || '?'}`).join(', ');
           return `<span class="chip-mini"><b>productCategories</b> <i>[${cats.join(',')}]</i> <em>(${named})</em></span>`;
         })()}
@@ -1066,13 +1211,24 @@ function attachHandlers() {
       const er = $('edit-' + idx);
       const load = loads[idx];
       const sup = SUPPLIERS[load.supplierKey] || SUPPLIERS.WYF;
+      const isSams = load.supplierKey === 'SMS';
       const f = k => er.querySelector(`[data-field="${k}"]`)?.value ?? null;
-      load.loadId  = (f('loadId') || '').trim().toUpperCase() || load.loadId;
+      load.loadId  = (f('loadId') || '').trim() || load.loadId;
+      if (!isSams) load.loadId = load.loadId.toUpperCase();
       load.locCode  = f('locCode')  || null;
-      load.typeCode = f('typeCode') || null;
-      // If locCode/typeCode changed re-derive; otherwise respect manual overrides from the review card
-      const autoSku = load.locCode && load.typeCode ? sup.buildSKU(load.locCode, load.typeCode, load.loadId) : null;
-      load.sku      = f('sku') || autoSku || load.sku;
+      load.typeCode = isSams ? 'GM' : (f('typeCode') || null);
+      if (isSams) load.seq = (f('seq') || '').trim() || null;
+      // If locCode changed re-derive; otherwise respect manual overrides from the review card.
+      // SMS uses (locCode, seq); WYF uses (locCode, typeCode, loadId).
+      let autoSku = null;
+      if (isSams) {
+        autoSku = load.locCode && load.seq ? sup.buildSKU(load.locCode, null, null, load.seq) : null;
+      } else {
+        autoSku = load.locCode && load.typeCode ? sup.buildSKU(load.locCode, load.typeCode, load.loadId) : null;
+      }
+      // The visible SKU input includes the env suffix — strip it before storing.
+      const rawTyped = (f('sku') || '').trim().replace(/-test$/, '');
+      load.sku      = rawTyped || autoSku || load.sku;
       load.name     = f('name') || sup.getProductName(load.typeCode, load.locCode);
       load.active   = Number(f('active') ?? 1);
       // Traits — user may have manually overridden; fall back to derived
@@ -1086,8 +1242,12 @@ function attachHandlers() {
       load.fobId   = fobVal ? Number(fobVal) : (load.locCode ? sup.fobIds[load.locCode] : null);
       load.fobName = load.locCode ? sup.fobNames[load.locCode] : '—';
       load.flags = [];
-      if (!load.locCode)  load.flags.push('Location not set');
-      if (!load.typeCode) load.flags.push('Type not set');
+      if (!load.locCode)  load.flags.push(isSams ? 'Club code not set' : 'Location not set');
+      if (isSams) {
+        if (!load.seq) load.flags.push('Sequence number required');
+      } else {
+        if (!load.typeCode) load.flags.push('Type not set');
+      }
       load.status = load.flags.length ? 'review' : 'ready';
       er.classList.remove('open');
       renderLoads();
@@ -1181,6 +1341,7 @@ function initSettings() {
       }
       saveEnv(next);
       applyEnvUI();
+      if (loads.length) renderLoads();  // re-render so the SKU suffix updates immediately
     };
   });
 }
@@ -1839,7 +2000,7 @@ function drawCfgUI() {
 
     <div class="cfg-block">
       <h3>SKU formula</h3>
-      <div class="cfg-hint">Tokens: <code>{loc}</code> <code>{type}</code> <code>{loadId}</code>. Anything else is literal text (including the <code>-test</code> suffix).</div>
+      <div class="cfg-hint">Tokens: <code>{loc}</code> <code>{type}</code> <code>{loadId}</code>. The <code>-test</code> suffix is appended automatically when the env switch is on TEST; on LIVE it's stripped — don't add it here.</div>
       <div class="cfg-row">
         <div class="cfg-field" style="grid-column:span 2;">
           <label>Template</label>
@@ -2020,30 +2181,45 @@ function bindCfgHandlers() {
 $('cfg-rules-btn').onclick = renderRulesEditor;
 
 // ── Supplier tabs ─────────────────────────────────────────────────────────────
+function applySupplierUI() {
+  const label = SUPPLIERS[activeSupplier]?.label || activeSupplier;
+  const sub = $('input-card-sub');
+  if (sub) {
+    sub.textContent = activeSupplier === 'SMS'
+      ? "One or multiple Sam's Club manifest emails — paste subjects or full bodies; manifest #s are auto-detected"
+      : `One or multiple ${label} load emails at once`;
+  }
+  const btn = $('cfg-rules-btn');
+  if (btn) {
+    // Rules editor only supports Wayfair today — hide for other suppliers.
+    btn.style.display = activeSupplier === 'WYF' ? '' : 'none';
+  }
+}
+
 document.querySelectorAll('.stab[data-supplier]').forEach(tab => {
   tab.onclick = () => {
-    document.querySelectorAll('.stab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    activeSupplier = tab.dataset.supplier;
+    const next = tab.dataset.supplier;
+    if (next === activeSupplier) return;
     // Clear loads when switching suppliers to avoid cross-supplier confusion
     if (loads.length) {
-      if (confirm('Switch to ' + (SUPPLIERS[activeSupplier]?.label || activeSupplier) + '? This will clear the current loads list.')) {
-        loads = [];
-        $('loads-section').style.display = 'none';
-        clearStatus($('push-status'));
-      } else {
-        // revert
-        document.querySelectorAll('.stab').forEach(t => t.classList.remove('active'));
-        document.querySelector('.stab[data-supplier="' + (loads[0]?.supplierKey || 'WYF') + '"]')?.classList.add('active');
-        activeSupplier = loads[0]?.supplierKey || 'WYF';
+      if (!confirm('Switch to ' + (SUPPLIERS[next]?.label || next) + '? This will clear the current loads list.')) {
+        return;  // user canceled — keep current tab + loads
       }
+      loads = [];
+      $('loads-section').style.display = 'none';
+      clearStatus($('push-status'));
     }
+    document.querySelectorAll('.stab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    activeSupplier = next;
+    applySupplierUI();
   };
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 applyRulesOverride();
 initSettings();
+applySupplierUI();
 })();
 </script>
 </body>
