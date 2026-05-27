@@ -197,6 +197,8 @@ textarea::placeholder { color: var(--text4); }
 .cfg-field input, .cfg-field textarea { background: var(--surface2); border: 1px solid var(--border2); border-radius: 6px; padding: 0.42rem 0.6rem; font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--text); width: 100%; }
 .cfg-field textarea { min-height: 60px; resize: vertical; }
 .cfg-field input:focus, .cfg-field textarea:focus { outline: none; border-color: var(--green); }
+.cfg-field .cfg-name { font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text3); margin-top: 0.25rem; }
+.cfg-field .cfg-name.unknown { color: var(--amber); }
 .cfg-table-wrap { overflow-x: auto; }
 .cfg-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
 .cfg-table th { text-align: left; font-family: 'DM Mono', monospace; font-size: 0.58rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text3); padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--border2); white-space: nowrap; }
@@ -788,6 +790,67 @@ function currentSamsRulesAsEditable() {
     manifestedCategoryIds: [...(s.manifestedCategoryIds || [])],
     clubs,
   };
+}
+
+// Friendly names for the numeric IDs displayed in the rules editor.
+// Sourced from the live products_traits + suppliers tables.
+const ID_NAMES = {
+  supplier: {
+    770:  'Wayfair',
+    1205: "Wal-Mart SAMS CLUB",
+  },
+  store: {
+    18: "Sam's Club store",
+    89: "Wayfair store",
+  },
+  status: {
+    1: 'Staged (triggers inventory side effects)',
+    2: 'Pending',
+    3: 'Canceled',
+    4: 'Arrived',
+    5: 'Picked up',
+    6: 'Released',
+    7: 'Scheduled',
+    8: 'Arrived yard',
+  },
+  packing: {
+    88:  'Load (legacy id from /dropdowns)',
+    196: 'Pallet',
+    198: 'Load',
+    203: 'LTL',
+  },
+  condition: {
+    61: 'New Overstock',
+    62: 'Shelf Pulls',
+    63: 'Customer Returns',
+  },
+  manifest: {
+    514: 'Unmanifested',
+    603: 'Manifested',
+  },
+  category: {
+    56:  'Load Center',
+    191: 'Assorted Mixed Lots',
+    201: 'Furniture',
+  },
+};
+function idName(kind, val) {
+  const v = Number(val);
+  if (!Number.isFinite(v)) return '';
+  return ID_NAMES[kind]?.[v] || '';
+}
+// Render a labeled input + a tiny "→ name" hint below. Falls back to a soft
+// amber "unknown" if the ID has no entry in the lookup table.
+function fieldWithName(label, kind, val, attrs) {
+  const n = idName(kind, val);
+  const hint = n
+    ? `<div class="cfg-name">→ ${esc(n)}</div>`
+    : `<div class="cfg-name unknown">→ name unknown (check IDs)</div>`;
+  return `<div class="cfg-field">
+    <label>${esc(label)}</label>
+    <input type="number" ${attrs} value="${esc(val)}">
+    ${hint}
+  </div>`;
 }
 
 function currentWyfRulesAsEditable() {
@@ -1879,17 +1942,19 @@ async function inboxFetch() {
   if (after)  params.set('after', after);
   if (before) params.set('before', before);
 
+  const url = '/api/gmail/messages?' + params.toString();
   setStatus($('inbox-status'), 'info', `Fetching messages with label "${label}"…`);
   let res;
   try {
-    res = await fetch('/api/gmail/messages?' + params.toString());
+    res = await fetch(url);
   } catch (err) {
     setStatus($('inbox-status'), 'err', `Network error: ${err.message}`);
     return;
   }
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok || !j.ok) {
-    setStatus($('inbox-status'), 'err', j.error || `HTTP ${res.status}`);
+  const j = await res.json().catch(() => null);
+  if (!res.ok || !j?.ok) {
+    const detail = j?.error || (j ? JSON.stringify(j) : '(empty body)');
+    setStatus($('inbox-status'), 'err', `HTTP ${res.status} from ${url} — ${detail}`);
     return;
   }
   const msgs = j.messages || [];
@@ -2324,10 +2389,10 @@ function drawCfgUISams() {
     <div class="cfg-block">
       <h3>Locked constants pushed on every SKU</h3>
       <div class="cfg-row">
-        <div class="cfg-field"><label>Supplier ID</label><input type="number" data-c="erpSupplier" value="${esc(d.erpSupplier)}"></div>
-        <div class="cfg-field"><label>Store ID</label><input type="number" data-c="storeId" value="${esc(d.storeId)}"></div>
-        <div class="cfg-field"><label>Status ID</label><input type="number" data-c="statusId" value="${esc(d.statusId)}"></div>
-        <div class="cfg-field"><label>Packing trait</label><input type="number" data-c="packingTrait" value="${esc(d.packingTrait)}"></div>
+        ${fieldWithName('Supplier ID',   'supplier', d.erpSupplier,  'data-c="erpSupplier"')}
+        ${fieldWithName('Store ID',      'store',    d.storeId,      'data-c="storeId"')}
+        ${fieldWithName('Status ID',     'status',   d.statusId,     'data-c="statusId"')}
+        ${fieldWithName('Packing trait', 'packing',  d.packingTrait, 'data-c="packingTrait"')}
         <div class="cfg-field"><label>PSKU</label><input type="text" data-c="psku" value="${esc(d.psku)}"></div>
         <div class="cfg-field"><label>Peachtree code</label><input type="text" data-c="ptCode" value="${esc(d.ptCode)}"></div>
         <div class="cfg-field"><label>Gmail label</label><input type="text" data-c="gmailLabel" value="${esc(d.gmailLabel)}" placeholder="posku"></div>
@@ -2465,10 +2530,10 @@ function drawCfgUIWyf() {
     <div class="cfg-block">
       <h3>Locked constants pushed on every SKU</h3>
       <div class="cfg-row">
-        <div class="cfg-field"><label>Supplier ID</label><input type="number" data-c="erpSupplier" value="${esc(d.erpSupplier)}"></div>
-        <div class="cfg-field"><label>Store ID</label><input type="number" data-c="storeId" value="${esc(d.storeId)}"></div>
-        <div class="cfg-field"><label>Status ID</label><input type="number" data-c="statusId" value="${esc(d.statusId)}"></div>
-        <div class="cfg-field"><label>Packing trait</label><input type="number" data-c="packingTrait" value="${esc(d.packingTrait)}"></div>
+        ${fieldWithName('Supplier ID',   'supplier', d.erpSupplier,  'data-c="erpSupplier"')}
+        ${fieldWithName('Store ID',      'store',    d.storeId,      'data-c="storeId"')}
+        ${fieldWithName('Status ID',     'status',   d.statusId,     'data-c="statusId"')}
+        ${fieldWithName('Packing trait', 'packing',  d.packingTrait, 'data-c="packingTrait"')}
         <div class="cfg-field"><label>PSKU</label><input type="text" data-c="psku" value="${esc(d.psku)}"></div>
         <div class="cfg-field"><label>Peachtree code</label><input type="text" data-c="ptCode" value="${esc(d.ptCode)}"></div>
         <div class="cfg-field"><label>Gmail label</label><input type="text" data-c="gmailLabel" value="${esc(d.gmailLabel)}" placeholder="posku"></div>
