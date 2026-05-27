@@ -46,6 +46,16 @@ h1 em { font-style: italic; color: var(--text2); }
 .settings-bar input:focus { outline: none; border-color: var(--green); }
 .settings-bar input.key { width: 360px; }
 
+/* TEST/LIVE environment switch — visible everywhere, hard to miss */
+.env-switch { display: inline-flex; border: 1px solid var(--border2); border-radius: 6px; overflow: hidden; font-family: 'DM Mono', monospace; font-size: 0.66rem; letter-spacing: 0.08em; }
+.env-switch button { background: var(--surface2); color: var(--text3); border: none; padding: 0.4rem 0.75rem; cursor: pointer; font-family: inherit; font-size: inherit; letter-spacing: inherit; }
+.env-switch button + button { border-left: 1px solid var(--border2); }
+.env-switch button.active[data-env="test"] { background: var(--green-dim); color: var(--green); }
+.env-switch button.active[data-env="live"] { background: rgba(239, 68, 68, 0.18); color: #ef4444; }
+.env-switch button:not(.active):hover { background: var(--surface3); color: var(--text); }
+body.env-live { box-shadow: inset 0 4px 0 #ef4444; }
+body.env-live::before { content: 'LIVE — ops.viatrading.com'; position: fixed; top: 0; right: 0; background: #ef4444; color: #fff; font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.12em; padding: 0.18rem 0.65rem; border-bottom-left-radius: 6px; z-index: 1000; pointer-events: none; }
+
 main { padding: 2rem 2.5rem; max-width: 1440px; margin: 0 auto; }
 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; margin-bottom: 1.5rem; }
@@ -203,11 +213,16 @@ textarea::placeholder { color: var(--text4); }
 </nav>
 
 <div class="settings-bar">
-  <label>ERP base URL</label>
-  <input type="url" id="cfg-url" placeholder="https://viatrading.biz">
-  <label>API key</label>
-  <input type="password" id="cfg-key" class="key" placeholder="ims_…">
-  <button class="btn ghost" id="cfg-save" style="margin-left:0.25rem;">Save</button>
+  <label data-cfg-only>ERP base URL</label>
+  <input type="url" id="cfg-url" placeholder="https://viatrading.biz" data-cfg-only>
+  <label data-cfg-only>API key</label>
+  <input type="password" id="cfg-key" class="key" placeholder="ims_…" data-cfg-only>
+  <button class="btn ghost" id="cfg-save" style="margin-left:0.25rem;" data-cfg-only>Save</button>
+  <label style="margin-left:0.25rem;">Env</label>
+  <div class="env-switch" id="env-switch" role="group" aria-label="API environment">
+    <button data-env="test" class="active" title="viatrading.biz — test/staging">TEST</button>
+    <button data-env="live" title="ops.viatrading.com — production, writes are real">LIVE</button>
+  </div>
   <button class="btn ghost" id="cfg-dropdowns" style="margin-left:0.25rem;">Check IDs</button>
   <button class="btn ghost" id="cfg-rules-btn" style="margin-left:0.25rem;">Wayfair rules ⚙</button>
   <a href="diagnostic.html" target="_blank" class="btn ghost" style="margin-left:0.25rem;text-decoration:none;">Diagnostics →</a>
@@ -473,6 +488,14 @@ function loadCfg() {
 }
 function saveCfg(c) { localStorage.setItem(LS_CFG, JSON.stringify(c)); }
 
+// ── API environment (TEST = viatrading.biz / LIVE = ops.viatrading.com) ──────
+const LS_ENV = 'posku.env.v1';
+function loadEnv() {
+  const v = localStorage.getItem(LS_ENV);
+  return v === 'live' ? 'live' : 'test';
+}
+function saveEnv(v) { localStorage.setItem(LS_ENV, v === 'live' ? 'live' : 'test'); }
+
 // ── Rules override (localStorage, browser-local) ─────────────────────────────
 const LS_RULES = 'posku.rules.v1';
 function loadRulesOverride() {
@@ -652,11 +675,14 @@ async function erpRequest(method, path, body) {
   const headers = { 'Content-Type': 'application/json' };
   if (IS_LOCAL_FILE) {
     if (!cfg.apiKey) return { ok: false, error: 'No API key configured. Set it in the settings bar above.' };
-    const base = (cfg.baseUrl || 'https://viatrading.biz').replace(/\/+$/, '');
+    // In local-file mode the env switch picks the base URL directly.
+    const envBase = loadEnv() === 'live' ? 'https://ops.viatrading.com' : 'https://viatrading.biz';
+    const base = (cfg.baseUrl || envBase).replace(/\/+$/, '');
     url = base + path;
     headers['api-key'] = cfg.apiKey;
   } else {
     url = path;  // proxied by /functions/api/[[path]].js
+    headers['X-Posku-Env'] = loadEnv();  // proxy reads this to pick BIZ vs OPS key
   }
   try {
     const opts = { method, headers };
@@ -1103,6 +1129,7 @@ async function doPush(indices) {
     const result = await pushLoad(load);
     if (result.ok) {
       load.status = 'done';
+      load.selected = true;  // auto-select so Generate PO is ready without a second click
       load.productId = result.erpId;
       load.erpResult = `ERP id: ${result.erpId ?? 'n/a'}`;
     } else if (result.skipped) {
@@ -1125,6 +1152,14 @@ async function doPush(indices) {
 }
 
 // ── Settings bar ─────────────────────────────────────────────────────────────
+function applyEnvUI() {
+  const env = loadEnv();
+  document.querySelectorAll('#env-switch button').forEach(b => {
+    b.classList.toggle('active', b.dataset.env === env);
+  });
+  document.body.classList.toggle('env-live', env === 'live');
+}
+
 function initSettings() {
   const cfg = loadCfg();
   $('cfg-url').value = cfg.baseUrl || 'https://viatrading.biz';
@@ -1132,10 +1167,22 @@ function initSettings() {
   // On Cloudflare Pages the API key lives as a server-side secret; hide the
   // browser-side key + base URL fields and show a status pill instead.
   if (!IS_LOCAL_FILE) {
-    ['cfg-url','cfg-key','cfg-save'].forEach(id => { const el = $(id); if (el) el.style.display = 'none'; });
-    document.querySelectorAll('.settings-bar label').forEach(l => { l.style.display = 'none'; });
+    document.querySelectorAll('[data-cfg-only]').forEach(el => { el.style.display = 'none'; });
     $('cfg-status').innerHTML = '<span class="chip green" style="background:var(--green-dim);color:var(--green);">Cloudflare proxy · key on server</span>';
   }
+  applyEnvUI();
+  document.querySelectorAll('#env-switch button').forEach(b => {
+    b.onclick = () => {
+      const next = b.dataset.env;
+      if (next === loadEnv()) return;
+      if (next === 'live') {
+        const ok = confirm('Switch to LIVE (ops.viatrading.com)?\n\nWrites will hit production. Continue?');
+        if (!ok) return;
+      }
+      saveEnv(next);
+      applyEnvUI();
+    };
+  });
 }
 
 $('cfg-save').onclick = () => {
