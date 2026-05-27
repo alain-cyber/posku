@@ -20,8 +20,8 @@ export async function onRequest(context) {
   // Gmail integration has its own handler at /api/gmail/* — pass through if
   // it somehow lands here (defensive; the static route file should win).
   const segs = Array.isArray(params.path) ? params.path : (params.path ? [params.path] : []);
-  if (segs[0] === 'gmail') {
-    return jsonError(404, 'gmail subpath not handled by ERP proxy');
+  if (segs[0] === 'gmail' || segs[0] === 'rules') {
+    return jsonError(404, `${segs[0]} subpath not handled by ERP proxy`);
   }
 
   const envName = (request.headers.get('X-Posku-Env') || 'test').toLowerCase();

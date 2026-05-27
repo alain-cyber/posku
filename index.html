@@ -660,12 +660,39 @@ function withEnvSuffix(sku) {
 }
 
 // ── Rules override (localStorage, browser-local) ─────────────────────────────
-const LS_RULES = 'posku.rules.v1';
-function loadRulesOverride() {
-  try { return JSON.parse(localStorage.getItem(LS_RULES)) || {}; } catch { return {}; }
+// Master rules live in Cloudflare KV (server-side), fetched once at startup
+// and cached here so callers stay synchronous. Saves PUT to the same endpoint
+// so every user sees the new rules on next page load.
+let __rulesCache = {};
+let __rulesLoaded = false;
+async function refreshRulesFromServer() {
+  try {
+    const r = await fetch('/api/rules', { cache: 'no-store' });
+    if (!r.ok) {
+      console.warn('[Posku] rules fetch failed:', r.status, await r.text());
+      return;
+    }
+    const j = await r.json();
+    if (j?.ok) __rulesCache = j.rules || {};
+  } catch (err) {
+    console.warn('[Posku] rules fetch error (using JS defaults):', err);
+  } finally {
+    __rulesLoaded = true;
+  }
 }
-function saveRulesOverride(o) { localStorage.setItem(LS_RULES, JSON.stringify(o)); }
-function clearRulesOverride() { localStorage.removeItem(LS_RULES); }
+function loadRulesOverride() { return __rulesCache; }
+async function saveRulesOverride(o) {
+  __rulesCache = o;
+  const r = await fetch('/api/rules', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(o),
+  });
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    throw new Error(j.error || `HTTP ${r.status}`);
+  }
+}
 
 function applyRulesOverride() {
   const ov = loadRulesOverride();
@@ -674,7 +701,7 @@ function applyRulesOverride() {
   const w = ov.WYF;
   const wyf = SUPPLIERS.WYF;
   if (w.skuTemplate) wyf.skuTemplate = w.skuTemplate;
-  ['erpSupplier','storeId','psku','ptCode','statusId','packingTrait','defaultManifestTrait','defaultManifestName'].forEach(k => {
+  ['erpSupplier','storeId','psku','ptCode','statusId','packingTrait','defaultManifestTrait','defaultManifestName','gmailLabel'].forEach(k => {
     if (w[k] !== undefined && w[k] !== '') wyf[k] = (typeof wyf[k] === 'number') ? Number(w[k]) : w[k];
   });
   if (Array.isArray(w.locations) && w.locations.length) {
@@ -714,7 +741,7 @@ function applyRulesOverride() {
 
 function applySamsRulesOverride(s) {
   const sms = SUPPLIERS.SMS;
-  ['erpSupplier','storeId','psku','ptCode','statusId','packingTrait','skuTemplate'].forEach(k => {
+  ['erpSupplier','storeId','psku','ptCode','statusId','packingTrait','skuTemplate','gmailLabel'].forEach(k => {
     if (s[k] !== undefined && s[k] !== '') sms[k] = (typeof sms[k] === 'number') ? Number(s[k]) : s[k];
   });
   if (Array.isArray(s.categoryIds))           sms.categoryIds           = s.categoryIds.map(Number).filter(n => Number.isFinite(n));
@@ -756,6 +783,7 @@ function currentSamsRulesAsEditable() {
     ptCode:                s.ptCode,
     statusId:              s.statusId,
     packingTrait:          s.packingTrait,
+    gmailLabel:            s.gmailLabel || 'posku',
     categoryIds:           [...(s.categoryIds || [])],
     manifestedCategoryIds: [...(s.manifestedCategoryIds || [])],
     clubs,
@@ -773,6 +801,7 @@ function currentWyfRulesAsEditable() {
     ptCode:       w.ptCode,
     statusId:     w.statusId,
     packingTrait: w.packingTrait,
+    gmailLabel:   w.gmailLabel || 'posku',
     locations: w.locations.map(loc => ({
       code: loc.code, label: loc.label,
       fobId:   w.fobIds[loc.code]   ?? '',
@@ -2301,6 +2330,7 @@ function drawCfgUISams() {
         <div class="cfg-field"><label>Packing trait</label><input type="number" data-c="packingTrait" value="${esc(d.packingTrait)}"></div>
         <div class="cfg-field"><label>PSKU</label><input type="text" data-c="psku" value="${esc(d.psku)}"></div>
         <div class="cfg-field"><label>Peachtree code</label><input type="text" data-c="ptCode" value="${esc(d.ptCode)}"></div>
+        <div class="cfg-field"><label>Gmail label</label><input type="text" data-c="gmailLabel" value="${esc(d.gmailLabel)}" placeholder="posku"></div>
       </div>
     </div>
 
@@ -2385,20 +2415,25 @@ function bindCfgHandlersSams() {
     cfgDraft.clubs.push({ manifestPrefix: '', code: '', city: '', fobId: '', fobName: '' });
     drawCfgUI();
   };
-  $('cfg-save-btn').onclick = () => {
-    const cur = loadRulesOverride();
+  $('cfg-save-btn').onclick = async () => {
+    const cur = { ...loadRulesOverride() };
     cur.SMS = cfgDraft;
-    saveRulesOverride(cur);
-    applyRulesOverride();
-    $('cfg-save-status').textContent = `Saved ✓ at ${new Date().toLocaleTimeString()}`;
-    if (loads.length) renderLoads();
+    $('cfg-save-status').textContent = 'Saving…';
+    try {
+      await saveRulesOverride(cur);
+      applyRulesOverride();
+      $('cfg-save-status').textContent = `Saved ✓ at ${new Date().toLocaleTimeString()} — all users see these rules`;
+      if (loads.length) renderLoads();
+    } catch (err) {
+      $('cfg-save-status').textContent = `Save failed: ${err.message}`;
+    }
   };
-  $('cfg-reset-btn').onclick = () => {
-    if (!confirm("Reset Sam's Club rules to built-in defaults? Your saved rules will be lost.")) return;
-    const cur = loadRulesOverride();
+  $('cfg-reset-btn').onclick = async () => {
+    if (!confirm("Reset Sam's Club rules to built-in defaults for ALL users? Saved rules will be lost.")) return;
+    const cur = { ...loadRulesOverride() };
     delete cur.SMS;
-    saveRulesOverride(cur);
-    location.reload();
+    try { await saveRulesOverride(cur); location.reload(); }
+    catch (err) { $('cfg-save-status').textContent = `Reset failed: ${err.message}`; }
   };
   $('cfg-close-btn').onclick = () => { $('cfg-section').style.display = 'none'; };
 }
@@ -2436,6 +2471,7 @@ function drawCfgUIWyf() {
         <div class="cfg-field"><label>Packing trait</label><input type="number" data-c="packingTrait" value="${esc(d.packingTrait)}"></div>
         <div class="cfg-field"><label>PSKU</label><input type="text" data-c="psku" value="${esc(d.psku)}"></div>
         <div class="cfg-field"><label>Peachtree code</label><input type="text" data-c="ptCode" value="${esc(d.ptCode)}"></div>
+        <div class="cfg-field"><label>Gmail label</label><input type="text" data-c="gmailLabel" value="${esc(d.gmailLabel)}" placeholder="posku"></div>
       </div>
     </div>
 
@@ -2577,20 +2613,25 @@ function bindCfgHandlers() {
     cfgDraft.hdoLocations = $('cfg-hdo').value.split(',').map(s => s.trim()).filter(Boolean);
   };
   // Actions
-  $('cfg-save-btn').onclick = () => {
-    const cur = loadRulesOverride();
+  $('cfg-save-btn').onclick = async () => {
+    const cur = { ...loadRulesOverride() };
     cur.WYF = cfgDraft;
-    saveRulesOverride(cur);
-    applyRulesOverride();
-    $('cfg-save-status').textContent = `Saved ✓ at ${new Date().toLocaleTimeString()}`;
-    if (loads.length) renderLoads();
+    $('cfg-save-status').textContent = 'Saving…';
+    try {
+      await saveRulesOverride(cur);
+      applyRulesOverride();
+      $('cfg-save-status').textContent = `Saved ✓ at ${new Date().toLocaleTimeString()} — all users see these rules`;
+      if (loads.length) renderLoads();
+    } catch (err) {
+      $('cfg-save-status').textContent = `Save failed: ${err.message}`;
+    }
   };
-  $('cfg-reset-btn').onclick = () => {
-    if (!confirm('Reset Wayfair rules to built-in defaults? Your saved rules will be lost.')) return;
-    const cur = loadRulesOverride();
+  $('cfg-reset-btn').onclick = async () => {
+    if (!confirm('Reset Wayfair rules to built-in defaults for ALL users? Saved rules will be lost.')) return;
+    const cur = { ...loadRulesOverride() };
     delete cur.WYF;
-    saveRulesOverride(cur);
-    location.reload();
+    try { await saveRulesOverride(cur); location.reload(); }
+    catch (err) { $('cfg-save-status').textContent = `Reset failed: ${err.message}`; }
   };
   $('cfg-close-btn').onclick = () => { $('cfg-section').style.display = 'none'; };
 }
@@ -2640,14 +2681,20 @@ document.querySelectorAll('.stab[data-supplier]').forEach(tab => {
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-applyTheme();  // before initSettings so theme button shows correct label
+applyTheme();
 document.getElementById('cfg-theme').onclick = () => {
   saveTheme(loadTheme() === 'dark' ? 'light' : 'dark');
   applyTheme();
 };
-applyRulesOverride();
 initSettings();
 applySupplierUI();
+// Fetch master rules from KV, then apply. JS defaults stand in until this
+// resolves so the app is usable even on a cold start or KV outage.
+(async () => {
+  await refreshRulesFromServer();
+  applyRulesOverride();
+  if (loads.length) renderLoads();
+})();
 })();
 </script>
 </body>

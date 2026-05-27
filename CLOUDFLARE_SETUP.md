@@ -45,6 +45,50 @@ server-side secret. Cloudflare Access (Zero Trust) gates the URL behind Google O
 Pages → **Custom domains** → add e.g. `posku.viatrading.com`. Cloudflare will give you the
 CNAME/AAAA to point at it. Once live, update the Access application domain to the new URL.
 
+### 5. Bind the KV namespace for master rules
+
+Rules (Wayfair + Sam's Club config, club mappings, SKU templates, etc.) are stored in
+Cloudflare KV so every user sees the same values. The app falls back to JS defaults if
+KV isn't bound yet, so the order doesn't matter — but until you do this, saves will fail.
+
+1. Cloudflare dashboard → **Workers & Pages** → **KV** → **Create a namespace**.
+   - **Name**: `posku-rules`
+2. Pages project → **Settings** → **Functions** → **KV namespace bindings** → **Add binding**.
+   - **Variable name**: `POSKU_RULES` (must be exactly this; the code reads `env.POSKU_RULES`)
+   - **KV namespace**: select `posku-rules`
+3. Save and **Retry deployment**.
+
+To verify: visit `https://posku.pages.dev/api/rules` directly. You should see
+`{"ok":true,"rules":{}}`. If you see an error mentioning KV not bound, the binding name
+is wrong.
+
+### 6. Gmail service account (for the "Fetch from inbox" feature)
+
+Lets the app pull labeled emails from a shared workflow mailbox without per-user OAuth.
+
+1. **Google Cloud Console** → **APIs & Services** → **Enable APIs** → search **Gmail API** → Enable.
+2. **IAM & Admin** → **Service Accounts** → **Create service account**.
+   - **Name**: `posku-gmail-reader`
+   - Skip role grants and skip user access.
+3. Open the service account → **Keys** → **Add key** → **Create new key** → **JSON**.
+   Save the JSON file; you'll need two values from it:
+   - `client_email` (e.g. `posku-gmail-reader@your-project.iam.gserviceaccount.com`)
+   - `private_key` (the long `-----BEGIN PRIVATE KEY-----...` string)
+4. Service account → **Details** tab → enable **Domain-wide delegation**. Copy the
+   **Client ID** (numeric, ~21 digits).
+5. **Google Workspace admin** (admin.google.com) → **Security** → **Access and data control**
+   → **API controls** → **Manage domain-wide delegation** → **Add new**.
+   - **Client ID**: the numeric ID from step 4.
+   - **OAuth scopes**: `https://www.googleapis.com/auth/gmail.readonly`
+   - Authorize.
+6. Pages project → **Settings** → **Environment variables** → **Production**, add (encrypt all three):
+   - `GMAIL_SA_EMAIL`         = the `client_email` from step 3
+   - `GMAIL_SA_PRIVATE_KEY`   = the `private_key` from step 3 (paste the full PEM including
+     `BEGIN/END` lines; Cloudflare preserves the newlines)
+   - `GMAIL_IMPERSONATE_USER` = the mailbox to read from (e.g. `posku-inbox@viatrading.com`)
+7. **Retry deployment**. Visit `/api/gmail/messages?label=posku` to verify — `ok:true`
+   with an empty `messages` array means it worked.
+
 ## How the code is wired
 
 | Concern | Local file mode (`file://`) | Cloudflare Pages mode |
