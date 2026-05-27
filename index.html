@@ -26,6 +26,26 @@
   --blue: #1f5fbf;
   --blue-dim: rgba(31,95,191,0.10);
 }
+body.theme-dark {
+  --bg: #0e0f0c;
+  --surface: #17181a;
+  --surface2: #1f2124;
+  --surface3: #2a2c30;
+  --border: rgba(255,255,255,0.10);
+  --border2: rgba(255,255,255,0.18);
+  --text: #ebebe5;
+  --text2: #c4c5be;
+  --text3: #8d8f87;
+  --text4: #5e605a;
+  --green: #57c994;
+  --green-dim: rgba(87,201,148,0.14);
+  --red: #f06a5e;
+  --red-dim: rgba(240,106,94,0.14);
+  --amber: #d4a64c;
+  --amber-dim: rgba(212,166,76,0.14);
+  --blue: #6ea8fc;
+  --blue-dim: rgba(110,168,252,0.14);
+}
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-serif; min-height: 100vh; }
 
@@ -226,6 +246,7 @@ textarea::placeholder { color: var(--text4); }
   <button class="btn ghost" id="cfg-dropdowns" style="margin-left:0.25rem;">Check IDs</button>
   <button class="btn ghost" id="cfg-rules-btn" style="margin-left:0.25rem;">Wayfair rules ⚙</button>
   <a href="diagnostic.html" target="_blank" class="btn ghost" style="margin-left:0.25rem;text-decoration:none;">Diagnostics →</a>
+  <button class="btn ghost" id="cfg-theme" style="margin-left:0.25rem;" title="Toggle light/dark theme">Theme</button>
   <span id="cfg-status" style="font-family:'DM Mono',monospace;font-size:0.68rem;color:var(--text4);"></span>
 </div>
 
@@ -574,6 +595,20 @@ function loadCfg() {
 }
 function saveCfg(c) { localStorage.setItem(LS_CFG, JSON.stringify(c)); }
 
+// ── Theme (dark default, persists per-browser) ───────────────────────────────
+const LS_THEME = 'posku.theme.v1';
+function loadTheme() {
+  const v = localStorage.getItem(LS_THEME);
+  return v === 'light' ? 'light' : 'dark';
+}
+function saveTheme(v) { localStorage.setItem(LS_THEME, v === 'light' ? 'light' : 'dark'); }
+function applyTheme() {
+  const t = loadTheme();
+  document.body.classList.toggle('theme-dark', t === 'dark');
+  const btn = document.getElementById('cfg-theme');
+  if (btn) btn.textContent = t === 'dark' ? '☾ Dark' : '☀ Light';
+}
+
 // ── API environment (TEST = viatrading.biz / LIVE = ops.viatrading.com) ──────
 const LS_ENV = 'posku.env.v1';
 function loadEnv() {
@@ -603,6 +638,7 @@ function clearRulesOverride() { localStorage.removeItem(LS_RULES); }
 
 function applyRulesOverride() {
   const ov = loadRulesOverride();
+  if (ov.SMS) applySamsRulesOverride(ov.SMS);
   if (!ov.WYF) return;
   const w = ov.WYF;
   const wyf = SUPPLIERS.WYF;
@@ -645,7 +681,57 @@ function applyRulesOverride() {
   }
 }
 
+function applySamsRulesOverride(s) {
+  const sms = SUPPLIERS.SMS;
+  ['erpSupplier','storeId','psku','ptCode','statusId','packingTrait','skuTemplate'].forEach(k => {
+    if (s[k] !== undefined && s[k] !== '') sms[k] = (typeof sms[k] === 'number') ? Number(s[k]) : s[k];
+  });
+  if (Array.isArray(s.categoryIds))           sms.categoryIds           = s.categoryIds.map(Number).filter(n => Number.isFinite(n));
+  if (Array.isArray(s.manifestedCategoryIds)) sms.manifestedCategoryIds = s.manifestedCategoryIds.map(Number).filter(n => Number.isFinite(n));
+  if (Array.isArray(s.clubs) && s.clubs.length) {
+    sms.fobIds = {}; sms.fobNames = {}; sms.clubCities = {}; sms.clubByManifest = {};
+    s.clubs.forEach(c => {
+      if (!c.code) return;
+      sms.fobIds[c.code]      = Number(c.fobId) || null;
+      sms.fobNames[c.code]    = c.fobName || '';
+      sms.clubCities[c.code]  = c.city || '';
+      if (c.manifestPrefix)   sms.clubByManifest[String(c.manifestPrefix)] = c.code;
+    });
+  }
+}
+
 function currentRulesAsEditable() {
+  return activeSupplier === 'SMS' ? currentSamsRulesAsEditable() : currentWyfRulesAsEditable();
+}
+
+function currentSamsRulesAsEditable() {
+  const s = SUPPLIERS.SMS;
+  // Build clubs array from clubByManifest (manifestPrefix is the source of truth for SMS)
+  const inv = {};
+  Object.entries(s.clubByManifest).forEach(([prefix, code]) => { (inv[code] = inv[code] || []).push(prefix); });
+  const codes = new Set([...Object.keys(s.fobIds), ...Object.values(s.clubByManifest)]);
+  const clubs = [...codes].sort().map(code => ({
+    code,
+    manifestPrefix: (inv[code] || []).join(', '),
+    city:    s.clubCities?.[code] || '',
+    fobId:   s.fobIds[code]   ?? '',
+    fobName: s.fobNames[code] ?? '',
+  }));
+  return {
+    skuTemplate:           s.skuTemplate,
+    erpSupplier:           s.erpSupplier,
+    storeId:               s.storeId,
+    psku:                  s.psku,
+    ptCode:                s.ptCode,
+    statusId:              s.statusId,
+    packingTrait:          s.packingTrait,
+    categoryIds:           [...(s.categoryIds || [])],
+    manifestedCategoryIds: [...(s.manifestedCategoryIds || [])],
+    clubs,
+  };
+}
+
+function currentWyfRulesAsEditable() {
   // Snapshot the live SUPPLIERS.WYF (which already reflects saved overrides) as an editable plain object
   const w = SUPPLIERS.WYF;
   return {
@@ -2062,9 +2148,148 @@ function renderRulesEditor() {
 }
 
 function drawCfgUI() {
+  if (activeSupplier === 'SMS') return drawCfgUISams();
+  return drawCfgUIWyf();
+}
+
+function drawCfgUISams() {
   const sec = $('cfg-section');
   const d = cfgDraft;
-  const hasOverride = !!localStorage.getItem(LS_RULES);
+  const hasOverride = !!loadRulesOverride().SMS;
+  sec.innerHTML = `
+    <div class="cfg-title">Sam's Club rules</div>
+    <div class="cfg-sub">Browser-local · saved to your browser only (other users see defaults)</div>
+
+    <div class="cfg-block">
+      <h3>SKU formula</h3>
+      <div class="cfg-hint">Tokens: <code>{loc}</code> (club code) and <code>{seq}</code> (per-club running counter, fetched live from the ERP). The <code>-test</code> suffix is appended automatically when the env switch is on TEST.</div>
+      <div class="cfg-row">
+        <div class="cfg-field" style="grid-column:span 2;">
+          <label>Template</label>
+          <input type="text" data-c="skuTemplate" value="${esc(d.skuTemplate)}">
+        </div>
+        <div class="cfg-field" style="grid-column:span 2;">
+          <label>Preview (example: IF + 143)</label>
+          <input type="text" id="cfg-sku-preview" value="${esc(d.skuTemplate.replace('{loc}','IF').replace('{seq}','143'))}" disabled style="background:var(--surface3);color:var(--text2);">
+        </div>
+      </div>
+    </div>
+
+    <div class="cfg-block">
+      <h3>Locked constants pushed on every SKU</h3>
+      <div class="cfg-row">
+        <div class="cfg-field"><label>Supplier ID</label><input type="number" data-c="erpSupplier" value="${esc(d.erpSupplier)}"></div>
+        <div class="cfg-field"><label>Store ID</label><input type="number" data-c="storeId" value="${esc(d.storeId)}"></div>
+        <div class="cfg-field"><label>Status ID</label><input type="number" data-c="statusId" value="${esc(d.statusId)}"></div>
+        <div class="cfg-field"><label>Packing trait</label><input type="number" data-c="packingTrait" value="${esc(d.packingTrait)}"></div>
+        <div class="cfg-field"><label>PSKU</label><input type="text" data-c="psku" value="${esc(d.psku)}"></div>
+        <div class="cfg-field"><label>Peachtree code</label><input type="text" data-c="ptCode" value="${esc(d.ptCode)}"></div>
+      </div>
+    </div>
+
+    <div class="cfg-block">
+      <h3>Product categories</h3>
+      <div class="cfg-hint">Category IDs applied to every Sam's load. Comma-separated. Defaults: <code>191</code> (Assorted Mixed Lots) and <code>56</code> (Load Center).</div>
+      <div class="cfg-row">
+        <div class="cfg-field" style="grid-column:span 4;">
+          <input type="text" id="cfg-sms-cats" value="${esc(d.categoryIds.join(', '))}">
+        </div>
+      </div>
+    </div>
+
+    <div class="cfg-block">
+      <h3>Sam's Club locations</h3>
+      <div class="cfg-hint">First 4 digits of the manifest # determine the club. Add/edit rows here when a new Sam's Club starts liquidating. <strong>Code</strong> is the 2-4 letter abbreviation that goes into the SKU.</div>
+      <div class="cfg-table-wrap">
+        <table class="cfg-table">
+          <thead><tr>
+            <th class="narrow">Manifest prefix</th>
+            <th class="narrow">Code</th>
+            <th>City</th>
+            <th class="narrow">FOB state id</th>
+            <th>FOB state name</th>
+            <th class="x-col"></th>
+          </tr></thead>
+          <tbody id="cfg-sms-club-body">
+            ${d.clubs.map((c, i) => samsClubRow(c, i)).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:0.5rem;"><button class="btn ghost" id="cfg-sms-add-club">+ Add club</button></div>
+    </div>
+
+    <div class="cfg-actions">
+      <button class="btn" id="cfg-save-btn">Save rules</button>
+      <button class="btn ghost" id="cfg-reset-btn" ${hasOverride ? '' : 'disabled'}>Reset to defaults</button>
+      <button class="btn ghost" id="cfg-close-btn">Close</button>
+      <span class="cfg-status" id="cfg-save-status">${hasOverride ? 'Currently using saved overrides.' : 'Using built-in defaults.'}</span>
+    </div>
+  `;
+  bindCfgHandlersSams();
+}
+
+function samsClubRow(c, i) {
+  return `<tr data-sci="${i}">
+    <td class="narrow"><input data-sck="manifestPrefix" value="${esc(c.manifestPrefix)}" placeholder="6345"></td>
+    <td class="narrow"><input data-sck="code" value="${esc(c.code)}" placeholder="IF"></td>
+    <td><input data-sck="city" value="${esc(c.city)}" placeholder="Idaho Falls, ID"></td>
+    <td class="narrow"><input data-sck="fobId" type="number" value="${esc(c.fobId)}"></td>
+    <td><input data-sck="fobName" value="${esc(c.fobName)}" placeholder="Idaho"></td>
+    <td class="x-col"><button class="x-btn" data-sms-club-del="${i}" title="Remove">×</button></td>
+  </tr>`;
+}
+
+function bindCfgHandlersSams() {
+  $('cfg-section').querySelectorAll('input[data-c]').forEach(el => {
+    el.oninput = () => {
+      const k = el.dataset.c;
+      cfgDraft[k] = ['erpSupplier','storeId','statusId','packingTrait'].includes(k) ? Number(el.value) : el.value;
+      if (k === 'skuTemplate') {
+        $('cfg-sku-preview').value = cfgDraft.skuTemplate.replace('{loc}','IF').replace('{seq}','143');
+      }
+    };
+  });
+  $('cfg-sms-cats').oninput = () => {
+    cfgDraft.categoryIds = $('cfg-sms-cats').value.split(',').map(s => parseInt(s.trim(), 10)).filter(Number.isFinite);
+  };
+  $('cfg-sms-club-body').querySelectorAll('input[data-sck]').forEach(el => {
+    el.oninput = () => {
+      const i = +el.closest('tr').dataset.sci;
+      cfgDraft.clubs[i][el.dataset.sck] = el.value;
+    };
+  });
+  $('cfg-sms-club-body').querySelectorAll('[data-sms-club-del]').forEach(b => {
+    b.onclick = () => {
+      cfgDraft.clubs.splice(+b.dataset.smsClubDel, 1);
+      drawCfgUI();
+    };
+  });
+  $('cfg-sms-add-club').onclick = () => {
+    cfgDraft.clubs.push({ manifestPrefix: '', code: '', city: '', fobId: '', fobName: '' });
+    drawCfgUI();
+  };
+  $('cfg-save-btn').onclick = () => {
+    const cur = loadRulesOverride();
+    cur.SMS = cfgDraft;
+    saveRulesOverride(cur);
+    applyRulesOverride();
+    $('cfg-save-status').textContent = `Saved ✓ at ${new Date().toLocaleTimeString()}`;
+    if (loads.length) renderLoads();
+  };
+  $('cfg-reset-btn').onclick = () => {
+    if (!confirm("Reset Sam's Club rules to built-in defaults? Your saved rules will be lost.")) return;
+    const cur = loadRulesOverride();
+    delete cur.SMS;
+    saveRulesOverride(cur);
+    location.reload();
+  };
+  $('cfg-close-btn').onclick = () => { $('cfg-section').style.display = 'none'; };
+}
+
+function drawCfgUIWyf() {
+  const sec = $('cfg-section');
+  const d = cfgDraft;
+  const hasOverride = !!loadRulesOverride().WYF;
 
   sec.innerHTML = `
     <div class="cfg-title">Wayfair rules</div>
@@ -2236,15 +2461,18 @@ function bindCfgHandlers() {
   };
   // Actions
   $('cfg-save-btn').onclick = () => {
-    saveRulesOverride({ WYF: cfgDraft });
+    const cur = loadRulesOverride();
+    cur.WYF = cfgDraft;
+    saveRulesOverride(cur);
     applyRulesOverride();
     $('cfg-save-status').textContent = `Saved ✓ at ${new Date().toLocaleTimeString()}`;
-    // Re-render any existing loads with new rules
     if (loads.length) renderLoads();
   };
   $('cfg-reset-btn').onclick = () => {
-    if (!confirm('Reset to built-in defaults? Your saved rules will be lost.')) return;
-    clearRulesOverride();
+    if (!confirm('Reset Wayfair rules to built-in defaults? Your saved rules will be lost.')) return;
+    const cur = loadRulesOverride();
+    delete cur.WYF;
+    saveRulesOverride(cur);
     location.reload();
   };
   $('cfg-close-btn').onclick = () => { $('cfg-section').style.display = 'none'; };
@@ -2263,8 +2491,14 @@ function applySupplierUI() {
   }
   const btn = $('cfg-rules-btn');
   if (btn) {
-    // Rules editor only supports Wayfair today — hide for other suppliers.
-    btn.style.display = activeSupplier === 'WYF' ? '' : 'none';
+    btn.style.display = '';
+    btn.textContent = `${label} rules ⚙`;
+  }
+  // If the rules section is open, redraw with the new supplier's editor
+  const sec = $('cfg-section');
+  if (sec && sec.style.display === 'block') {
+    cfgDraft = currentRulesAsEditable();
+    drawCfgUI();
   }
 }
 
@@ -2289,6 +2523,11 @@ document.querySelectorAll('.stab[data-supplier]').forEach(tab => {
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+applyTheme();  // before initSettings so theme button shows correct label
+document.getElementById('cfg-theme').onclick = () => {
+  saveTheme(loadTheme() === 'dark' ? 'light' : 'dark');
+  applyTheme();
+};
 applyRulesOverride();
 initSettings();
 applySupplierUI();
