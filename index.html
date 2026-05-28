@@ -1964,12 +1964,12 @@ async function inboxFetch() {
   }
   const msgs = j.messages || [];
   if (!msgs.length) {
-    setStatus($('inbox-status'), 'warn', `No messages found for query: ${j.query}`);
+    setStatus($('inbox-status'), 'warn', `No messages found. Gmail query: \`${j.query}\` · note: Gmail's before: is exclusive — pick a To date AT LEAST one day after the last email you want included.`);
     return;
   }
 
   // Parse every message body with the current supplier's parser; merge results.
-  setStatus($('inbox-status'), 'info', `Parsing ${msgs.length} message(s) with the ${sup.label} parser…`);
+  setStatus($('inbox-status'), 'info', `Got ${msgs.length} message(s) for query \`${j.query}\` — parsing with ${sup.label}…`);
   const allFound = [];
   for (const m of msgs) {
     const blob = `${m.subject}\n\n${m.body || m.snippet}`;

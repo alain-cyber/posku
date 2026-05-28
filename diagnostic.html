@@ -160,11 +160,15 @@ async function runAll() {
     const probes = [
       { label: '6a · Gmail probe (no dates) — what the manual browser test hits',
         url: '/api/gmail/messages?label=posku' },
-      { label: '6b · Gmail probe (after=today&before=today) — same URL the app builds',
+      { label: '6b · Gmail probe (after=today&before=today) — Gmail before: is exclusive, expect 0',
         url: `/api/gmail/messages?label=posku&after=${today}&before=${today}` },
-      { label: '6c · Gmail probe (after=today&before=tomorrow) — with the +1 day fix',
+      { label: '6c · Gmail probe (after=today&before=tomorrow) — same date with +1 day fix',
         url: `/api/gmail/messages?label=posku&after=${today}&before=${tomorrow}` },
-      { label: '6d · Rules endpoint probe — should always return {ok,rules}',
+      { label: "6d · Gmail probe SAM'S FLOW — label+to:walmart, last 7 days inclusive",
+        url: `/api/gmail/messages?label=posku&to=walmart@viatrading.com&after=${new Date(Date.now() - 7*86400000).toISOString().slice(0,10)}&before=${tomorrow}` },
+      { label: '6e · Gmail probe WAYFAIR FLOW — label+to:wayfair, last 7 days inclusive',
+        url: `/api/gmail/messages?label=posku&to=wayfair@viatrading.com&after=${new Date(Date.now() - 7*86400000).toISOString().slice(0,10)}&before=${tomorrow}` },
+      { label: '6f · Rules endpoint probe — should always return {ok,rules}',
         url: '/api/rules' },
     ];
     for (const p of probes) {
