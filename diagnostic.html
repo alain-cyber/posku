@@ -153,7 +153,67 @@ async function runAll() {
     lines.push(section('5 · Dedup check', '<span class="err">Skipped — no API key</span>'));
   }
 
+  // ── 6. Gmail integration probes ────────────────────────────────────────────
+  if (!IS_LOCAL_FILE) {
+    const today = new Date().toISOString().slice(0, 10);
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const probes = [
+      { label: '6a · Gmail probe (no dates) — what the manual browser test hits',
+        url: '/api/gmail/messages?label=posku' },
+      { label: '6b · Gmail probe (after=today&before=today) — same URL the app builds',
+        url: `/api/gmail/messages?label=posku&after=${today}&before=${today}` },
+      { label: '6c · Gmail probe (after=today&before=tomorrow) — with the +1 day fix',
+        url: `/api/gmail/messages?label=posku&after=${today}&before=${tomorrow}` },
+      { label: '6d · Rules endpoint probe — should always return {ok,rules}',
+        url: '/api/rules' },
+    ];
+    for (const p of probes) {
+      const report = await probeFetch(p.url);
+      lines.push(section(p.label, report));
+    }
+  } else {
+    lines.push(section('6 · Gmail probes', '<span class="err">Skipped — local-file mode (Pages Function not available)</span>'));
+  }
+
   out.innerHTML = lines.join('');
+}
+
+// Capture EVERYTHING about a fetch call so we can diagnose Cloudflare/Access/
+// routing issues that don't surface through a normal JSON parse.
+async function probeFetch(url) {
+  const startedAt = new Date().toISOString();
+  let res, body, err;
+  try {
+    res = await fetch(url, { cache: 'no-store' });
+  } catch (e) {
+    err = `Network error: ${e.message}`;
+  }
+  if (res) {
+    try { body = await res.text(); } catch (e) { body = `(body read error: ${e.message})`; }
+  }
+  const lines = [`Started: ${startedAt}`, `URL    : ${url}`];
+  if (err) { lines.push(`Error  : ${err}`); return lines.join('\n'); }
+  lines.push(`Status : ${res.status} ${res.statusText}`);
+  lines.push(`Type   : ${res.type}`);
+  lines.push(`Redir. : ${res.redirected}`);
+  lines.push(`Final  : ${res.url}`);
+  lines.push('Headers:');
+  const headers = [];
+  res.headers.forEach((v, k) => headers.push(`  ${k}: ${v}`));
+  lines.push(headers.sort().join('\n'));
+  lines.push(`Body (${(body || '').length} bytes):`);
+  lines.push(body && body.length ? (body.length > 4000 ? body.slice(0, 4000) + '\n…(truncated)' : body) : '(empty)');
+  // Try JSON parse for readability
+  if (body) {
+    try {
+      const j = JSON.parse(body);
+      lines.push('\nParsed JSON:');
+      lines.push(JSON.stringify(j, null, 2));
+    } catch {}
+  }
+  // Highlight likely root causes
+  const cls = res.ok ? 'ok' : (res.status === 0 || res.status >= 500 ? 'err' : 'warn');
+  return `<span class="${cls}">${lines.join('\n')}</span>`;
 }
 
 function copyAll() {
