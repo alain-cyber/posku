@@ -286,6 +286,43 @@ textarea::placeholder { color: var(--text4); }
     <div id="inbox-status" class="status" style="margin-top:0.75rem;"></div>
   </div>
 
+  <!-- Manifest fetcher (Wayfair, Drive-driven) -->
+  <div class="card input-card" id="manifest-fetch-card" style="display:none;">
+    <div class="card-title">Fetch manifests from Drive</div>
+    <div class="card-sub">Find Wayfair manifests by upload date, parse, update SKU prices, and append to the Load Center sheet</div>
+    <div class="po-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;align-items:end;gap:0.75rem;">
+      <div class="po-field">
+        <label>Source folder</label>
+        <select id="mfetch-tree">
+          <option value="all">All manifest folders</option>
+          <option value="fc">FC (Liquidation / Salvage / Aged / QC)</option>
+          <option value="hdo">HDO</option>
+          <option value="outlet">Outlet</option>
+          <option value="perigold">Perigold (Physical Retail)</option>
+        </select>
+      </div>
+      <div class="po-field">
+        <label>From (upload date)</label>
+        <input type="date" id="mfetch-after">
+      </div>
+      <div class="po-field">
+        <label>To (upload date)</label>
+        <input type="date" id="mfetch-before">
+      </div>
+      <div class="po-field">
+        <label>&nbsp;</label>
+        <div style="display:flex;gap:0.4rem;">
+          <button class="btn" id="mfetch-fetch-btn">Fetch</button>
+          <button class="btn ghost" id="mfetch-today-btn" title="Today only">Today</button>
+          <button class="btn ghost" id="mfetch-yest-btn" title="Yesterday + today">Yest</button>
+          <button class="btn ghost" id="mfetch-7d-btn" title="Last 7 days">7d</button>
+        </div>
+      </div>
+    </div>
+    <div id="mfetch-status" class="status" style="margin-top:0.75rem;"></div>
+    <div id="mfetch-results" style="margin-top:0.6rem;"></div>
+  </div>
+
   <!-- Input card -->
   <div class="card input-card" id="drop-card">
     <div class="card-title">Paste or drop email</div>
@@ -2461,6 +2498,163 @@ setupInboxDefaults();
 $('inbox-fetch-btn').onclick = inboxFetch;
 $('inbox-today-btn').onclick = () => setInboxRange(0);
 $('inbox-week-btn').onclick  = () => setInboxRange(7);
+
+// ── Wayfair manifest fetcher (Drive) ─────────────────────────────────────────
+function setupMfetchDefaults() {
+  const today = new Date();
+  $('mfetch-after').value  = fmtDateInput(today);
+  $('mfetch-before').value = fmtDateInput(today);
+}
+function setMfetchRange(daysBack) {
+  const today = new Date();
+  const from = new Date(today); from.setDate(from.getDate() - daysBack);
+  $('mfetch-after').value  = fmtDateInput(from);
+  $('mfetch-before').value = fmtDateInput(today);
+}
+
+// Derive a posku WYF SKU from the manifest filename + the tree it came from.
+// Returns { sku, loadType, locCode, loadId } or null when we can't recognize it.
+// We err on the side of "null" rather than guess — anything we return must be
+// 100% confident so we can safely look it up in the ERP.
+function deriveWyfSkuFromFilename(filename, tree, path) {
+  if (!filename) return null;
+  const name = filename;
+  // ── FC manifests ──────────────────────────────────────────────────────────
+  // "Liquidation Load 50595 Romeoville.xlsx", "Salvage Load 50525 Romeoville.xlsx",
+  // "Aged Load NNNNN Location.xlsx", etc.
+  let m = name.match(/^(Liquidation|Salvage|Aged|QC)\s+Load\s+(\d{4,6})\s+([A-Za-z\s]+?)\.(xlsx|csv)$/i);
+  if (m) {
+    const typeMap = { liquidation: 'LQ', salvage: 'S', aged: 'A', qc: 'QC' };
+    const loadType = typeMap[m[1].toLowerCase()];
+    const location = m[3].trim();
+    const locCode = wyfLocCodeFromCity(location);
+    if (!loadType || !locCode) return { sku: null, loadType, locCode: null, loadId: m[2], reason: `Unknown location "${location}"` };
+    return { sku: `WYF${locCode}${loadType}${m[2]}`, loadType, locCode, loadId: m[2] };
+  }
+  // ── HDO manifests ─────────────────────────────────────────────────────────
+  // "Portland Liquidation Manifest LQ8068.xlsx"
+  // "City of Industry Liquidation Manifest LQ8127.xlsx"
+  m = name.match(/^(.+?)\s+Liquidation\s+Manifest\s+LQ(\d{4,6})\.(xlsx|csv)$/i);
+  if (m && tree === 'HDO') {
+    const locCode = wyfLocCodeFromCity(m[1]);
+    if (!locCode) return { sku: null, loadType: 'HDO', locCode: null, loadId: m[2], reason: `Unknown location "${m[1]}"` };
+    return { sku: `WYF${locCode}HDO${m[2]}`, loadType: 'HDO', locCode, loadId: m[2] };
+  }
+  // ── Perigold (Physical Retail) ────────────────────────────────────────────
+  // "LQ8033 Perigold 1 Liquidation.xlsx"  (no city in name)
+  // "LQ8133 PG2 Houston Liquidation Manifest"  (city sometimes)
+  m = name.match(/^\s*LQ(\d{4,6})\s+.*Perigold/i);
+  if (m && tree === 'Perigold') {
+    return { sku: null, loadType: 'PG', locCode: null, loadId: m[1], reason: 'Perigold filename has no clear city — need user mapping' };
+  }
+  m = name.match(/^\s*LQ(\d{4,6})\s+PG\d?\s+([A-Za-z\s]+?)\s+Liquidation/i);
+  if (m && tree === 'Perigold') {
+    const locCode = wyfLocCodeFromCity(m[2]);
+    if (!locCode) return { sku: null, loadType: 'PG', locCode: null, loadId: m[1], reason: `Unknown Perigold location "${m[2]}"` };
+    return { sku: `WYF${locCode}PG${m[1]}`, loadType: 'PG', locCode, loadId: m[1] };
+  }
+  // ── Outlet ────────────────────────────────────────────────────────────────
+  // "Hanover Outlet OUTQ014 - Sheet1.csv"
+  m = name.match(/^(.+?)\s+Outlet\s+OUTQ(\d{2,5})/i);
+  if (m && tree === 'Outlet') {
+    return { sku: null, loadType: 'OUT', locCode: null, loadId: m[2], reason: 'Outlet SKU naming not yet defined' };
+  }
+  return null;
+}
+
+// Map a display city/warehouse name to our WYF location code. Keep this in sync
+// with SUPPLIERS.WYF.fobNames keys. Only return a code on an exact (case-insensitive) match.
+function wyfLocCodeFromCity(city) {
+  const c = String(city || '').trim().toLowerCase();
+  const map = {
+    'perris': 'PR', 'perris, ca': 'PR',
+    'lathrop': 'LA', 'lathrop, ca': 'LA',
+    'jacksonville': 'JFL', 'jacksonville, fl': 'JFL',
+    'aberdeen': 'AMD', 'aberdeen, md': 'AMD',
+    'romeoville': 'RIL', 'romeoville, il': 'RIL',
+    'lancaster': 'LTX', 'lancaster, tx': 'LTX',
+    'kent': 'KWA', 'kent, wa': 'KWA',
+    'erlanger': 'EKY', 'kentucky': 'EKY',
+    'mcdonough': 'MCDO', 'mcdonough, ga': 'MCDO',
+    'city of industry': 'CI', 'city of industry, ca': 'CI', 'portland': 'POR', 'portland, or': 'POR',
+    'mississauga': 'MGA', 'mississauga, on': 'MGA',
+    // TBD codes — added when user confirms
+    // 'houston': 'HTX', 'west palm beach': 'WPB',
+  };
+  return map[c] || null;
+}
+
+async function mfetchRun() {
+  const tree = $('mfetch-tree').value || 'all';
+  const after  = $('mfetch-after').value;
+  const before = $('mfetch-before').value;
+  const params = new URLSearchParams({ tree });
+  if (after)  params.set('after', after);
+  if (before) params.set('before', before);
+
+  setStatus($('mfetch-status'), 'info', `Searching Drive (${tree}) from ${after} to ${before}…`);
+  $('mfetch-results').innerHTML = '';
+  let res;
+  try { res = await fetch('/api/drive/list?' + params, { cache: 'no-store' }); }
+  catch (err) { setStatus($('mfetch-status'), 'err', `Network error: ${err.message}`); return; }
+  const j = await res.json().catch(() => null);
+  if (!res.ok || !j?.ok) {
+    setStatus($('mfetch-status'), 'err', `HTTP ${res.status}: ${j?.error || '(empty)'}`);
+    return;
+  }
+  const files = j.files || [];
+  if (!files.length) {
+    setStatus($('mfetch-status'), 'warn', `No manifests found in ${tree} between ${after} and ${before}.`);
+    return;
+  }
+  setStatus($('mfetch-status'), 'ok', `Found ${files.length} manifest(s). Resolving SKUs…`);
+  mfetchRenderResults(files);
+}
+
+function mfetchRenderResults(files) {
+  const rows = files.map(f => {
+    const d = deriveWyfSkuFromFilename(f.name, f.tree, f.path);
+    const skuCell = d?.sku
+      ? `<code style="color:var(--green);">${esc(withEnvSuffix(d.sku))}</code>`
+      : `<span style="color:var(--amber);">⚠ ${esc(d?.reason || 'unrecognized filename — skipping')}</span>`;
+    const modDate = f.modifiedTime ? new Date(f.modifiedTime).toISOString().slice(0,16).replace('T',' ') : '—';
+    return `<tr data-file-id="${esc(f.id)}">
+      <td style="padding:0.3rem 0.5rem;"><input type="checkbox" data-mfetch-pick="${esc(f.id)}" ${d?.sku ? 'checked' : ''} ${d?.sku ? '' : 'disabled'}></td>
+      <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.66rem;">${esc(f.tree)}</td>
+      <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.66rem;">${esc(f.path || '—')}</td>
+      <td style="padding:0.3rem 0.5rem;font-size:0.7rem;">${esc(f.name)}</td>
+      <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text3);">${modDate}</td>
+      <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.7rem;">${skuCell}</td>
+    </tr>`;
+  }).join('');
+  $('mfetch-results').innerHTML = `
+    <div style="border:1px solid var(--border2);border-radius:8px;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead style="background:var(--surface2);">
+          <tr style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3);">
+            <th style="padding:0.4rem 0.5rem;text-align:left;width:30px;"></th>
+            <th style="padding:0.4rem 0.5rem;text-align:left;">Source</th>
+            <th style="padding:0.4rem 0.5rem;text-align:left;">Path</th>
+            <th style="padding:0.4rem 0.5rem;text-align:left;">Filename</th>
+            <th style="padding:0.4rem 0.5rem;text-align:left;">Modified</th>
+            <th style="padding:0.4rem 0.5rem;text-align:left;">Derived SKU</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:0.6rem;font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text3);">
+      Pick a row + click <strong>Process</strong> below to parse + push.
+      Parsers wired: <code>FC</code> (LQ / Salvage / Aged / QC). HDO / Outlet / Perigold parsers coming next — those rows will be flagged.
+    </div>
+  `;
+}
+
+setupMfetchDefaults();
+$('mfetch-fetch-btn').onclick = mfetchRun;
+$('mfetch-today-btn').onclick = () => setMfetchRange(0);
+$('mfetch-yest-btn').onclick  = () => setMfetchRange(1);
+$('mfetch-7d-btn').onclick    = () => setMfetchRange(7);
 $('email-input').addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') triggerParse(); });
 
 $('clear-input-btn').onclick = () => {
@@ -3284,6 +3478,11 @@ function applySupplierUI() {
     btn.style.display = '';
     btn.textContent = `${label} rules ⚙`;
   }
+  // Manifest fetch panel is Wayfair-only for now (Sam's manifests come with
+  // the email so the fetch-from-drive flow doesn't apply).
+  const mFetch = $('manifest-fetch-card');
+  if (mFetch) mFetch.style.display = activeSupplier === 'WYF' ? '' : 'none';
+
   // If the rules section is open, redraw with the new supplier's editor
   const sec = $('cfg-section');
   if (sec && sec.style.display === 'block') {
