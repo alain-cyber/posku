@@ -2262,12 +2262,12 @@ function fmtDateInput(d) {
   const dd = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${dd}`;
 }
-// Defaults: From = today, To = today (BOTH inclusive). The +1 day translation
-// to Gmail's exclusive before: happens inside inboxFetch — the picker shows
-// the user-friendly inclusive date.
+// Defaults: From = today − 2 days, To = today. Both inclusive. Wide enough to
+// catch "I labeled it yesterday" cases without touching the pickers each day.
 function setupInboxDefaults() {
   const today = new Date();
-  $('inbox-after').value  = fmtDateInput(today);
+  const from  = new Date(today); from.setDate(from.getDate() - 2);
+  $('inbox-after').value  = fmtDateInput(from);
   $('inbox-before').value = fmtDateInput(today);
 }
 function setInboxRange(daysBack) {
