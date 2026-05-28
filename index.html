@@ -1920,28 +1920,28 @@ function fmtDateInput(d) {
   const dd = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${dd}`;
 }
+// Defaults: After = today, Before = tomorrow. Gmail's before: is exclusive,
+// so setting Before to tomorrow naturally includes today's emails. Quick
+// buttons move After back N days; Before always resets to tomorrow.
 function setupInboxDefaults() {
   const today = new Date();
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
   $('inbox-after').value  = fmtDateInput(today);
-  $('inbox-before').value = fmtDateInput(today);
+  $('inbox-before').value = fmtDateInput(tomorrow);
 }
 function setInboxRange(daysBack) {
   const today = new Date();
   const from = new Date(today); from.setDate(from.getDate() - daysBack);
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
   $('inbox-after').value  = fmtDateInput(from);
-  $('inbox-before').value = fmtDateInput(today);
+  $('inbox-before').value = fmtDateInput(tomorrow);
 }
 
 async function inboxFetch() {
   const sup = SUPPLIERS[activeSupplier];
   const label  = $('inbox-label').value.trim() || sup.gmailLabel || 'posku';
   const after  = $('inbox-after').value;
-  // Gmail's "before:" is exclusive — bump by 1 day so a same-day "to" includes today.
-  let before = $('inbox-before').value;
-  if (before) {
-    const b = new Date(before); b.setDate(b.getDate() + 1);
-    before = fmtDateInput(b);
-  }
+  const before = $('inbox-before').value;
   const params = new URLSearchParams({ label });
   if (after)  params.set('after', after);
   if (before) params.set('before', before);
@@ -1964,7 +1964,7 @@ async function inboxFetch() {
   }
   const msgs = j.messages || [];
   if (!msgs.length) {
-    setStatus($('inbox-status'), 'warn', `No messages found. Gmail query: \`${j.query}\` · note: Gmail's before: is exclusive — pick a To date AT LEAST one day after the last email you want included.`);
+    setStatus($('inbox-status'), 'warn', `No messages found. Gmail query: \`${j.query}\``);
     return;
   }
 
