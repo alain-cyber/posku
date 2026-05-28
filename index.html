@@ -266,11 +266,11 @@ textarea::placeholder { color: var(--text4); }
         <input type="text" id="inbox-label" value="posku" placeholder="posku">
       </div>
       <div class="po-field">
-        <label>From (after)</label>
+        <label>From</label>
         <input type="date" id="inbox-after">
       </div>
       <div class="po-field">
-        <label>To (before)</label>
+        <label>To</label>
         <input type="date" id="inbox-before">
       </div>
       <div class="po-field">
@@ -2254,28 +2254,32 @@ function fmtDateInput(d) {
   const dd = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${dd}`;
 }
-// Defaults: After = today, Before = tomorrow. Gmail's before: is exclusive,
-// so setting Before to tomorrow naturally includes today's emails. Quick
-// buttons move After back N days; Before always resets to tomorrow.
+// Defaults: From = today, To = today (BOTH inclusive). The +1 day translation
+// to Gmail's exclusive before: happens inside inboxFetch — the picker shows
+// the user-friendly inclusive date.
 function setupInboxDefaults() {
   const today = new Date();
-  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
   $('inbox-after').value  = fmtDateInput(today);
-  $('inbox-before').value = fmtDateInput(tomorrow);
+  $('inbox-before').value = fmtDateInput(today);
 }
 function setInboxRange(daysBack) {
   const today = new Date();
   const from = new Date(today); from.setDate(from.getDate() - daysBack);
-  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
   $('inbox-after').value  = fmtDateInput(from);
-  $('inbox-before').value = fmtDateInput(tomorrow);
+  $('inbox-before').value = fmtDateInput(today);
 }
 
 async function inboxFetch() {
   const sup = SUPPLIERS[activeSupplier];
   const label  = $('inbox-label').value.trim() || sup.gmailLabel || 'posku';
   const after  = $('inbox-after').value;
-  const before = $('inbox-before').value;
+  // The "To" picker is inclusive of the picked day. Gmail's before: is
+  // exclusive, so bump the date by +1 before sending to the server.
+  let before = $('inbox-before').value;
+  if (before) {
+    const b = new Date(before); b.setDate(b.getDate() + 1);
+    before = fmtDateInput(b);
+  }
   const params = new URLSearchParams({ label });
   if (after)  params.set('after', after);
   if (before) params.set('before', before);
