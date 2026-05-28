@@ -99,8 +99,9 @@ body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-seri
 .main { padding: 1.6rem 2.2rem 3rem; max-width: 1320px; margin: 0 auto; width: 100%; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.4rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
 .page-head .eyebrow { font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.22em; color: var(--text3); text-transform: uppercase; margin-bottom: 0.3rem; }
-.page-head h1.page-title { font-family: 'DM Serif Display', serif; font-size: 1.7rem; font-weight: 400; letter-spacing: -0.01em; line-height: 1.1; color: var(--text); }
+.page-head h1.page-title { font-family: 'DM Serif Display', serif; font-size: 1.7rem; font-weight: 400; letter-spacing: -0.01em; line-height: 1.1; color: var(--text); display: flex; align-items: center; gap: 0.5rem; }
 .page-head h1.page-title em { font-style: italic; color: var(--text2); }
+.page-head h1.page-title svg { display: block; height: 38px; width: auto; }
 .page-head .head-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 
 /* Slim top utility row — still keeps the local-file API key fields */
@@ -3582,10 +3583,15 @@ function applySupplierUI() {
       btn.textContent = `${label} rules ⚙`;
     }
   }
-  // Page title + eyebrow in the main area
+  // Page title + eyebrow in the main area. Tint the title in the supplier's
+  // brand color for quick visual identification (just text, not a logo).
   const titleEl   = document.getElementById('page-title');
   const eyebrowEl = document.getElementById('page-eyebrow');
-  if (titleEl)   titleEl.textContent = label;
+  const brandColors = { WYF: '#7B189F', SMS: '#1A4FA0' };
+  if (titleEl) {
+    titleEl.textContent = label;
+    titleEl.style.color = brandColors[activeSupplier] || '';
+  }
   if (eyebrowEl) eyebrowEl.textContent = `${label} · load SKU builder`;
   // Sidebar active state
   document.querySelectorAll('.nav-item[data-supplier]').forEach(n => {
