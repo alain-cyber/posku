@@ -2014,15 +2014,24 @@ $('cfg-dropdowns').onclick = async () => {
 };
 
 function showDropdownResults(text) {
-  let el = $('dropdown-results');
-  if (!el) {
-    el = document.createElement('pre');
-    el.id = 'dropdown-results';
-    el.style.cssText = 'background:#1a1a1a;color:#ccc;font-size:0.7rem;padding:1rem;margin:0.5rem 0;border-radius:6px;white-space:pre-wrap;word-break:break-all;';
-    document.querySelector('.settings-bar').after(el);
+  let wrap = $('dropdown-results-wrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'dropdown-results-wrap';
+    wrap.style.cssText = 'background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:0.7rem 0.9rem;margin:0.5rem 1.5rem;position:relative;';
+    wrap.innerHTML = `
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+        <span style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--text3);">ERP dropdown check — verifies hardcoded trait IDs still resolve in this env</span>
+        <span style="flex:1;"></span>
+        <button class="btn ghost small" id="dropdown-results-close" title="Close">× Close</button>
+      </div>
+      <pre id="dropdown-results" style="background:var(--surface3);color:var(--text);font-family:'DM Mono',monospace;font-size:0.68rem;padding:0.7rem;margin:0;border-radius:6px;white-space:pre-wrap;word-break:break-all;max-height:380px;overflow:auto;"></pre>
+    `;
+    document.querySelector('.settings-bar').after(wrap);
+    $('dropdown-results-close').onclick = () => wrap.remove();
   }
-  el.textContent = text;
-  el.style.display = 'block';
+  $('dropdown-results').textContent = text;
+  wrap.style.display = 'block';
 }
 
 // ── Drag / drop ───────────────────────────────────────────────────────────────
