@@ -29,8 +29,28 @@
 - Likely another viatrading API endpoint — capture the curl when ready
 - Pre-fill PO with what we already know: SKU, supplier, FOB, pallet count
 
-## Open items (carried over from POC)
-- Drop `-test` suffix when going live
-- Email parsing for `pallets_qty` (Wayfair emails sometimes include it)
-- Verify hardcoded trait/store/supplier IDs against `/api/products/dropdowns` on staging
-- **PUT updates clear traits if omitted** — when we add update flow, always include `packing`, `condition`, `manifested`, `productType`
+## Wayfair markup table (from Alain 2026-05-28)
+
+Per-location × per-type. LQ is the only universally-applied 11.5%; everything else
+varies. Salvage is a **flat $3,000 per load** (not a percentage).
+
+| Location | Code | LQ | Aged | HDO | QC | Salvage | Perigold | Dropped Trailer |
+|---|---|---|---|---|---|---|---|---|
+| Perris, CA | `PR` | 11.5% | 14.0% | 11.5% | 16.5% | $3,000 flat | — | ✅ |
+| Lathrop, CA | `LA` | 11.5% | 10.5% | — | — | $3,000 flat | — | |
+| City of Industry, CA | `CI` | — | — | 11.5% | — | — | — | ✅ |
+| Lancaster, TX | `LTX` | 11.5% | 10.5% | — | — | $3,000 flat | — | |
+| Jacksonville, FL | `JFL` | 11.5% | 10.5% | — | — | $3,000 flat | — | |
+| Romeoville, IL | `RIL` | 11.5% | 10.5% | — | — | $3,000 flat | — | ✅ |
+| Aberdeen, MD | `AMD` | 11.5% | 10.5% | — | — | $3,000 flat | — | ✅ |
+| Kent, WA | `KWA` | 11.5% | 10.5% | — | — | — | — | |
+| Portland, OR | `POR` | 11.5% | 10.5% | — | — | — | — | |
+| McDonough, GA | `MCDO` | — | 10.5% | — | — | — | 12.5% | |
+| Houston, TX | `HTX` (TBC) | — | 10.5% | — | — | — | 12.5% | |
+| West Palm Beach, FL | `WPB` (TBC) | — | 10.5% | — | — | — | 12.5% | |
+
+**To do tomorrow when the CSVs arrive:**
+- Add `HTX` + `WPB` to `SUPPLIERS.WYF.fobIds` / `fobNames` / `locations` (confirm codes with user)
+- Add `Perigold` (proposed code `PG`) to `SUPPLIERS.WYF.types` with detection patterns
+- Salvage parser: emit one row at $3,000, no line items
+- Build the actual line-item parser for LQ / A / QC / HDO / Perigold using the markup table above
