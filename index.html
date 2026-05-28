@@ -727,8 +727,16 @@ function applyRulesOverride() {
   const w = ov.WYF;
   const wyf = SUPPLIERS.WYF;
   if (w.skuTemplate) wyf.skuTemplate = w.skuTemplate;
-  ['erpSupplier','storeId','psku','ptCode','statusId','packingTrait','defaultManifestTrait','defaultManifestName','gmailLabel','gmailToFilter'].forEach(k => {
-    if (w[k] !== undefined && w[k] !== '') wyf[k] = (typeof wyf[k] === 'number') ? Number(w[k]) : w[k];
+  // String fields: empty string is a valid override (means "no filter" etc).
+  ['psku','ptCode','defaultManifestName','gmailLabel','gmailToFilter'].forEach(k => {
+    if (w[k] !== undefined) wyf[k] = w[k];
+  });
+  // Numeric fields: empty/blank falls back to the baked-in default.
+  ['erpSupplier','storeId','statusId','packingTrait','defaultManifestTrait'].forEach(k => {
+    if (w[k] !== undefined && w[k] !== '' && w[k] !== null) {
+      const n = Number(w[k]);
+      if (Number.isFinite(n)) wyf[k] = n;
+    }
   });
   if (Array.isArray(w.locations) && w.locations.length) {
     wyf.fobIds = {}; wyf.fobNames = {}; wyf.locations = [];
@@ -767,8 +775,16 @@ function applyRulesOverride() {
 
 function applySamsRulesOverride(s) {
   const sms = SUPPLIERS.SMS;
-  ['erpSupplier','storeId','psku','ptCode','statusId','packingTrait','skuTemplate','gmailLabel','gmailToFilter'].forEach(k => {
-    if (s[k] !== undefined && s[k] !== '') sms[k] = (typeof sms[k] === 'number') ? Number(s[k]) : s[k];
+  // String fields: empty string is a valid override (means "no filter").
+  ['psku','ptCode','skuTemplate','gmailLabel','gmailToFilter'].forEach(k => {
+    if (s[k] !== undefined) sms[k] = s[k];
+  });
+  // Numeric fields: empty/blank falls back to the baked-in default.
+  ['erpSupplier','storeId','statusId','packingTrait'].forEach(k => {
+    if (s[k] !== undefined && s[k] !== '' && s[k] !== null) {
+      const n = Number(s[k]);
+      if (Number.isFinite(n)) sms[k] = n;
+    }
   });
   if (Array.isArray(s.categoryIds))           sms.categoryIds           = s.categoryIds.map(Number).filter(n => Number.isFinite(n));
   if (Array.isArray(s.manifestedCategoryIds)) sms.manifestedCategoryIds = s.manifestedCategoryIds.map(Number).filter(n => Number.isFinite(n));
