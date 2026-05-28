@@ -67,7 +67,8 @@ export async function onRequest(context) {
   const ids = (listJson.messages || []).map(m => m.id);
   if (!ids.length) return json(200, { ok: true, messages: [], query: q });
 
-  // Step 2 — fetch each message in parallel
+  // Step 2 — fetch each message in parallel; also pull CSV attachments inline
+  // so the client never has to deal with attachment IDs.
   const messages = await Promise.all(ids.map(async id => {
     const res = await fetch(`${GMAIL_BASE}/users/me/messages/${id}?format=full`, {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -75,6 +76,7 @@ export async function onRequest(context) {
     if (!res.ok) return { id, error: `HTTP ${res.status}` };
     const m = await res.json();
     const headers = Object.fromEntries((m.payload?.headers || []).map(h => [h.name.toLowerCase(), h.value]));
+    const attachments = await fetchTextAttachments(m, id, accessToken);
     return {
       id,
       threadId: m.threadId,
@@ -83,10 +85,48 @@ export async function onRequest(context) {
       date:     headers.date || '',
       snippet:  m.snippet || '',
       body:     extractBody(m.payload),
+      attachments,  // [{ filename, mimeType, text }]
     };
   }));
 
   return json(200, { ok: true, messages, query: q });
+}
+
+// Walk the payload, find CSV/text attachments, download each, and return the
+// decoded text. Skips PDFs/images and anything > 1 MB to keep responses sane.
+async function fetchTextAttachments(message, messageId, accessToken) {
+  const parts = [];
+  (function walk(p) {
+    if (!p) return;
+    if (p.filename && p.body?.attachmentId) parts.push(p);
+    if (p.parts) p.parts.forEach(walk);
+  })(message.payload);
+
+  const out = [];
+  for (const p of parts) {
+    const isCsv = /\.csv$/i.test(p.filename) || (p.mimeType || '').includes('csv');
+    if (!isCsv) continue;
+    if ((p.body.size || 0) > 1_000_000) continue;
+    try {
+      const res = await fetch(`${GMAIL_BASE}/users/me/messages/${messageId}/attachments/${p.body.attachmentId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) continue;
+      const j = await res.json();
+      out.push({ filename: p.filename, mimeType: p.mimeType || 'text/csv', text: decodeBase64Url(j.data || '') });
+    } catch {}
+  }
+  return out;
+}
+
+function decodeBase64Url(data) {
+  const b64 = data.replace(/-/g, '+').replace(/_/g, '/');
+  try {
+    const bin = atob(b64 + '==='.slice((b64.length + 3) % 4));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch { return ''; }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

@@ -310,6 +310,7 @@ textarea::placeholder { color: var(--text4); }
         </div>
         <div class="btn-row" style="margin-top:0;">
           <button class="btn" id="push-all-btn">Push all ready to ERP</button>
+          <button class="btn ghost" id="send-all-manifests-btn" style="display:none;">Send all manifests to Sheet</button>
           <button class="btn ghost" id="clear-loads-btn">Clear loads</button>
         </div>
       </div>
@@ -1796,6 +1797,13 @@ function updateSummary() {
   if (done)   chips.push(`<span class="chip" style="background:var(--green-dim);color:var(--green);border-color:rgba(30,127,86,.35);">${done} pushed</span>`);
   if (failed) chips.push(`<span class="chip red">${failed} failed</span>`);
   $('summary-chips').innerHTML = chips.join(' ');
+  // Show the bulk "Send all manifests" button only when there are unsent ones
+  const unsentManifests = loads.filter(l => l.supplierKey === 'SMS' && l.manifestRows?.length && !l.manifestSentTo).length;
+  const btn = $('send-all-manifests-btn');
+  if (btn) {
+    btn.style.display = unsentManifests > 0 ? '' : 'none';
+    btn.textContent = `Send all manifests to Sheet${unsentManifests > 1 ? ` (${unsentManifests})` : ''}`;
+  }
 }
 
 function attachHandlers() {
@@ -2307,11 +2315,22 @@ async function inboxFetch() {
   }
 
   // Parse every message body with the current supplier's parser; merge results.
+  // Also stash any CSV attachments (Sam's loads) so we can auto-attach them
+  // after sequence assignment — saves the user from picking the right file.
   setStatus($('inbox-status'), 'info', `Got ${msgs.length} message(s) for query \`${j.query}\` — parsing with ${sup.label}…`);
   const allFound = [];
+  const csvByManifest = {};
   for (const m of msgs) {
     const blob = `${m.subject}\n\n${m.body || m.snippet}`;
     const found = parseEmail(blob, activeSupplier);
+    // For Sam's, link each parsed load (loadId == manifest #) to the first CSV
+    // attachment whose filename contains that manifest #. Fallback: first CSV.
+    if (activeSupplier === 'SMS' && Array.isArray(m.attachments) && m.attachments.length) {
+      for (const l of found) {
+        const match = m.attachments.find(a => a.filename && a.filename.includes(l.loadId)) || m.attachments[0];
+        if (match) csvByManifest[l.loadId] = match.text;
+      }
+    }
     allFound.push(...found);
   }
   if (!allFound.length) {
@@ -2322,6 +2341,21 @@ async function inboxFetch() {
   if (activeSupplier === 'SMS') {
     setStatus($('inbox-status'), 'info', `Fetching current max SKUs for ${new Set(allFound.map(l => l.locCode).filter(Boolean)).size} club(s)…`);
     await assignSamsSequences(allFound);
+    // Auto-attach each manifest CSV (now that SKUs are assigned).
+    for (const l of allFound) {
+      const csv = csvByManifest[l.loadId];
+      if (!csv || !l.sku) continue;
+      try {
+        const result = transformSamsManifest(csv, l.sku, l.locCode || '');
+        if (result.rows.length) {
+          l.manifestRows = result.rows;
+          l.manifestPalletIds = result.palletIds;
+          l.manifestExpanded = false;  // collapse by default
+        }
+      } catch (err) {
+        l.manifestError = `Auto-parse failed: ${err.message}`;
+      }
+    }
   }
 
   const existing = new Set(loads.map(l => l.loadId + '|' + l.locCode + '|' + l.typeCode));
@@ -2350,6 +2384,43 @@ $('push-all-btn').onclick = async () => {
   const readyIdx = loads.map((l,i) => l.status === 'ready' ? i : -1).filter(i => i >= 0);
   if (!readyIdx.length) { setStatus($('push-status'), 'warn', 'No ready loads to push.'); return; }
   await doPush(readyIdx);
+};
+
+$('send-all-manifests-btn').onclick = async () => {
+  const pending = loads
+    .map((l, i) => ({ l, i }))
+    .filter(({ l }) => l.supplierKey === 'SMS' && l.manifestRows?.length && !l.manifestSentTo);
+  if (!pending.length) { setStatus($('push-status'), 'warn', 'No manifests pending — all already sent.'); return; }
+  const btn = $('send-all-manifests-btn');
+  btn.disabled = true; btn.textContent = `Sending ${pending.length} manifest(s)…`;
+  let okCount = 0, failCount = 0;
+  for (const { l } of pending) {
+    const values = l.manifestRows.map(r => LC_COLUMNS.map(col => {
+      const v = r[col]; if (v == null) return '';
+      if (col === 'Your Price %' || col === '% of Load QTY' || col === '% of Load $$') return (v * 100).toFixed(2) + '%';
+      if (['Appx. EXT Retail','Appx. Unit Retail','Your EXT Price','Your Unit Price $'].includes(col)) return '$' + Number(v).toFixed(2);
+      return String(v);
+    }));
+    try {
+      const r = await fetch('/api/sheets/append', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      l.manifestSentTo = j.updatedRange || j.tab || 'Sheet';
+      okCount++;
+    } catch (err) {
+      l.manifestError = `Send failed: ${err.message}`;
+      failCount++;
+    }
+  }
+  btn.disabled = false; btn.textContent = 'Send all manifests to Sheet';
+  setStatus($('push-status'),
+    failCount ? 'err' : 'ok',
+    `Sent ${okCount} manifest(s) to Sheet${failCount ? `, ${failCount} failed` : ''}.`);
+  renderLoads();
 };
 
 $('clear-loads-btn').onclick = () => {
