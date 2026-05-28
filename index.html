@@ -1627,12 +1627,14 @@ function buildSamsManifestRow(load, idx) {
       <span style="font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text4);">manifest #${esc(manId)} · ${esc(summary)}</span>
       <span style="flex:1;"></span>
       <input type="file" id="sams-mani-file-${idx}" accept=".csv,text/csv" style="display:none;">
-      <button class="btn small ghost" data-sams-mani-pick="${idx}">Attach CSV</button>
       ${load.manifestRows && load.manifestRows.length ? `
         <button class="btn small" data-sams-mani-send="${idx}"${load.manifestSentTo ? ' disabled' : ''}>${load.manifestSentTo ? 'Sent ✓ ' + load.manifestSentTo : 'Send to Sheet'}</button>
         <button class="btn small ghost" data-sams-mani-toggle="${idx}">${load.manifestExpanded ? 'Hide preview' : 'Show preview'}</button>
+        <button class="btn small ghost" data-sams-mani-pick="${idx}" title="Replace the currently attached manifest">Replace CSV</button>
         <button class="btn small ghost" data-sams-mani-clear="${idx}">Remove</button>
-      ` : ''}
+      ` : `
+        <button class="btn small ghost" data-sams-mani-pick="${idx}">Attach CSV</button>
+      `}
     </div>
     ${load.manifestRows && load.manifestRows.length && load.manifestExpanded
       ? `<div style="margin-top:0.6rem;max-height:360px;overflow:auto;border:1px solid var(--border2);border-radius:6px;">
