@@ -49,39 +49,96 @@ body.theme-dark {
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-serif; min-height: 100vh; }
 
-.header { padding: 1.5rem 2.5rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
-.eyebrow { font-family: 'DM Mono', monospace; font-size: 0.68rem; letter-spacing: 0.2em; color: var(--text3); text-transform: uppercase; margin-bottom: 0.35rem; }
-h1 { font-family: 'DM Serif Display', serif; font-size: 2rem; font-weight: 400; letter-spacing: -0.01em; line-height: 1; }
-h1 em { font-style: italic; color: var(--text2); }
+/* ── App shell: dark navy sidebar + light/themed main ───────────────────── */
+.app-shell { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
 
-.supplier-tabs { display: flex; gap: 0.25rem; padding: 0 2.5rem; background: var(--surface); border-bottom: 1px solid var(--border); }
-.stab { padding: 0.8rem 1.1rem; font-family: 'DM Mono', monospace; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text3); cursor: pointer; margin-bottom: -1px; transition: color 0.13s, border-color 0.13s; display: flex; align-items: center; gap: 0.4rem; }
-.stab:hover:not(:disabled) { color: var(--text); }
-.stab.active { color: var(--text); border-bottom-color: var(--green); }
-.stab.soon { opacity: 0.5; cursor: default; }
+/* Sidebar is intentionally dark in BOTH themes — independent palette */
+.sidebar {
+  background: #1a2332;
+  color: #c9d3e2;
+  padding: 1.4rem 0 1rem;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(255,255,255,0.06);
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+}
+.sidebar-brand { padding: 0 1.25rem 1.25rem; display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 1rem; }
+.sidebar-brand-mark { width: 42px; height: 42px; border-radius: 10px; background: linear-gradient(135deg, #ff7a3d, #e54f2c); display: flex; align-items: center; justify-content: center; color: #fff; font-family: 'DM Serif Display', serif; font-size: 1.4rem; font-style: italic; flex: 0 0 42px; }
+.sidebar-brand-text h1 { font-family: 'DM Serif Display', serif; font-size: 1.15rem; font-weight: 400; color: #fff; letter-spacing: -0.005em; line-height: 1.1; margin: 0; }
+.sidebar-brand-text h1 em { font-style: italic; color: #ffd9c4; }
+.sidebar-brand-text .sub { font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.18em; text-transform: uppercase; color: #7b8aa0; margin-top: 0.2rem; }
 
-.settings-bar { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 2.5rem; background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-.settings-bar label { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: var(--text3); letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; }
-.settings-bar input { background: var(--surface2); border: 1px solid var(--border2); border-radius: 6px; padding: 0.4rem 0.65rem; font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--text); width: 260px; }
+.sidebar-section { padding: 0 0.7rem; margin-top: 0.6rem; }
+.sidebar-section-title { font-family: 'DM Mono', monospace; font-size: 0.55rem; letter-spacing: 0.22em; text-transform: uppercase; color: #5d6a82; padding: 0.7rem 0.65rem 0.35rem; }
+
+.nav-item {
+  display: flex; align-items: center; gap: 0.7rem;
+  width: 100%; padding: 0.65rem 0.85rem;
+  background: transparent; border: none;
+  border-radius: 8px;
+  color: #c9d3e2; cursor: pointer;
+  font-family: 'Syne', sans-serif; font-size: 0.84rem; font-weight: 500; letter-spacing: 0.01em;
+  text-align: left; text-decoration: none;
+  transition: background 0.13s, color 0.13s;
+}
+.nav-item:hover:not(:disabled) { background: rgba(255,255,255,0.06); color: #fff; }
+.nav-item.active { background: rgba(255,255,255,0.10); color: #fff; box-shadow: inset 3px 0 0 #ff7a3d; }
+.nav-item:disabled { opacity: 0.4; cursor: default; }
+.nav-item .nav-icon { width: 18px; height: 18px; opacity: 0.85; flex: 0 0 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; }
+.nav-item .soon-pill { margin-left: auto; font-family: 'DM Mono', monospace; font-size: 0.55rem; letter-spacing: 0.1em; padding: 0.1rem 0.4rem; border-radius: 4px; background: rgba(255,255,255,0.08); color: #7b8aa0; text-transform: uppercase; }
+
+.sidebar-footer { margin-top: auto; padding: 0.8rem 1rem 0.4rem; border-top: 1px solid rgba(255,255,255,0.06); }
+.sidebar-footer .env-switch-side { display: flex; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; overflow: hidden; margin-bottom: 0.6rem; }
+.sidebar-footer .env-switch-side button { flex: 1; background: transparent; color: #7b8aa0; border: none; padding: 0.4rem 0.5rem; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.62rem; letter-spacing: 0.08em; }
+.sidebar-footer .env-switch-side button.active[data-env="test"] { background: rgba(87,201,148,0.18); color: #57c994; }
+.sidebar-footer .env-switch-side button.active[data-env="live"] { background: rgba(239,106,94,0.22); color: #ff8a7c; }
+.sidebar-footer .env-switch-side button + button { border-left: 1px solid rgba(255,255,255,0.10); }
+.sidebar-meta { font-family: 'DM Mono', monospace; font-size: 0.55rem; letter-spacing: 0.12em; text-transform: uppercase; color: #4e5a72; padding: 0.4rem 0.2rem; text-align: center; }
+
+/* Main content area */
+.main { padding: 1.6rem 2.2rem 3rem; max-width: 1320px; margin: 0 auto; width: 100%; }
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.4rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+.page-head .eyebrow { font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.22em; color: var(--text3); text-transform: uppercase; margin-bottom: 0.3rem; }
+.page-head h1.page-title { font-family: 'DM Serif Display', serif; font-size: 1.7rem; font-weight: 400; letter-spacing: -0.01em; line-height: 1.1; color: var(--text); }
+.page-head h1.page-title em { font-style: italic; color: var(--text2); }
+.page-head .head-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+
+/* Slim top utility row — still keeps the local-file API key fields */
+.settings-bar { display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0; flex-wrap: wrap; }
+.settings-bar label { font-family: 'DM Mono', monospace; font-size: 0.6rem; color: var(--text3); letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; }
+.settings-bar input { background: var(--surface2); border: 1px solid var(--border2); border-radius: 6px; padding: 0.4rem 0.65rem; font-family: 'DM Mono', monospace; font-size: 0.74rem; color: var(--text); width: 230px; }
 .settings-bar input:focus { outline: none; border-color: var(--green); }
-.settings-bar input.key { width: 360px; }
 
-/* TEST/LIVE environment switch — visible everywhere, hard to miss */
-.env-switch { display: inline-flex; border: 1px solid var(--border2); border-radius: 6px; overflow: hidden; font-family: 'DM Mono', monospace; font-size: 0.66rem; letter-spacing: 0.08em; }
-.env-switch button { background: var(--surface2); color: var(--text3); border: none; padding: 0.4rem 0.75rem; cursor: pointer; font-family: inherit; font-size: inherit; letter-spacing: inherit; }
-.env-switch button + button { border-left: 1px solid var(--border2); }
-.env-switch button.active[data-env="test"] { background: var(--green-dim); color: var(--green); }
-.env-switch button.active[data-env="live"] { background: rgba(239, 68, 68, 0.18); color: #ef4444; }
-.env-switch button:not(.active):hover { background: var(--surface3); color: var(--text); }
-body.env-live { box-shadow: inset 0 4px 0 #ef4444; }
+/* legacy top env switch — keep selectors working but hide visually */
+.env-switch { display: none !important; }
+
+/* live banner */
 body.env-live::before { content: 'LIVE — ops.viatrading.com'; position: fixed; top: 0; right: 0; background: #ef4444; color: #fff; font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.12em; padding: 0.18rem 0.65rem; border-bottom-left-radius: 6px; z-index: 1000; pointer-events: none; }
+body.env-live { box-shadow: inset 0 4px 0 #ef4444; }
 
-main { padding: 2rem 2.5rem; max-width: 1440px; margin: 0 auto; }
+main, .legacy-main { padding: 0; max-width: none; margin: 0; }
 
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; margin-bottom: 1.5rem; }
+/* Card refinements — cleaner, more breathing room */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.6rem 1.7rem; margin-bottom: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+body.theme-dark .card { box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
 .card.dragging { border-color: var(--green); background: var(--green-dim); }
-.card-title { font-family: 'DM Serif Display', serif; font-size: 1.25rem; margin-bottom: 0.2rem; }
-.card-sub { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--text3); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 1.1rem; }
+.card-title { font-family: 'DM Serif Display', serif; font-size: 1.2rem; margin-bottom: 0.25rem; color: var(--text); }
+.card-sub { font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text3); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 1.15rem; }
+
+/* Hide legacy top supplier-tabs (now in sidebar) */
+.supplier-tabs { display: none !important; }
+
+/* Responsive: collapse sidebar on narrow screens */
+@media (max-width: 880px) {
+  .app-shell { grid-template-columns: 1fr; }
+  .sidebar { position: relative; height: auto; flex-direction: row; flex-wrap: wrap; padding: 0.7rem; }
+  .sidebar-brand { width: 100%; border-bottom: none; padding: 0 0.5rem 0.7rem; margin-bottom: 0.5rem; }
+  .sidebar-section { padding: 0; flex: 1 1 auto; }
+  .sidebar-section-title { display: none; }
+  .nav-item { padding: 0.5rem 0.65rem; font-size: 0.78rem; }
+  .sidebar-footer { width: 100%; margin-top: 0.5rem; }
+  .main { padding: 1rem 1rem 2rem; }
+}
 
 textarea { width: 100%; min-height: 200px; background: var(--surface2); color: var(--text); border: 1px dashed var(--border2); border-radius: 10px; padding: 0.9rem 1rem; font-family: 'DM Mono', monospace; font-size: 0.82rem; line-height: 1.55; resize: vertical; transition: border-color 0.15s; }
 textarea:focus { outline: none; border-style: solid; border-color: var(--green); background: #fff; }
@@ -221,37 +278,69 @@ textarea::placeholder { color: var(--text4); }
 </head>
 <body>
 
-<header class="header">
-  <div>
-    <div class="eyebrow">Posku · Load SKU builder</div>
-    <h1>Load SKU <em>builder</em></h1>
-  </div>
-</header>
+<div class="app-shell">
 
-<nav class="supplier-tabs">
-  <button class="stab active" data-supplier="WYF">Wayfair</button>
-  <button class="stab" data-supplier="SMS">Sam's Club</button>
-  <button class="stab soon" disabled>Harbor Freight <span class="chip" style="font-size:0.55rem;padding:0.1rem 0.35rem;">soon</span></button>
-  <button class="stab soon" disabled>Amazon <span class="chip" style="font-size:0.55rem;padding:0.1rem 0.35rem;">soon</span></button>
-</nav>
+  <!-- ── Sidebar ────────────────────────────────────────────────────────── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-mark">P</div>
+      <div class="sidebar-brand-text">
+        <h1>Posku <em>SKU</em></h1>
+        <div class="sub">Load builder</div>
+      </div>
+    </div>
 
-<div class="settings-bar">
-  <label data-cfg-only>ERP base URL</label>
-  <input type="url" id="cfg-url" placeholder="https://viatrading.biz" data-cfg-only>
-  <label data-cfg-only>API key</label>
-  <input type="password" id="cfg-key" class="key" placeholder="ims_…" data-cfg-only>
-  <button class="btn ghost" id="cfg-save" style="margin-left:0.25rem;" data-cfg-only>Save</button>
-  <label style="margin-left:0.25rem;">Env</label>
-  <div class="env-switch" id="env-switch" role="group" aria-label="API environment">
-    <button data-env="test" class="active" title="viatrading.biz — test/staging">TEST</button>
-    <button data-env="live" title="ops.viatrading.com — production, writes are real">LIVE</button>
-  </div>
-  <button class="btn ghost" id="cfg-dropdowns" style="margin-left:0.25rem;">Check IDs</button>
-  <button class="btn ghost" id="cfg-rules-btn" style="margin-left:0.25rem;">Wayfair rules ⚙</button>
-  <a href="diagnostic.html" target="_blank" class="btn ghost" style="margin-left:0.25rem;text-decoration:none;">Diagnostics →</a>
-  <button class="btn ghost" id="cfg-theme" style="margin-left:0.25rem;" title="Toggle light/dark theme">Theme</button>
-  <span id="cfg-status" style="font-family:'DM Mono',monospace;font-size:0.68rem;color:var(--text4);"></span>
-</div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Suppliers</div>
+      <button class="nav-item active" data-supplier="WYF"><span class="nav-icon">🪑</span>Wayfair</button>
+      <button class="nav-item" data-supplier="SMS"><span class="nav-icon">🛒</span>Sam's Club</button>
+      <button class="nav-item" disabled><span class="nav-icon">🔧</span>Harbor Freight<span class="soon-pill">soon</span></button>
+      <button class="nav-item" disabled><span class="nav-icon">📦</span>Amazon<span class="soon-pill">soon</span></button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Tools</div>
+      <a class="nav-item" href="diagnostic.html" target="_blank"><span class="nav-icon">🩺</span>Diagnostics</a>
+      <button class="nav-item" id="cfg-dropdowns"><span class="nav-icon">🔍</span>Check ERP IDs</button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Admin</div>
+      <button class="nav-item" id="cfg-rules-btn"><span class="nav-icon">⚙️</span>Wayfair rules</button>
+      <button class="nav-item" id="cfg-theme"><span class="nav-icon">🌓</span>Toggle theme</button>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="env-switch-side" id="env-switch" role="group" aria-label="API environment">
+        <button data-env="test" class="active" title="viatrading.biz — test/staging">TEST</button>
+        <button data-env="live" title="ops.viatrading.com — production">LIVE</button>
+      </div>
+      <div class="sidebar-meta" id="cfg-status-meta">Cloudflare proxy</div>
+    </div>
+  </aside>
+
+  <!-- ── Main ───────────────────────────────────────────────────────────── -->
+  <div class="main">
+
+    <!-- Page head -->
+    <div class="page-head">
+      <div>
+        <div class="eyebrow" id="page-eyebrow">Wayfair · load SKU builder</div>
+        <h1 class="page-title" id="page-title">Wayfair</h1>
+      </div>
+      <div class="head-actions">
+        <span id="cfg-status" style="font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text4);"></span>
+      </div>
+    </div>
+
+    <!-- Hidden in CF mode — still here for local-file usage -->
+    <div class="settings-bar">
+      <label data-cfg-only>ERP base URL</label>
+      <input type="url" id="cfg-url" placeholder="https://viatrading.biz" data-cfg-only>
+      <label data-cfg-only>API key</label>
+      <input type="password" id="cfg-key" class="key" placeholder="ims_…" data-cfg-only>
+      <button class="btn ghost" id="cfg-save" data-cfg-only>Save</button>
+    </div>
 
 <main>
   <!-- Rules / Config section (toggle) -->
@@ -394,6 +483,9 @@ textarea::placeholder { color: var(--text4); }
     </div>
   </div>
 </main>
+
+  </div><!-- /.main -->
+</div><!-- /.app-shell -->
 
 <script>
 (() => {
@@ -702,7 +794,14 @@ function applyTheme() {
   const t = loadTheme();
   document.body.classList.toggle('theme-dark', t === 'dark');
   const btn = document.getElementById('cfg-theme');
-  if (btn) btn.textContent = t === 'dark' ? '☾ Dark' : '☀ Light';
+  if (btn) {
+    // Sidebar nav-item layout: icon + label
+    if (btn.classList.contains('nav-item')) {
+      btn.innerHTML = `<span class="nav-icon">${t === 'dark' ? '☀' : '☾'}</span>${t === 'dark' ? 'Light theme' : 'Dark theme'}`;
+    } else {
+      btn.textContent = t === 'dark' ? '☾ Dark' : '☀ Light';
+    }
+  }
 }
 
 // ── API environment (TEST = viatrading.biz / LIVE = ops.viatrading.com) ──────
@@ -3476,8 +3575,22 @@ function applySupplierUI() {
   const btn = $('cfg-rules-btn');
   if (btn) {
     btn.style.display = '';
-    btn.textContent = `${label} rules ⚙`;
+    // Sidebar nav-item layout: icon + text (no "⚙" — sidebar already has the icon)
+    if (btn.classList.contains('nav-item')) {
+      btn.innerHTML = `<span class="nav-icon">⚙️</span>${label} rules`;
+    } else {
+      btn.textContent = `${label} rules ⚙`;
+    }
   }
+  // Page title + eyebrow in the main area
+  const titleEl   = document.getElementById('page-title');
+  const eyebrowEl = document.getElementById('page-eyebrow');
+  if (titleEl)   titleEl.textContent = label;
+  if (eyebrowEl) eyebrowEl.textContent = `${label} · load SKU builder`;
+  // Sidebar active state
+  document.querySelectorAll('.nav-item[data-supplier]').forEach(n => {
+    n.classList.toggle('active', n.dataset.supplier === activeSupplier);
+  });
   // Manifest fetch panel is Wayfair-only for now (Sam's manifests come with
   // the email so the fetch-from-drive flow doesn't apply).
   const mFetch = $('manifest-fetch-card');
@@ -3491,8 +3604,10 @@ function applySupplierUI() {
   }
 }
 
-document.querySelectorAll('.stab[data-supplier]').forEach(tab => {
+document.querySelectorAll('[data-supplier]').forEach(tab => {
+  if (!tab.dataset.supplier) return;
   tab.onclick = () => {
+    if (tab.disabled) return;
     const next = tab.dataset.supplier;
     if (next === activeSupplier) return;
     // Clear loads when switching suppliers to avoid cross-supplier confusion
@@ -3504,8 +3619,6 @@ document.querySelectorAll('.stab[data-supplier]').forEach(tab => {
       $('loads-section').style.display = 'none';
       clearStatus($('push-status'));
     }
-    document.querySelectorAll('.stab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
     activeSupplier = next;
     applySupplierUI();
   };
