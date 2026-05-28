@@ -100,7 +100,7 @@ textarea::placeholder { color: var(--text4); }
 .hint { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--text4); margin-top: 0.5rem; }
 
 /* status */
-.status { margin-top: 0.85rem; padding: 0.55rem 0.8rem; border-radius: 7px; font-family: 'DM Mono', monospace; font-size: 0.72rem; letter-spacing: 0.03em; display: none; }
+.status { margin-top: 0.85rem; padding: 0.55rem 0.8rem; border-radius: 7px; font-family: 'DM Mono', monospace; font-size: 0.72rem; letter-spacing: 0.03em; display: none; white-space: pre-wrap; line-height: 1.6; }
 .status.show { display: block; }
 .status.ok    { background: var(--green-dim); color: var(--green); border: 1px solid rgba(30,127,86,0.4); }
 .status.err   { background: var(--red-dim);   color: var(--red);   border: 1px solid rgba(184,57,44,0.4); }
@@ -2355,11 +2355,20 @@ async function inboxFetch() {
   setStatus($('inbox-status'), 'info', `Got ${msgs.length} message(s) for ${human} — parsing with ${sup.label}…`);
   const allFound = [];
   const csvByManifest = {};
+  const parseLog = [];
   for (const m of msgs) {
     const blob = `${m.subject}\n\n${m.body || m.snippet}`;
     const found = parseEmail(blob, activeSupplier);
-    // For Sam's, link each parsed load (loadId == manifest #) to the first CSV
-    // attachment whose filename contains that manifest #. Fallback: first CSV.
+    parseLog.push({
+      subject: m.subject,
+      from: m.from,
+      date: m.date,
+      bodyLen: (m.body || '').length,
+      snippetLen: (m.snippet || '').length,
+      attachments: (m.attachments || []).map(a => a.filename),
+      parsedCount: found.length,
+      parsedManifests: found.map(l => l.loadId),
+    });
     if (activeSupplier === 'SMS' && Array.isArray(m.attachments) && m.attachments.length) {
       for (const l of found) {
         const match = m.attachments.find(a => a.filename && a.filename.includes(l.loadId)) || m.attachments[0];
@@ -2368,8 +2377,10 @@ async function inboxFetch() {
     }
     allFound.push(...found);
   }
+  console.log('[Posku] inbox parse results:', parseLog);
   if (!allFound.length) {
-    setStatus($('inbox-status'), 'warn', `Fetched ${msgs.length} message(s) but none matched the ${sup.label} parser. Try a different label or check the email format.`);
+    const subjects = parseLog.map((p, i) => `${i+1}. "${p.subject}" (from ${p.from || '—'}) — ${p.bodyLen}b body, ${p.attachments.length} attachment(s)`).join('\n');
+    setStatus($('inbox-status'), 'warn', `Fetched ${msgs.length} message(s) but none matched the ${sup.label} parser.\n\nSubjects fetched:\n${subjects}\n\nFull details logged to DevTools console.`);
     return;
   }
 
