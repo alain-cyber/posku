@@ -2309,9 +2309,13 @@ async function inboxFetch() {
   const after  = $('inbox-after').value;
   // The "To" picker is inclusive of the picked day. Gmail's before: is
   // exclusive, so bump the date by +1 before sending to the server.
+  // Parse as LOCAL date components — new Date('YYYY-MM-DD') parses as UTC
+  // midnight, which west of UTC is the previous day, making the +1 bump a
+  // no-op for half the world.
   let before = $('inbox-before').value;
   if (before) {
-    const b = new Date(before); b.setDate(b.getDate() + 1);
+    const [y, mo, da] = before.split('-').map(Number);
+    const b = new Date(y, mo - 1, da + 1);  // local-time constructor, +1 day
     before = fmtDateInput(b);
   }
   const params = new URLSearchParams({ label });
