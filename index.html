@@ -184,6 +184,7 @@ textarea::placeholder { color: var(--text4); }
 
 /* Config section */
 .cfg-section { padding: 1.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 1.5rem; }
+.cfg-sticky-actions { position: sticky; top: 0; background: var(--surface); padding: 0.6rem 0; margin: -1.5rem -1.5rem 1rem; padding-left: 1.5rem; padding-right: 1.5rem; border-bottom: 1px solid var(--border); z-index: 5; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .cfg-section .cfg-title { font-family: 'DM Serif Display', serif; font-size: 1.25rem; margin-bottom: 0.25rem; }
 .cfg-section .cfg-sub { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: var(--text3); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 1.2rem; }
 .cfg-block { margin-bottom: 1.4rem; }
@@ -2793,8 +2794,14 @@ function drawCfgUISams() {
   const d = cfgDraft;
   const hasOverride = !!loadRulesOverride().SMS;
   sec.innerHTML = `
+    <div class="cfg-sticky-actions">
+      <button class="btn" id="cfg-save-btn-top">Save rules</button>
+      <button class="btn ghost" id="cfg-reset-btn-top" ${hasOverride ? '' : 'disabled'}>Reset to defaults</button>
+      <button class="btn ghost" id="cfg-close-btn-top">Close</button>
+      <span class="cfg-status" id="cfg-save-status-top" style="font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text3);">${hasOverride ? 'Currently using saved overrides.' : 'Using built-in defaults.'}</span>
+    </div>
     <div class="cfg-title">Sam's Club rules</div>
-    <div class="cfg-sub">Browser-local · saved to your browser only (other users see defaults)</div>
+    <div class="cfg-sub">Master rules · shared across all users (stored in Cloudflare KV)</div>
 
     <div class="cfg-block">
       <h3>SKU formula</h3>
@@ -2821,7 +2828,7 @@ function drawCfgUISams() {
         <div class="cfg-field"><label>PSKU</label><input type="text" data-c="psku" value="${esc(d.psku)}"></div>
         <div class="cfg-field"><label>Peachtree code</label><input type="text" data-c="ptCode" value="${esc(d.ptCode)}"></div>
         <div class="cfg-field"><label>Gmail label</label><input type="text" data-c="gmailLabel" value="${esc(d.gmailLabel)}" placeholder="posku"></div>
-        <div class="cfg-field" style="grid-column:span 2;"><label>Gmail recipient filter (to:…)</label><input type="text" data-c="gmailToFilter" value="${esc(d.gmailToFilter)}" placeholder="wayfair@viatrading.com"></div>
+        <div class="cfg-field" style="grid-column:span 2;"><label>Gmail recipient filter (to:…)</label><input type="text" data-c="gmailToFilter" value="${esc(d.gmailToFilter)}" placeholder="walmart@viatrading.com"></div>
       </div>
     </div>
 
@@ -2906,27 +2913,35 @@ function bindCfgHandlersSams() {
     cfgDraft.clubs.push({ manifestPrefix: '', code: '', city: '', fobId: '', fobName: '' });
     drawCfgUI();
   };
-  $('cfg-save-btn').onclick = async () => {
+  const onSave = async () => {
     const cur = { ...loadRulesOverride() };
     cur.SMS = cfgDraft;
-    $('cfg-save-status').textContent = 'Saving…';
+    setBothStatus('Saving…');
     try {
       await saveRulesOverride(cur);
       applyRulesOverride();
-      $('cfg-save-status').textContent = `Saved ✓ at ${new Date().toLocaleTimeString()} — all users see these rules`;
+      setBothStatus(`Saved ✓ at ${new Date().toLocaleTimeString()} — all users see these rules`);
       if (loads.length) renderLoads();
-    } catch (err) {
-      $('cfg-save-status').textContent = `Save failed: ${err.message}`;
-    }
+    } catch (err) { setBothStatus(`Save failed: ${err.message}`); }
   };
-  $('cfg-reset-btn').onclick = async () => {
+  const onReset = async () => {
     if (!confirm("Reset Sam's Club rules to built-in defaults for ALL users? Saved rules will be lost.")) return;
     const cur = { ...loadRulesOverride() };
     delete cur.SMS;
     try { await saveRulesOverride(cur); location.reload(); }
-    catch (err) { $('cfg-save-status').textContent = `Reset failed: ${err.message}`; }
+    catch (err) { setBothStatus(`Reset failed: ${err.message}`); }
   };
-  $('cfg-close-btn').onclick = () => { $('cfg-section').style.display = 'none'; };
+  const onClose = () => { $('cfg-section').style.display = 'none'; };
+  function setBothStatus(t) {
+    const a = $('cfg-save-status'); if (a) a.textContent = t;
+    const b = $('cfg-save-status-top'); if (b) b.textContent = t;
+  }
+  $('cfg-save-btn').onclick = onSave;
+  $('cfg-save-btn-top').onclick = onSave;
+  $('cfg-reset-btn').onclick = onReset;
+  $('cfg-reset-btn-top').onclick = onReset;
+  $('cfg-close-btn').onclick = onClose;
+  $('cfg-close-btn-top').onclick = onClose;
 }
 
 function drawCfgUIWyf() {
@@ -2935,8 +2950,14 @@ function drawCfgUIWyf() {
   const hasOverride = !!loadRulesOverride().WYF;
 
   sec.innerHTML = `
+    <div class="cfg-sticky-actions">
+      <button class="btn" id="cfg-save-btn-top">Save rules</button>
+      <button class="btn ghost" id="cfg-reset-btn-top" ${hasOverride ? '' : 'disabled'}>Reset to defaults</button>
+      <button class="btn ghost" id="cfg-close-btn-top">Close</button>
+      <span class="cfg-status" id="cfg-save-status-top" style="font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text3);">${hasOverride ? 'Currently using saved overrides.' : 'Using built-in defaults.'}</span>
+    </div>
     <div class="cfg-title">Wayfair rules</div>
-    <div class="cfg-sub">Browser-local · saved to your browser only (other users see defaults)</div>
+    <div class="cfg-sub">Master rules · shared across all users (stored in Cloudflare KV)</div>
 
     <div class="cfg-block">
       <h3>SKU formula</h3>
@@ -3104,28 +3125,36 @@ function bindCfgHandlers() {
   $('cfg-hdo').oninput = () => {
     cfgDraft.hdoLocations = $('cfg-hdo').value.split(',').map(s => s.trim()).filter(Boolean);
   };
-  // Actions
-  $('cfg-save-btn').onclick = async () => {
+  // Actions — wired to both the sticky top bar and the bottom row
+  const setBoth = t => {
+    const a = $('cfg-save-status'); if (a) a.textContent = t;
+    const b = $('cfg-save-status-top'); if (b) b.textContent = t;
+  };
+  const onSave = async () => {
     const cur = { ...loadRulesOverride() };
     cur.WYF = cfgDraft;
-    $('cfg-save-status').textContent = 'Saving…';
+    setBoth('Saving…');
     try {
       await saveRulesOverride(cur);
       applyRulesOverride();
-      $('cfg-save-status').textContent = `Saved ✓ at ${new Date().toLocaleTimeString()} — all users see these rules`;
+      setBoth(`Saved ✓ at ${new Date().toLocaleTimeString()} — all users see these rules`);
       if (loads.length) renderLoads();
-    } catch (err) {
-      $('cfg-save-status').textContent = `Save failed: ${err.message}`;
-    }
+    } catch (err) { setBoth(`Save failed: ${err.message}`); }
   };
-  $('cfg-reset-btn').onclick = async () => {
+  const onReset = async () => {
     if (!confirm('Reset Wayfair rules to built-in defaults for ALL users? Saved rules will be lost.')) return;
     const cur = { ...loadRulesOverride() };
     delete cur.WYF;
     try { await saveRulesOverride(cur); location.reload(); }
-    catch (err) { $('cfg-save-status').textContent = `Reset failed: ${err.message}`; }
+    catch (err) { setBoth(`Reset failed: ${err.message}`); }
   };
-  $('cfg-close-btn').onclick = () => { $('cfg-section').style.display = 'none'; };
+  const onClose = () => { $('cfg-section').style.display = 'none'; };
+  $('cfg-save-btn').onclick = onSave;
+  $('cfg-save-btn-top').onclick = onSave;
+  $('cfg-reset-btn').onclick = onReset;
+  $('cfg-reset-btn-top').onclick = onReset;
+  $('cfg-close-btn').onclick = onClose;
+  $('cfg-close-btn-top').onclick = onClose;
 }
 
 $('cfg-rules-btn').onclick = renderRulesEditor;
