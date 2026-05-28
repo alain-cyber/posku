@@ -1483,19 +1483,34 @@ async function checkSKUExists(sku) {
 // Aggregate the per-line manifest rows into load-level totals we can push to
 // the ERP product record. Returns null if there's no manifest yet so the
 // payload skips these fields.
+// Aggregate per-line manifest rows into the load-level totals the ERP expects.
+// Field semantics verified against alain_via_erp.products_flat on 2026-05-28:
+//   - manifest_value      = total RETAIL value of the items in the manifest
+//   - retail_price        = OUR total sell price (counter-intuitive ERP naming)
+//   - retail_price_per_unit = retail per unit
+//   - price_per_unit      = our sell price per unit
+//   - price_per_pallet    = our sell price per pallet
+//   - price               = cart "headline" price = price_per_pallet
 function buildLoadTotals(load) {
   const rows = load.manifestRows || [];
   if (!rows.length) return null;
-  const totalQty   = rows.reduce((s, r) => s + (Number(r.Quantity) || 0), 0);
+  const totalQty    = rows.reduce((s, r) => s + (Number(r.Quantity) || 0), 0);
   const totalRetail = rows.reduce((s, r) => s + (Number(r['Appx. EXT Retail']) || 0), 0);
   const totalSell   = rows.reduce((s, r) => s + (Number(r['Your EXT Price']) || 0), 0);
-  const pallets = new Set((load.manifestPalletIds || []).filter(Boolean));
+  const pallets     = new Set((load.manifestPalletIds || []).filter(Boolean));
+  const pCount      = pallets.size || undefined;
+  const pricePerPallet = pCount ? round2(totalSell / pCount) : undefined;
   return {
-    qty:                    totalQty,
-    pallets_qty:            pallets.size || undefined,
-    retail_price:           round2(totalRetail),
+    units_qty:              totalQty,
+    pallets_qty:            pCount,
+    manifest_value:         round2(totalRetail),
+    manifest_value_basis:   'retail',
+    pricing_model:          'manifested_retail',
+    retail_price:           round2(totalSell),
     retail_price_per_unit:  totalQty ? round2(totalRetail / totalQty) : undefined,
     price_per_unit:         totalQty ? round2(totalSell   / totalQty) : undefined,
+    price_per_pallet:       pricePerPallet,
+    price:                  pricePerPallet,
   };
 }
 
@@ -1552,13 +1567,20 @@ function buildPayload(load) {
     peachtree_code:  sup.ptCode,
   };
 
-  // Manifest-derived load totals (only present when load has manifest rows)
+  // Manifest-derived load totals (only present when load has manifest rows).
+  // Field naming mirrors alain_via_erp.products_flat — see buildLoadTotals().
   if (totals) {
-    if (totals.qty)                    data.qty                   = totals.qty;
-    if (totals.pallets_qty != null)    data.pallets_qty           = totals.pallets_qty;
-    if (totals.retail_price != null)   data.retail_price          = totals.retail_price;
+    if (totals.units_qty)                     data.units_qty             = totals.units_qty;
+    if (totals.units_qty)                     data.qty                   = totals.units_qty;  // alias kept for ERP backward-compat
+    if (totals.pallets_qty != null)           data.pallets_qty           = totals.pallets_qty;
+    if (totals.manifest_value != null)        data.manifest_value        = totals.manifest_value;
+    if (totals.manifest_value_basis)          data.manifest_value_basis  = totals.manifest_value_basis;
+    if (totals.pricing_model)                 data.pricing_model         = totals.pricing_model;
+    if (totals.retail_price != null)          data.retail_price          = totals.retail_price;
     if (totals.retail_price_per_unit != null) data.retail_price_per_unit = totals.retail_price_per_unit;
-    if (totals.price_per_unit != null) data.price_per_unit        = totals.price_per_unit;
+    if (totals.price_per_unit != null)        data.price_per_unit        = totals.price_per_unit;
+    if (totals.price_per_pallet != null)      data.price_per_pallet      = totals.price_per_pallet;
+    if (totals.price != null)                 data.price                 = totals.price;
   }
 
   return { data };
