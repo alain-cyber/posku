@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Posku — Wayfair Load Builder</title>
+<title>Posku — Via Trading</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ff7a3d'/%3E%3Ctext x='32' y='46' font-family='Georgia,serif' font-size='42' font-style='italic' fill='white' text-anchor='middle' font-weight='700'%3EP%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -62,7 +63,11 @@ body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-seri
   border-right: 1px solid rgba(255,255,255,0.06);
   position: sticky; top: 0; height: 100vh; overflow-y: auto;
 }
-.sidebar-brand { padding: 0 1.25rem 1.25rem; display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 1rem; }
+.sidebar-parent-brand { padding: 0 1.25rem 0.75rem; display: flex; align-items: center; gap: 0.55rem; }
+.sidebar-parent-brand .vt-mark { width: 26px; height: 26px; border-radius: 6px; background: #1e7f56; display: inline-flex; align-items: center; justify-content: center; font-family: 'DM Serif Display', serif; font-style: italic; font-size: 0.85rem; color: #fff; font-weight: 700; flex: 0 0 26px; }
+.sidebar-parent-brand .vt-text { font-family: 'DM Serif Display', serif; font-size: 0.95rem; font-style: italic; color: #fff; letter-spacing: -0.01em; }
+.sidebar-parent-brand .vt-text em { font-style: italic; color: #8fcaa7; }
+.sidebar-brand { padding: 0.4rem 1.25rem 1.25rem; display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 1rem; }
 .sidebar-brand-mark { width: 42px; height: 42px; border-radius: 10px; background: linear-gradient(135deg, #ff7a3d, #e54f2c); display: flex; align-items: center; justify-content: center; color: #fff; font-family: 'DM Serif Display', serif; font-size: 1.4rem; font-style: italic; flex: 0 0 42px; }
 .sidebar-brand-text h1 { font-family: 'DM Serif Display', serif; font-size: 1.15rem; font-weight: 400; color: #fff; letter-spacing: -0.005em; line-height: 1.1; margin: 0; }
 .sidebar-brand-text h1 em { font-style: italic; color: #ffd9c4; }
@@ -94,6 +99,10 @@ body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-seri
 .sidebar-footer .env-switch-side button.active[data-env="live"] { background: rgba(239,106,94,0.22); color: #ff8a7c; }
 .sidebar-footer .env-switch-side button + button { border-left: 1px solid rgba(255,255,255,0.10); }
 .sidebar-meta { font-family: 'DM Mono', monospace; font-size: 0.55rem; letter-spacing: 0.12em; text-transform: uppercase; color: #4e5a72; padding: 0.4rem 0.2rem; text-align: center; }
+.vicki-mark { display: flex; align-items: center; justify-content: center; gap: 0.4rem; padding: 0.6rem 0.4rem 0.2rem; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 0.4rem; }
+.vicki-mark .v-icon { width: 18px; height: 18px; background: linear-gradient(135deg, #9b6dff, #5b8cff); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem; color: #fff; font-weight: 700; font-family: 'DM Serif Display', serif; font-style: italic; }
+.vicki-mark .v-text { font-family: 'DM Mono', monospace; font-size: 0.62rem; letter-spacing: 0.06em; color: #8a96ad; }
+.vicki-mark .v-text strong { color: #c9d3e2; font-weight: 600; }
 
 /* Main content area */
 .main { padding: 1.6rem 2.2rem 3rem; max-width: 1320px; margin: 0 auto; width: 100%; }
@@ -283,6 +292,10 @@ textarea::placeholder { color: var(--text4); }
 
   <!-- ── Sidebar ────────────────────────────────────────────────────────── -->
   <aside class="sidebar" id="sidebar">
+    <div class="sidebar-parent-brand">
+      <span class="vt-mark">VT</span>
+      <span class="vt-text">Via <em>Trading</em></span>
+    </div>
     <div class="sidebar-brand">
       <div class="sidebar-brand-mark">P</div>
       <div class="sidebar-brand-text">
@@ -317,6 +330,10 @@ textarea::placeholder { color: var(--text4); }
         <button data-env="live" title="ops.viatrading.com — production">LIVE</button>
       </div>
       <div class="sidebar-meta" id="cfg-status-meta">Cloudflare proxy</div>
+      <div class="vicki-mark" title="Vicki Intelligence — Via Trading's AI suite">
+        <span class="v-icon">V</span>
+        <span class="v-text">Powered by <strong>Vicki Intelligence</strong></span>
+      </div>
     </div>
   </aside>
 
