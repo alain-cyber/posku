@@ -377,6 +377,7 @@ const SUPPLIERS = {
     statusId:    2,
     packingTrait: 88,   // Load (verified via /api/products/dropdowns)
     gmailLabel:  'posku',  // override in rules if a different label is used
+    gmailToFilter: 'wayfair@viatrading.com',  // only fetch emails sent to this recipient
 
     // FOB state IDs (from airbyte_sync.products_fob_states)
     fobIds: {
@@ -468,6 +469,7 @@ const SUPPLIERS = {
     statusId:    2,
     packingTrait: 203,  // LTL (verified against live SMS products in warehouse)
     gmailLabel:  'posku',
+    gmailToFilter: 'walmart@viatrading.com',
 
     // Club code → FOB state ID  (codes go INTO the SKU)
     fobIds: {
@@ -703,7 +705,7 @@ function applyRulesOverride() {
   const w = ov.WYF;
   const wyf = SUPPLIERS.WYF;
   if (w.skuTemplate) wyf.skuTemplate = w.skuTemplate;
-  ['erpSupplier','storeId','psku','ptCode','statusId','packingTrait','defaultManifestTrait','defaultManifestName','gmailLabel'].forEach(k => {
+  ['erpSupplier','storeId','psku','ptCode','statusId','packingTrait','defaultManifestTrait','defaultManifestName','gmailLabel','gmailToFilter'].forEach(k => {
     if (w[k] !== undefined && w[k] !== '') wyf[k] = (typeof wyf[k] === 'number') ? Number(w[k]) : w[k];
   });
   if (Array.isArray(w.locations) && w.locations.length) {
@@ -743,7 +745,7 @@ function applyRulesOverride() {
 
 function applySamsRulesOverride(s) {
   const sms = SUPPLIERS.SMS;
-  ['erpSupplier','storeId','psku','ptCode','statusId','packingTrait','skuTemplate','gmailLabel'].forEach(k => {
+  ['erpSupplier','storeId','psku','ptCode','statusId','packingTrait','skuTemplate','gmailLabel','gmailToFilter'].forEach(k => {
     if (s[k] !== undefined && s[k] !== '') sms[k] = (typeof sms[k] === 'number') ? Number(s[k]) : s[k];
   });
   if (Array.isArray(s.categoryIds))           sms.categoryIds           = s.categoryIds.map(Number).filter(n => Number.isFinite(n));
@@ -786,6 +788,7 @@ function currentSamsRulesAsEditable() {
     statusId:              s.statusId,
     packingTrait:          s.packingTrait,
     gmailLabel:            s.gmailLabel || 'posku',
+    gmailToFilter:         s.gmailToFilter || '',
     categoryIds:           [...(s.categoryIds || [])],
     manifestedCategoryIds: [...(s.manifestedCategoryIds || [])],
     clubs,
@@ -857,14 +860,15 @@ function currentWyfRulesAsEditable() {
   // Snapshot the live SUPPLIERS.WYF (which already reflects saved overrides) as an editable plain object
   const w = SUPPLIERS.WYF;
   return {
-    skuTemplate:  w.skuTemplate,
-    erpSupplier:  w.erpSupplier,
-    storeId:      w.storeId,
-    psku:         w.psku,
-    ptCode:       w.ptCode,
-    statusId:     w.statusId,
-    packingTrait: w.packingTrait,
-    gmailLabel:   w.gmailLabel || 'posku',
+    skuTemplate:    w.skuTemplate,
+    erpSupplier:    w.erpSupplier,
+    storeId:        w.storeId,
+    psku:           w.psku,
+    ptCode:         w.ptCode,
+    statusId:       w.statusId,
+    packingTrait:   w.packingTrait,
+    gmailLabel:     w.gmailLabel || 'posku',
+    gmailToFilter:  w.gmailToFilter || '',
     locations: w.locations.map(loc => ({
       code: loc.code, label: loc.label,
       fobId:   w.fobIds[loc.code]   ?? '',
@@ -1941,6 +1945,7 @@ async function inboxFetch() {
   const params = new URLSearchParams({ label });
   if (after)  params.set('after', after);
   if (before) params.set('before', before);
+  if (sup.gmailToFilter) params.set('to', sup.gmailToFilter);
 
   const url = '/api/gmail/messages?' + params.toString();
   setStatus($('inbox-status'), 'info', `Fetching messages with label "${label}"…`);
@@ -2396,6 +2401,7 @@ function drawCfgUISams() {
         <div class="cfg-field"><label>PSKU</label><input type="text" data-c="psku" value="${esc(d.psku)}"></div>
         <div class="cfg-field"><label>Peachtree code</label><input type="text" data-c="ptCode" value="${esc(d.ptCode)}"></div>
         <div class="cfg-field"><label>Gmail label</label><input type="text" data-c="gmailLabel" value="${esc(d.gmailLabel)}" placeholder="posku"></div>
+        <div class="cfg-field" style="grid-column:span 2;"><label>Gmail recipient filter (to:…)</label><input type="text" data-c="gmailToFilter" value="${esc(d.gmailToFilter)}" placeholder="wayfair@viatrading.com"></div>
       </div>
     </div>
 
@@ -2537,6 +2543,7 @@ function drawCfgUIWyf() {
         <div class="cfg-field"><label>PSKU</label><input type="text" data-c="psku" value="${esc(d.psku)}"></div>
         <div class="cfg-field"><label>Peachtree code</label><input type="text" data-c="ptCode" value="${esc(d.ptCode)}"></div>
         <div class="cfg-field"><label>Gmail label</label><input type="text" data-c="gmailLabel" value="${esc(d.gmailLabel)}" placeholder="posku"></div>
+        <div class="cfg-field" style="grid-column:span 2;"><label>Gmail recipient filter (to:…)</label><input type="text" data-c="gmailToFilter" value="${esc(d.gmailToFilter)}" placeholder="wayfair@viatrading.com"></div>
       </div>
     </div>
 

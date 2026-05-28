@@ -40,10 +40,12 @@ export async function onRequest(context) {
   const label  = url.searchParams.get('label')  || 'posku';
   const after  = url.searchParams.get('after');   // YYYY-MM-DD
   const before = url.searchParams.get('before');  // YYYY-MM-DD
+  const to     = url.searchParams.get('to');      // recipient address filter
   const max    = Math.min(parseInt(url.searchParams.get('max') || '50', 10) || 50, 200);
 
   // Build the Gmail search query
   const parts = [`label:${label}`];
+  if (to)     parts.push(`to:${to}`);
   if (after)  parts.push(`after:${after.replace(/-/g, '/')}`);
   if (before) parts.push(`before:${before.replace(/-/g, '/')}`);
   const q = parts.join(' ');
