@@ -477,6 +477,7 @@ const SUPPLIERS = {
       RVS: 5,  GRF: 26, CHE: 50, SIO: 15, CB:  15,
       CON: 5,  LB:  5,  FUL: 5,  FMS: 5,  RVE: 5,
       LT:  6,  LAY: 44, RDL: 44, PRO: 44, LAR: 43, MCA: 43,
+      CAS: 50,
     },
     fobNames: {
       DEN: 'Colorado',     LOG: 'Utah',         BIL: 'Montana',      HAR: 'Texas',
@@ -484,7 +485,7 @@ const SUPPLIERS = {
       SIO: 'Iowa',         CB:  'Iowa',         CON: 'California',   LB:  'California',
       FUL: 'California',   FMS: 'California',   RVE: 'California',   LT:  'Colorado',
       LAY: 'Utah',         RDL: 'Utah',         PRO: 'Utah',         LAR: 'Texas',
-      MCA: 'Texas',
+      MCA: 'Texas',        CAS: 'Wyoming',
     },
     // Pretty city label for each club code
     clubCities: {
@@ -493,14 +494,32 @@ const SUPPLIERS = {
       SIO: 'Sioux City, IA',  CB:  'Council Bluffs, IA', CON: 'Concord, CA',   LB:  'Long Beach, CA',
       FUL: 'Fullerton, CA',   FMS: 'Folsom, CA',      RVE: 'Roseville, CA',    LT:  'Lone Tree, CO',
       LAY: 'Layton, UT',      RDL: 'Riverdale, UT',   PRO: 'Provo, UT',        LAR: 'Laredo, TX',
-      MCA: 'McAllen, TX',
+      MCA: 'McAllen, TX',     CAS: 'Casper, WY',
     },
     // First 4 digits of manifest # → club code
     clubByManifest: {
       '4777':'DEN', '4786':'LOG', '4805':'BIL', '6269':'HAR', '6345':'IF',
       '6378':'RVS', '6379':'GRF', '6430':'CHE', '6432':'SIO', '6472':'CB',
       '6612':'CON', '6613':'LB',  '6616':'FUL', '6620':'FMS', '6621':'RVE',
-      '6634':'LT',  '6682':'LAY', '6684':'RDL', '6685':'PRO', '8156':'LAR', '8250':'MCA',
+      '6634':'LT',  '6682':'LAY', '6684':'RDL', '6685':'PRO', '8156':'LAR',
+      '8250':'MCA', '6425':'CAS',
+    },
+
+    // Markup % we charge our customers, per Main Category (load-center "Your Price %")
+    defaultMarkups: { APPAREL: 0.20, 'General Merchandise': 0.305, Electronics: 0.33, Food: 0.22 },
+    // Per-club overrides. Only the clubs that deviate from defaultMarkups appear here.
+    clubMarkups: {
+      HAR: { APPAREL: 0.25, 'General Merchandise': 0.37, Electronics: 0.38, Food: 0.25 },
+      MCA: { APPAREL: 0.25, 'General Merchandise': 0.37, Electronics: 0.38, Food: 0.25 },
+    },
+    // Sam's raw Subcategory text → Main Category bucket
+    mainCategoryRules: {
+      APPAREL: ['LADIES APPAREL','MENS APPAREL','CHILDRENS APPAREL','BASIC APPAREL','ACCESSORIES'],
+      Electronics: ['KITCHEN ELECTRICS AND FLOORCARE','BATTERIES AND EMERGING TECH','CONNECTED LIFE',
+                    'OFFICE ELECTRONICS','POWER EQUIP-TOOLS-AUTO','TVS SOUNDBARS',
+                    'TABLETS AND CONNECTED DEVICES'],
+      Food: ['BEVERAGES','CHIPS','SWEET AND SALTY SNACKS','CEREAL-BARS-SPREADS',
+             'CAN PROTEIN-CONDIMENTS-PASTA','CANDY - SNACKS - BUSINESS','SPORTS NUTRITION'],
     },
 
     // Only one "type" — all Sam's loads are Customer Returns / Manifested
@@ -525,10 +544,11 @@ const SUPPLIERS = {
     // the dedup check will catch the collision and you'll see an error — just
     // bump the SEQ in the review card and re-push.
     lastKnownMaxSeq: {
-      BIL: 800,  CB:  754,  CHE: 328,  CON: 764,  DEN: 69,
-      FMS: 551,  FUL: 857,  GRF: 228,  HAR: 29,   IF:  142,
-      LAR: 32,   LAY: 1071, LB:  1195, LOG: 384,  LT:  47,
-      MCA: 33,   PRO: 352,  RDL: 216,  RVE: 783,  RVS: 698, SIO: 402,
+      BIL: 800,  CAS: 252,  CB:  754,  CHE: 328,  CON: 764,
+      DEN: 69,   FMS: 551,  FUL: 857,  GRF: 228,  HAR: 29,
+      IF:  142,  LAR: 32,   LAY: 1071, LB:  1195, LOG: 384,
+      LT:  47,   MCA: 33,   PRO: 352,  RDL: 216,  RVE: 783,
+      RVS: 698,  SIO: 402,
     },
 
     // SKU template — Sam's uses {loc} (club code) + {seq}
@@ -1066,6 +1086,177 @@ async function assignSamsSequences(pending) {
   }
 }
 
+// ── Sam's manifest CSV → Load Center rows ───────────────────────────────────
+// Output columns (16, in this order):
+//   SKU, Store, Pallet ID, Item ID, UPC, Description, Main Category, Subcategory,
+//   Quantity, Appx. EXT Retail, Appx. Unit Retail, Your Price %, Your EXT Price,
+//   Your Unit Price $, % of Load QTY, % of Load $$
+const LC_COLUMNS = [
+  'SKU','Store','Pallet ID','Item ID','UPC','Description','Main Category','Subcategory',
+  'Quantity','Appx. EXT Retail','Appx. Unit Retail','Your Price %','Your EXT Price',
+  'Your Unit Price $','% of Load QTY','% of Load $$',
+];
+
+function samsMainCategory(subcat, sup) {
+  if (!subcat) return 'General Merchandise';
+  const up = String(subcat).toUpperCase().trim();
+  for (const [main, list] of Object.entries(sup.mainCategoryRules || {})) {
+    if (list.includes(up)) return main;
+  }
+  return 'General Merchandise';
+}
+
+function samsMarkupFor(clubCode, mainCategory, sup) {
+  const override = sup.clubMarkups?.[clubCode]?.[mainCategory];
+  if (override != null) return override;
+  return sup.defaultMarkups?.[mainCategory] ?? sup.defaultMarkups?.['General Merchandise'] ?? 0;
+}
+
+// Strip "=\"…\"" / "$X.XX" / "Y%" wrappers Sam's CSV uses, return Number or string
+function unwrapCell(s) {
+  if (s == null) return '';
+  let v = String(s).trim();
+  // Excel formula wrapper: ="..."
+  const m = v.match(/^="?(.*?)"?$/);
+  if (m) v = m[1];
+  v = v.trim();
+  return v;
+}
+function moneyToNum(s) {
+  if (s == null) return null;
+  const v = String(unwrapCell(s)).replace(/[$,]/g, '').trim();
+  if (v === '' || v.toUpperCase() === 'NA') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+function pctToNum(s) {
+  if (s == null) return null;
+  const v = String(unwrapCell(s)).replace(/[%,]/g, '').trim();
+  if (v === '' || v.toUpperCase() === 'NA') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return n > 1 ? n / 100 : n;
+}
+function intToNum(s) {
+  if (s == null) return null;
+  const v = String(unwrapCell(s)).replace(/[,]/g, '').trim();
+  if (v === '' || v.toUpperCase() === 'NA') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Minimal RFC4180-ish CSV parser (handles quoted commas and "" escapes).
+function parseCsv(text) {
+  const rows = [];
+  let row = [], cur = '', inQ = false, i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"' && text[i+1] === '"') { cur += '"'; i += 2; continue; }
+      if (c === '"') { inQ = false; i++; continue; }
+      cur += c; i++;
+    } else {
+      if (c === '"') { inQ = true; i++; continue; }
+      if (c === ',') { row.push(cur); cur = ''; i++; continue; }
+      if (c === '\r') { i++; continue; }
+      if (c === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; i++; continue; }
+      cur += c; i++;
+    }
+  }
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+
+// Given the raw Sam's manifest CSV text + the posku-assigned SKU and clubCode,
+// produce { rows: [{16 cols, ...}], manifestId, palletIds: [...] }.
+// Handles multi-pallet manifests: every "Item list - Pallet <ID>" section
+// starts a new pallet and its rows inherit that pallet ID.
+function transformSamsManifest(csvText, sku, clubCode) {
+  const sup = SUPPLIERS.SMS;
+  const rows = parseCsv(csvText);
+  let manifestId = '';
+  let currentPallet = '';
+  let inItems = false;
+  const out = [];
+
+  for (const r of rows) {
+    const a = unwrapCell(r[0] || '');
+    const b = unwrapCell(r[1] || '');
+    if (a === 'Manifest:') { manifestId = b; continue; }
+    // Pallet section header: "Item list - Pallet 63780526104259"
+    const palletMatch = a.match(/^Item list\s*-\s*Pallet\s+(\d+)/i);
+    if (palletMatch) {
+      currentPallet = palletMatch[1];
+      inItems = false;  // wait for the column-headers row
+      continue;
+    }
+    // Column-headers row inside an item section starts with "-"
+    if (a === '-' && b === 'Description') { inItems = true; continue; }
+    // Closing "Total" row ends a section
+    if (a === 'Total') { inItems = false; continue; }
+    if (!inItems) continue;
+    // Skip the "Taxes and Linked Fees" pseudo-row (no real category / retail = NA)
+    const desc = unwrapCell(r[1] || '');
+    if (/^Taxes and Linked Fees/i.test(desc)) continue;
+
+    const subcat   = unwrapCell(r[5]);            // "Category description"
+    const qty      = intToNum(r[6]) || 0;
+    const unitRet  = moneyToNum(r[7]);             // "Retail per item (USD$)"
+    if (!unitRet || !qty) continue;                // skip rows we can't price
+
+    const mainCat  = samsMainCategory(subcat, sup);
+    const markup   = samsMarkupFor(clubCode, mainCat, sup);
+    const yourUnit = unitRet * markup;
+    out.push({
+      SKU:                  sku,
+      Store:                'SMS',
+      'Pallet ID':          currentPallet,
+      'Item ID':            unwrapCell(r[2]),
+      UPC:                  unwrapCell(r[3]),
+      Description:          desc,
+      'Main Category':      mainCat,
+      Subcategory:          subcat,
+      Quantity:             qty,
+      'Appx. EXT Retail':   round2(unitRet * qty),
+      'Appx. Unit Retail':  round2(unitRet),
+      'Your Price %':       markup,
+      'Your EXT Price':     round2(yourUnit * qty),
+      'Your Unit Price $':  round2(yourUnit),
+      '% of Load QTY':      null,   // filled in below once totals are known
+      '% of Load $$':       null,
+    });
+  }
+
+  // Compute % of load (qty and $)
+  const totQty = out.reduce((s, r) => s + (r.Quantity || 0), 0) || 1;
+  const tot$   = out.reduce((s, r) => s + (r['Your EXT Price'] || 0), 0) || 1;
+  for (const r of out) {
+    r['% of Load QTY'] = (r.Quantity || 0) / totQty;
+    r['% of Load $$']  = (r['Your EXT Price'] || 0) / tot$;
+  }
+  return { rows: out, manifestId, palletIds: [...new Set(out.map(r => r['Pallet ID']).filter(Boolean))] };
+}
+
+function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+
+// Tab-separated string of all rows + header — paste straight into Google Sheets.
+function loadCenterAsTsv(rows) {
+  const fmtCell = (col, v) => {
+    if (v == null) return '';
+    if (col === 'Your Price %' || col === '% of Load QTY' || col === '% of Load $$') {
+      return (v * 100).toFixed(2) + '%';
+    }
+    if (['Appx. EXT Retail','Appx. Unit Retail','Your EXT Price','Your Unit Price $'].includes(col)) {
+      return '$' + Number(v).toFixed(2);
+    }
+    return String(v).replace(/\t/g, ' ').replace(/\n/g, ' ');
+  };
+  return [
+    LC_COLUMNS.join('\t'),
+    ...rows.map(r => LC_COLUMNS.map(c => fmtCell(c, r[c])).join('\t')),
+  ].join('\n');
+}
+
 // ── ERP API ──────────────────────────────────────────────────────────────────
 // Hosted on Cloudflare Pages: hits same-origin /api/* (Pages Function proxies
 // to viatrading.biz with the server-side API key). Local file mode falls back
@@ -1189,6 +1380,143 @@ async function pushLoad(load) {
 }
 
 // ── Renderer ─────────────────────────────────────────────────────────────────
+// Build the per-load Sam's manifest panel: attach a CSV, see the transformed
+// load-center rows, copy as TSV (paste into Google Sheets).
+function buildSamsManifestRow(load, idx) {
+  const tr = document.createElement('tr');
+  tr.className = 'sams-manifest-row';
+  const manId = load.loadId || '—';
+  const summary = load.manifestRows && load.manifestRows.length
+    ? `${load.manifestRows.length} line item(s) · ${load.manifestPalletIds?.length || 0} pallet(s)`
+    : 'No manifest attached yet';
+  const sku = load.sku ? withEnvSuffix(load.sku) : '(SKU pending)';
+  tr.innerHTML = `<td colspan="11" style="padding:0.55rem 0.8rem;background:var(--surface2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
+    <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
+      <span style="font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text3);letter-spacing:0.1em;text-transform:uppercase;">Load-center manifest for ${esc(sku)}</span>
+      <span style="font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text4);">manifest #${esc(manId)} · ${esc(summary)}</span>
+      <span style="flex:1;"></span>
+      <input type="file" id="sams-mani-file-${idx}" accept=".csv,text/csv" style="display:none;">
+      <button class="btn small ghost" data-sams-mani-pick="${idx}">Attach CSV</button>
+      ${load.manifestRows && load.manifestRows.length ? `
+        <button class="btn small" data-sams-mani-send="${idx}"${load.manifestSentTo ? ' disabled' : ''}>${load.manifestSentTo ? 'Sent ✓ ' + load.manifestSentTo : 'Send to Sheet'}</button>
+        <button class="btn small ghost" data-sams-mani-toggle="${idx}">${load.manifestExpanded ? 'Hide preview' : 'Show preview'}</button>
+        <button class="btn small ghost" data-sams-mani-clear="${idx}">Remove</button>
+      ` : ''}
+    </div>
+    ${load.manifestRows && load.manifestRows.length && load.manifestExpanded
+      ? `<div style="margin-top:0.6rem;max-height:360px;overflow:auto;border:1px solid var(--border2);border-radius:6px;">
+          ${renderManifestTable(load.manifestRows)}
+        </div>` : ''}
+    ${load.manifestError ? `<div class="status err show" style="margin-top:0.5rem;">${esc(load.manifestError)}</div>` : ''}
+  </td>`;
+  return tr;
+}
+
+function renderManifestTable(rows) {
+  const fmt = (col, v) => {
+    if (v == null) return '';
+    if (col === 'Your Price %' || col === '% of Load QTY' || col === '% of Load $$') {
+      return (v * 100).toFixed(2) + '%';
+    }
+    if (['Appx. EXT Retail','Appx. Unit Retail','Your EXT Price','Your Unit Price $'].includes(col)) {
+      return '$' + Number(v).toFixed(2);
+    }
+    return String(v);
+  };
+  return `<table style="border-collapse:collapse;font-family:'DM Mono',monospace;font-size:0.64rem;width:100%;">
+    <thead style="background:var(--surface3);position:sticky;top:0;">
+      <tr>${LC_COLUMNS.map(c => `<th style="text-align:left;padding:0.3rem 0.5rem;border-bottom:1px solid var(--border2);white-space:nowrap;">${esc(c)}</th>`).join('')}</tr>
+    </thead>
+    <tbody>
+      ${rows.map(r => `<tr>${LC_COLUMNS.map(c => `<td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border);white-space:nowrap;">${esc(fmt(c, r[c]))}</td>`).join('')}</tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+// Wire the per-row handlers (called from attachHandlers after each render).
+function attachSamsManifestHandlers() {
+  document.querySelectorAll('[data-sams-mani-pick]').forEach(b => {
+    b.onclick = () => $('sams-mani-file-' + b.dataset.samsManiPick).click();
+  });
+  document.querySelectorAll('input[id^="sams-mani-file-"]').forEach(inp => {
+    inp.onchange = async e => {
+      const idx = +inp.id.replace('sams-mani-file-', '');
+      const file = e.target.files[0]; if (!file) return;
+      const load = loads[idx];
+      try {
+        const txt = await file.text();
+        const result = transformSamsManifest(txt, load.sku || '', load.locCode || '');
+        if (!result.rows.length) {
+          load.manifestError = `Parsed ${file.name} but found 0 item rows. Make sure the file is the Sam's Club manifest CSV (one with "Manifest:" header).`;
+          load.manifestRows = []; load.manifestPalletIds = [];
+        } else {
+          load.manifestRows = result.rows;
+          load.manifestPalletIds = result.palletIds;
+          load.manifestExpanded = true;
+          load.manifestError = '';
+        }
+      } catch (err) {
+        load.manifestError = `Could not read ${file.name}: ${err.message}`;
+      }
+      renderLoads();
+    };
+  });
+  document.querySelectorAll('[data-sams-mani-send]').forEach(b => {
+    b.onclick = async () => {
+      const idx = +b.dataset.samsManiSend;
+      const load = loads[idx];
+      const rows = load.manifestRows || [];
+      if (!rows.length) return;
+      // Convert each row to a Sheets-friendly array (strings; let valueInputOption=USER_ENTERED parse).
+      const values = rows.map(r => LC_COLUMNS.map(col => {
+        const v = r[col];
+        if (v == null) return '';
+        if (col === 'Your Price %' || col === '% of Load QTY' || col === '% of Load $$') {
+          return (v * 100).toFixed(2) + '%';
+        }
+        if (['Appx. EXT Retail','Appx. Unit Retail','Your EXT Price','Your Unit Price $'].includes(col)) {
+          return '$' + Number(v).toFixed(2);
+        }
+        return String(v);
+      }));
+      b.disabled = true; b.textContent = 'Sending…';
+      try {
+        const r = await fetch('/api/sheets/append', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+        load.manifestSentTo = j.updatedRange || j.tab || 'Sheet';
+        load.manifestExpanded = false;
+        renderLoads();
+      } catch (err) {
+        b.disabled = false; b.textContent = 'Send to Sheet';
+        load.manifestError = `Send failed: ${err.message}`;
+        renderLoads();
+      }
+    };
+  });
+  document.querySelectorAll('[data-sams-mani-toggle]').forEach(b => {
+    b.onclick = () => {
+      const idx = +b.dataset.samsManiToggle;
+      loads[idx].manifestExpanded = !loads[idx].manifestExpanded;
+      renderLoads();
+    };
+  });
+  document.querySelectorAll('[data-sams-mani-clear]').forEach(b => {
+    b.onclick = () => {
+      const idx = +b.dataset.samsManiClear;
+      loads[idx].manifestRows = [];
+      loads[idx].manifestPalletIds = [];
+      loads[idx].manifestExpanded = false;
+      loads[idx].manifestError = '';
+      renderLoads();
+    };
+  });
+}
+
 function renderLoads() {
   const body = $('loads-body');
   body.innerHTML = '';
@@ -1422,6 +1750,11 @@ function renderLoads() {
     body.appendChild(dr);
     body.appendChild(er);
 
+    // Sam's manifest section — drop a CSV here to reshape into Load Center columns
+    if (load.supplierKey === 'SMS') {
+      body.appendChild(buildSamsManifestRow(load, idx));
+    }
+
     if ((load.status === 'failed' || load.status === 'dup') && load.erpResult) {
       const msgRow = document.createElement('tr');
       msgRow.innerHTML = `<td colspan="11" style="padding:0.5rem 0.8rem;background:${load.status==='failed'?'var(--red-dim)':'var(--surface2)'};border-bottom:1px solid var(--border);">
@@ -1466,6 +1799,7 @@ function updateSummary() {
 }
 
 function attachHandlers() {
+  attachSamsManifestHandlers();
   $('loads-body').querySelectorAll('[data-push]').forEach(b => {
     b.onclick = async () => {
       const idx = +b.dataset.push;

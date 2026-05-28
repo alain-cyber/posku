@@ -20,7 +20,7 @@ export async function onRequest(context) {
   // Gmail integration has its own handler at /api/gmail/* — pass through if
   // it somehow lands here (defensive; the static route file should win).
   const segs = Array.isArray(params.path) ? params.path : (params.path ? [params.path] : []);
-  if (segs[0] === 'gmail' || segs[0] === 'rules') {
+  if (segs[0] === 'gmail' || segs[0] === 'rules' || segs[0] === 'sheets') {
     return jsonError(404, `${segs[0]} subpath not handled by ERP proxy`);
   }
 

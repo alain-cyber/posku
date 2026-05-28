@@ -89,6 +89,41 @@ Lets the app pull labeled emails from a shared workflow mailbox without per-user
 7. **Retry deployment**. Visit `/api/gmail/messages?label=posku` to verify — `ok:true`
    with an empty `messages` array means it worked.
 
+### 7. Google Sheets writer (for Sam's manifest → Load Center)
+
+Lets the app append parsed Sam's manifest rows straight to a shared Google Sheet
+that's then exported to Excel and imported into the Load Center.
+
+1. **Workspace admin → admin.google.com → Manage domain-wide delegation** → edit
+   the existing entry for the `posku-gmail-reader` service account (or add a
+   new one with the same Client ID) and include this scope in addition to the
+   Gmail one:
+   ```
+   https://www.googleapis.com/auth/spreadsheets
+   ```
+   So the OAuth scopes field reads:
+   ```
+   https://www.googleapis.com/auth/gmail.readonly,https://www.googleapis.com/auth/spreadsheets
+   ```
+2. Open the destination Google Sheet. **Share** it with the service-account email
+   (`posku-gmail-reader@data-warehouse-494801.iam.gserviceaccount.com`) as
+   **Editor**. (Domain-wide delegation gets you in as `vickiai@viatrading.com`,
+   but explicit share is a safe fallback.)
+3. Make sure the sheet has a tab named `Manifest` (or whatever you'll configure)
+   with the **16 Load Center columns** in row 1 as headers:
+   `SKU, Store, Pallet ID, Item ID, UPC, Description, Main Category, Subcategory,
+   Quantity, Appx. EXT Retail, Appx. Unit Retail, Your Price %, Your EXT Price,
+   Your Unit Price $, % of Load QTY, % of Load $$`. The function `append`s data
+   rows starting after the last filled row, so the headers stay in row 1 forever.
+4. Copy the sheet's ID from the URL (the long opaque string between `/d/` and
+   `/edit`). Pages → Settings → Environment variables → Production:
+   - `SHEETS_SPREADSHEET_ID` = that ID (plaintext)
+   - `SHEETS_TAB` = `Manifest` (or your tab name — optional, defaults to `Manifest`)
+5. **Retry deployment**.
+
+To verify: from the app, attach a Sam's manifest CSV to a SMS load → click
+**Send to Sheet**. Watch the sheet for the rows to appear.
+
 ## How the code is wired
 
 | Concern | Local file mode (`file://`) | Cloudflare Pages mode |
