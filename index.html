@@ -2294,7 +2294,16 @@ async function inboxFetch() {
   if (sup.gmailToFilter) params.set('to', sup.gmailToFilter);
 
   const url = '/api/gmail/messages?' + params.toString();
-  setStatus($('inbox-status'), 'info', `Fetching messages with label "${label}"…`);
+  // Human-readable summary of what we're searching for — used in status updates
+  // instead of Gmail's raw after:/before: syntax (which is confusing because of
+  // the +1 day translation).
+  const fromTo = $('inbox-after').value && $('inbox-before').value
+    ? `from ${$('inbox-after').value} to ${$('inbox-before').value}`
+    : '';
+  const toFilter = sup.gmailToFilter ? ` to ${sup.gmailToFilter}` : '';
+  const human = `label "${label}"${toFilter}${fromTo ? ' · ' + fromTo : ''}`;
+
+  setStatus($('inbox-status'), 'info', `Searching ${human}…`);
   let res;
   try {
     res = await fetch(url, { cache: 'no-store' });
@@ -2310,14 +2319,14 @@ async function inboxFetch() {
   }
   const msgs = j.messages || [];
   if (!msgs.length) {
-    setStatus($('inbox-status'), 'warn', `No messages found. Gmail query: \`${j.query}\``);
+    setStatus($('inbox-status'), 'warn', `No messages found for ${human}.`);
     return;
   }
 
   // Parse every message body with the current supplier's parser; merge results.
   // Also stash any CSV attachments (Sam's loads) so we can auto-attach them
   // after sequence assignment — saves the user from picking the right file.
-  setStatus($('inbox-status'), 'info', `Got ${msgs.length} message(s) for query \`${j.query}\` — parsing with ${sup.label}…`);
+  setStatus($('inbox-status'), 'info', `Got ${msgs.length} message(s) for ${human} — parsing with ${sup.label}…`);
   const allFound = [];
   const csvByManifest = {};
   for (const m of msgs) {
