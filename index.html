@@ -2073,7 +2073,9 @@ function createDraftFromLoad(load) {
     shipping_address: def.shipping_address_byLoc?.[load.locCode] || '',
     item_qty:         1,
     item_price:       0,
-    item_pallets_qty: 0,
+    // Pallets: Sam's loads always go in as 1 pallet (user-confirmed); Wayfair
+    // stays at 0 so it's filled in from the email/manifest. Override in UI as needed.
+    item_pallets_qty: load.supplierKey === 'SMS' ? 1 : 0,
     item_supplier_sku: '',
     // UI-only
     status:           'draft',  // local UI status, not API status_id
