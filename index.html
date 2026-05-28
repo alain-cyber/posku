@@ -380,6 +380,7 @@ const SUPPLIERS = {
     packingTrait: 88,   // Load (verified via /api/products/dropdowns)
     gmailLabel:  'posku',  // override in rules if a different label is used
     gmailToFilter: 'wayfair@viatrading.com',  // only fetch emails sent to this recipient
+    sheetTab:    'Wayfair',  // Google Sheet tab name for Load Center append
 
     // FOB state IDs (from airbyte_sync.products_fob_states)
     fobIds: {
@@ -472,6 +473,7 @@ const SUPPLIERS = {
     packingTrait: 203,  // LTL (verified against live SMS products in warehouse)
     gmailLabel:  'posku',
     gmailToFilter: 'walmart@viatrading.com',
+    sheetTab:    "Sam's Club",
 
     // Club code → FOB state ID  (codes go INTO the SKU)
     fobIds: {
@@ -728,7 +730,7 @@ function applyRulesOverride() {
   const wyf = SUPPLIERS.WYF;
   if (w.skuTemplate) wyf.skuTemplate = w.skuTemplate;
   // String fields: empty string is a valid override (means "no filter" etc).
-  ['psku','ptCode','defaultManifestName','gmailLabel','gmailToFilter'].forEach(k => {
+  ['psku','ptCode','defaultManifestName','gmailLabel','gmailToFilter','sheetTab'].forEach(k => {
     if (w[k] !== undefined) wyf[k] = w[k];
   });
   // Numeric fields: empty/blank falls back to the baked-in default.
@@ -776,7 +778,7 @@ function applyRulesOverride() {
 function applySamsRulesOverride(s) {
   const sms = SUPPLIERS.SMS;
   // String fields: empty string is a valid override (means "no filter").
-  ['psku','ptCode','skuTemplate','gmailLabel','gmailToFilter'].forEach(k => {
+  ['psku','ptCode','skuTemplate','gmailLabel','gmailToFilter','sheetTab'].forEach(k => {
     if (s[k] !== undefined) sms[k] = s[k];
   });
   // Numeric fields: empty/blank falls back to the baked-in default.
@@ -827,6 +829,7 @@ function currentSamsRulesAsEditable() {
     packingTrait:          s.packingTrait,
     gmailLabel:            s.gmailLabel || 'posku',
     gmailToFilter:         s.gmailToFilter || '',
+    sheetTab:              s.sheetTab || "Sam's Club",
     categoryIds:           [...(s.categoryIds || [])],
     manifestedCategoryIds: [...(s.manifestedCategoryIds || [])],
     clubs,
@@ -907,6 +910,7 @@ function currentWyfRulesAsEditable() {
     packingTrait:   w.packingTrait,
     gmailLabel:     w.gmailLabel || 'posku',
     gmailToFilter:  w.gmailToFilter || '',
+    sheetTab:       w.sheetTab || 'Wayfair',
     locations: w.locations.map(loc => ({
       code: loc.code, label: loc.label,
       fobId:   w.fobIds[loc.code]   ?? '',
@@ -1322,6 +1326,25 @@ async function checkSKUExists(sku) {
   return { exists: false };
 }
 
+// Aggregate the per-line manifest rows into load-level totals we can push to
+// the ERP product record. Returns null if there's no manifest yet so the
+// payload skips these fields.
+function buildLoadTotals(load) {
+  const rows = load.manifestRows || [];
+  if (!rows.length) return null;
+  const totalQty   = rows.reduce((s, r) => s + (Number(r.Quantity) || 0), 0);
+  const totalRetail = rows.reduce((s, r) => s + (Number(r['Appx. EXT Retail']) || 0), 0);
+  const totalSell   = rows.reduce((s, r) => s + (Number(r['Your EXT Price']) || 0), 0);
+  const pallets = new Set((load.manifestPalletIds || []).filter(Boolean));
+  return {
+    qty:                    totalQty,
+    pallets_qty:            pallets.size || undefined,
+    retail_price:           round2(totalRetail),
+    retail_price_per_unit:  totalQty ? round2(totalRetail / totalQty) : undefined,
+    price_per_unit:         totalQty ? round2(totalSell   / totalQty) : undefined,
+  };
+}
+
 function buildPayload(load) {
   const sup = SUPPLIERS[load.supplierKey] || SUPPLIERS.WYF;
 
@@ -1335,42 +1358,56 @@ function buildPayload(load) {
   // Apply env-driven suffix: TEST → "...-test", LIVE → no suffix.
   const finalSku = withEnvSuffix(load.sku);
 
-  return {
-    data: {
-      // identity
-      sku:             finalSku,
-      name:            load.name,
-      psku:            sup.psku,
-      psku_type:       'regular',
-      active:          load.active ?? 1,
-      make_an_offer:   false,
-      store_id:        sup.storeId,
+  // If a manifest is attached at push time (Sam's CSV from email, or a
+  // future Wayfair flow), include the load-level totals so the SKU lands
+  // priced and quantified instead of empty.
+  const totals = buildLoadTotals(load);
 
-      // translation (flat on data per Pattern A — top-level i18n is ignored)
-      lang_id:         1,
-      slug:            finalSku.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+  const data = {
+    // identity
+    sku:             finalSku,
+    name:            load.name,
+    psku:            sup.psku,
+    psku_type:       'regular',
+    active:          load.active ?? 1,
+    make_an_offer:   false,
+    store_id:        sup.storeId,
 
-      // traits (IDs from /api/products/dropdowns)
-      packing:         sup.packingTrait,
-      condition:       load.condTrait,
-      manifested:      load.manifestTrait,
+    // translation (flat on data per Pattern A — top-level i18n is ignored)
+    lang_id:         1,
+    slug:            finalSku.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
 
-      // taxonomy (IDs from products_segments — verify API field name on first push)
-      productCategories: categories,
+    // traits (IDs from /api/products/dropdowns)
+    packing:         sup.packingTrait,
+    condition:       load.condTrait,
+    manifested:      load.manifestTrait,
 
-      // shipping
-      fobStates:       load.fobId ? [load.fobId] : [],
+    // taxonomy (IDs from products_segments — verify API field name on first push)
+    productCategories: categories,
 
-      // supplier
-      supplierId:      sup.erpSupplier,
+    // shipping
+    fobStates:       load.fobId ? [load.fobId] : [],
 
-      // audit + ERP bookkeeping
-      status_id:       sup.statusId,
-      user_id:         179,
-      user_id_created: 179,
-      peachtree_code:  sup.ptCode,
-    },
+    // supplier
+    supplierId:      sup.erpSupplier,
+
+    // audit + ERP bookkeeping
+    status_id:       sup.statusId,
+    user_id:         179,
+    user_id_created: 179,
+    peachtree_code:  sup.ptCode,
   };
+
+  // Manifest-derived load totals (only present when load has manifest rows)
+  if (totals) {
+    if (totals.qty)                    data.qty                   = totals.qty;
+    if (totals.pallets_qty != null)    data.pallets_qty           = totals.pallets_qty;
+    if (totals.retail_price != null)   data.retail_price          = totals.retail_price;
+    if (totals.retail_price_per_unit != null) data.retail_price_per_unit = totals.retail_price_per_unit;
+    if (totals.price_per_unit != null) data.price_per_unit        = totals.price_per_unit;
+  }
+
+  return { data };
 }
 
 async function pushLoad(load) {
@@ -1499,10 +1536,11 @@ function attachSamsManifestHandlers() {
       }));
       b.disabled = true; b.textContent = 'Sending…';
       try {
+        const sup = SUPPLIERS[load.supplierKey] || SUPPLIERS.SMS;
         const r = await fetch('/api/sheets/append', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ values }),
+          body: JSON.stringify({ values, tab: sup.sheetTab }),
         });
         const j = await r.json().catch(() => ({}));
         if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
@@ -2452,10 +2490,11 @@ $('send-all-manifests-btn').onclick = async () => {
       return String(v);
     }));
     try {
+      const sup = SUPPLIERS[l.supplierKey] || SUPPLIERS.SMS;
       const r = await fetch('/api/sheets/append', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values }),
+        body: JSON.stringify({ values, tab: sup.sheetTab }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
@@ -2869,6 +2908,7 @@ function drawCfgUISams() {
         <div class="cfg-field"><label>Peachtree code</label><input type="text" data-c="ptCode" value="${esc(d.ptCode)}"></div>
         <div class="cfg-field"><label>Gmail label</label><input type="text" data-c="gmailLabel" value="${esc(d.gmailLabel)}" placeholder="posku"></div>
         <div class="cfg-field" style="grid-column:span 2;"><label>Gmail recipient filter (to:…)</label><input type="text" data-c="gmailToFilter" value="${esc(d.gmailToFilter)}" placeholder="walmart@viatrading.com"></div>
+        <div class="cfg-field"><label>Google Sheet tab</label><input type="text" data-c="sheetTab" value="${esc(d.sheetTab)}" placeholder="Sam's Club"></div>
       </div>
     </div>
 
@@ -2972,7 +3012,7 @@ function bindCfgHandlersSams() {
       const r = await fetch('/api/sheets/init-headers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ headers: LC_COLUMNS }),
+        body: JSON.stringify({ headers: LC_COLUMNS, tab: SUPPLIERS.SMS.sheetTab }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
@@ -3055,6 +3095,7 @@ function drawCfgUIWyf() {
         <div class="cfg-field"><label>Peachtree code</label><input type="text" data-c="ptCode" value="${esc(d.ptCode)}"></div>
         <div class="cfg-field"><label>Gmail label</label><input type="text" data-c="gmailLabel" value="${esc(d.gmailLabel)}" placeholder="posku"></div>
         <div class="cfg-field" style="grid-column:span 2;"><label>Gmail recipient filter (to:…)</label><input type="text" data-c="gmailToFilter" value="${esc(d.gmailToFilter)}" placeholder="wayfair@viatrading.com"></div>
+        <div class="cfg-field"><label>Google Sheet tab</label><input type="text" data-c="sheetTab" value="${esc(d.sheetTab)}" placeholder="Wayfair"></div>
       </div>
     </div>
 

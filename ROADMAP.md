@@ -54,3 +54,21 @@ varies. Salvage is a **flat $3,000 per load** (not a percentage).
 - Add `Perigold` (proposed code `PG`) to `SUPPLIERS.WYF.types` with detection patterns
 - Salvage parser: emit one row at $3,000, no line items
 - Build the actual line-item parser for LQ / A / QC / HDO / Perigold using the markup table above
+
+## Training items (carried from session 2026-05-28)
+- **Sam's manifest → product fields**: when manifest is attached at SKU-push, populate
+  `qty`, `retail_price`, `retail_price_per_unit`, `price_per_unit` using
+  `qty = sum(Qty)`, `retail_price = sum(Appx. EXT Retail)`,
+  `retail_price_per_unit = retail / qty`, `price_per_unit = sum(Your EXT) / qty`.
+  User will train on exact field names + math next session.
+- **Wayfair manifest → product fields**: at Drive-fetch time, also push `pallets_qty`,
+  `qty`, `retail_price`, `retail_price_per_unit`, `price_per_unit`, plus probably
+  `price_per_pallet` and a couple others. Confirm full set with user.
+- **HDO/Perigold SKU naming** — confirmed for now to keep the load ID as-is in the
+  SKU (e.g. `WYFCIHDO8127`, `WYFHTXPG8133`). Re-confirm with user before going live.
+- **SKU↔manifest match confidence** — must be 100% before writing to ERP. If the
+  derived SKU isn't found in the ERP, flag for manual review; never auto-write
+  uncertain data.
+- **Wayfair fetch date filter** — both "SKU created on" and "manifest uploaded on"
+  options will be exposed. Default to "uploaded today" since that's the trigger
+  most days.
