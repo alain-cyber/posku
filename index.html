@@ -2883,6 +2883,17 @@ function drawCfgUISams() {
     </div>
 
     <div class="cfg-block">
+      <h3>Google Sheet headers</h3>
+      <div class="cfg-hint">Overwrites row 1 of the configured Sheet tab with the canonical 16 Load-Center headers. Use this once if the headers got split into the wrong cells, or any time you need to reset them.</div>
+      <div class="cfg-row">
+        <div class="cfg-field" style="grid-column:span 4;">
+          <button class="btn ghost" id="cfg-sms-init-headers">Reset sheet headers</button>
+          <span id="cfg-sms-init-headers-status" style="font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text3);margin-left:0.6rem;"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="cfg-block">
       <h3>Sam's Club locations</h3>
       <div class="cfg-hint">First 4 digits of the manifest # determine the club. Add/edit rows here when a new Sam's Club starts liquidating. <strong>Code</strong> is the 2-4 letter abbreviation that goes into the SKU.</div>
       <div class="cfg-table-wrap">
@@ -2952,6 +2963,25 @@ function bindCfgHandlersSams() {
   $('cfg-sms-add-club').onclick = () => {
     cfgDraft.clubs.push({ manifestPrefix: '', code: '', city: '', fobId: '', fobName: '' });
     drawCfgUI();
+  };
+  $('cfg-sms-init-headers').onclick = async () => {
+    const btn = $('cfg-sms-init-headers');
+    const stat = $('cfg-sms-init-headers-status');
+    btn.disabled = true; stat.textContent = 'Writing headers…';
+    try {
+      const r = await fetch('/api/sheets/init-headers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ headers: LC_COLUMNS }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      stat.textContent = `Wrote ${j.headerCount} headers to ${j.updatedRange}`;
+    } catch (err) {
+      stat.textContent = `Failed: ${err.message}`;
+    } finally {
+      btn.disabled = false;
+    }
   };
   const onSave = async () => {
     const cur = { ...loadRulesOverride() };
