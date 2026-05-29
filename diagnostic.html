@@ -4,31 +4,24 @@
 <meta charset="UTF-8">
 <title>Posku Diagnostics</title>
 <style>
-  body { font-family: 'DM Mono', monospace; background: #111; color: #ccc; padding: 2rem; margin: 0; }
+  body { font-family: 'DM Mono', monospace; background: #111; color: #ccc; padding: 2rem; margin: 0; max-width: 900px; }
   h1 { color: #fff; margin: 0 0 0.25rem; font-size: 1.1rem; }
   .sub { color: #666; font-size: 0.75rem; margin-bottom: 1rem; }
-  pre { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 1rem; white-space: pre-wrap; word-break: break-word; font-size: 0.78rem; color: #ccc; margin: 0 0 1rem; }
-  .ok   { color: #4ade80; }
-  .warn { color: #fbbf24; }
-  .err  { color: #f87171; }
-  .dim  { color: #666; }
-  .btn  { background: #222; border: 1px solid #444; color: #ccc; padding: 0.35rem 0.9rem; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 0.75rem; margin-right: 0.4rem; }
+  pre { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 1rem; white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; color: #ccc; margin: 0 0 1rem; }
+  .btn { background: #222; border: 1px solid #444; color: #ccc; padding: 0.35rem 0.9rem; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 0.75rem; margin-right: 0.4rem; }
   .btn:hover { background: #333; }
-  details { margin-top: 1rem; }
-  details summary { cursor: pointer; color: #888; font-size: 0.75rem; padding: 0.4rem 0; }
-  details pre { font-size: 0.7rem; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
 </head>
 <body>
 <h1>Posku Diagnostics</h1>
-<p class="sub">Click "Copy summary", paste to dev. Use "Show raw" only if asked.</p>
+<p class="sub">Click "Copy summary", paste to dev. Use "Copy failed push" only if asked.</p>
 
 <button class="btn" onclick="runAll()">↻ Re-run</button>
-<button class="btn" id="copy-btn" onclick="copySummary()">Copy summary</button>
-<button class="btn" onclick="document.querySelectorAll('details').forEach(d=>d.open=!d.open)">Toggle raw</button>
+<button class="btn" id="copy-sum" onclick="copy('summary')">Copy summary</button>
+<button class="btn" id="copy-fail" onclick="copy('fail')" disabled>Copy failed push</button>
 
 <pre id="summary" style="margin-top:1rem">Running…</pre>
-<div id="raw"></div>
 
 <script>
 const LS_CFG = 'posku.cfg.v3';
@@ -50,161 +43,132 @@ async function apiGet(path) {
     const res = await fetch(url, { headers, cache: 'no-store' });
     const text = await res.text();
     let data; try { data = JSON.parse(text); } catch { data = text; }
-    return { ok: res.ok, status: res.status, data, raw: text };
+    return { ok: res.ok, status: res.status, data };
   } catch (e) {
     return { ok: false, error: e.message };
   }
 }
 
 function checkId(label, arr, id) {
-  if (!Array.isArray(arr)) return { ok: false, line: `? ${label} ${id} — shape mismatch` };
+  if (!Array.isArray(arr)) return { ok: false, line: `? ${label} ${id} (shape mismatch)` };
   const m = arr.find(x => x.id == id);
-  return m
-    ? { ok: true,  line: `✓ ${label} ${id} = "${m.name}"` }
-    : { ok: false, line: `✗ ${label} ${id} NOT FOUND` };
+  return m ? { ok: true } : { ok: false, line: `✗ ${label} ${id} NOT FOUND` };
 }
 
-function shortenJson(data, max = 200) {
-  const s = typeof data === 'string' ? data : JSON.stringify(data);
-  if (!s) return '(empty)';
-  return s.length > max ? s.slice(0, max) + `… (+${s.length - max} chars)` : s;
-}
-
-async function probe(url) {
+async function probe(url, label) {
   const t0 = performance.now();
   try {
     const res = await fetch(url, { cache: 'no-store' });
     const ms = Math.round(performance.now() - t0);
-    const text = await res.text();
-    let parsed; try { parsed = JSON.parse(text); } catch {}
     let hint = '';
-    if (parsed) {
-      if (Array.isArray(parsed.messages)) hint = ` · ${parsed.messages.length} msgs`;
-      else if (Array.isArray(parsed.rules)) hint = ` · ${parsed.rules.length} rules`;
-      else if (parsed.ok === false && parsed.error) hint = ` · "${parsed.error}"`;
-      else if (parsed.error) hint = ` · "${parsed.error}"`;
+    if (!res.ok) {
+      try {
+        const j = await res.clone().json();
+        if (j.error) hint = ` "${String(j.error).slice(0, 80)}"`;
+      } catch {}
     }
-    return { ok: res.ok, status: res.status, ms, hint, body: text, parsed };
+    return { ok: res.ok, status: res.status, ms, hint };
   } catch (e) {
-    return { ok: false, status: 0, ms: Math.round(performance.now() - t0), hint: ` · ${e.message}` };
+    return { ok: false, status: 0, ms: Math.round(performance.now() - t0), hint: ` ${e.message}` };
   }
 }
 
-let _lastReport = '';
+let _summary = '';
+let _failBlob = '';
 
 async function runAll() {
   document.getElementById('summary').textContent = 'Running…';
-  document.getElementById('raw').innerHTML = '';
+  document.getElementById('copy-fail').disabled = true;
+  _failBlob = '';
 
   const cfg = loadCfg();
   const out = [];
-  const raw = [];
-  const stamp = new Date().toISOString();
+  out.push(`POSKU DIAG · ${new Date().toISOString()}`);
 
-  out.push(`POSKU DIAG · ${stamp}`);
-  out.push(`UA: ${navigator.userAgent}`);
-  out.push('');
+  // Config
+  const mode = IS_LOCAL_FILE ? 'local-file' : 'pages';
+  const key  = IS_LOCAL_FILE ? (cfg.apiKey ? 'set' : 'MISSING') : 'server';
+  out.push(`config: mode=${mode} key=${key} env=${cfg.env || 'test'}`);
 
-  // Config (one line)
-  const mode = IS_LOCAL_FILE ? 'local-file' : 'pages-proxy';
-  const keyState = IS_LOCAL_FILE
-    ? (cfg.apiKey ? `set (${cfg.apiKey.slice(0,4)}…${cfg.apiKey.slice(-4)})` : 'MISSING')
-    : 'server-secret';
-  out.push(`[config]  mode=${mode}  key=${keyState}  env=${cfg.env || 'test'}`);
-
-  // ID validation
+  // IDs — only show failures
   if (IS_LOCAL_FILE && !cfg.apiKey) {
-    out.push('[ids]     skipped — no key');
+    out.push('ids:    skipped (no key)');
   } else {
     const r = await apiGet('/api/products/dropdowns');
     if (!r.ok) {
-      out.push(`[ids]     FAILED HTTP ${r.status || 'n/a'} ${r.error || shortenJson(r.data)}`);
+      out.push(`ids:    HTTP ${r.status || 'n/a'} ${r.error || ''}`);
     } else {
       const d = r.data;
       const checks = [
-        checkId('packing',   d?.packings   ?? d?.packing,   198),
-        checkId('cond.LQ',   d?.conditions ?? d?.condition,  63),
-        checkId('cond.A',    d?.conditions ?? d?.condition,  61),
-        checkId('cond.QC',   d?.conditions ?? d?.condition,  62),
-        checkId('manif.603', d?.manifested ?? d?.manifest,  603),
-        checkId('manif.514', d?.manifested ?? d?.manifest,  514),
-        checkId('store',     d?.stores,                      89),
-        checkId('suppl.WYF', d?.suppliers,                  770),
+        checkId('packing 198',  d?.packings   ?? d?.packing,   198),
+        checkId('cond 63',      d?.conditions ?? d?.condition,  63),
+        checkId('cond 61',      d?.conditions ?? d?.condition,  61),
+        checkId('cond 62',      d?.conditions ?? d?.condition,  62),
+        checkId('manif 603',    d?.manifested ?? d?.manifest,  603),
+        checkId('manif 514',    d?.manifested ?? d?.manifest,  514),
+        checkId('store 89',     d?.stores,                      89),
+        checkId('suppl 770',    d?.suppliers,                  770),
       ];
       const fails = checks.filter(c => !c.ok);
-      out.push(`[ids]     ${fails.length === 0 ? 'ALL OK' : fails.length + ' FAIL'} (${checks.length} checked)`);
-      for (const c of checks) if (!c.ok) out.push(`           ${c.line}`);
-      raw.push({ title: 'dropdowns response', body: JSON.stringify(d, null, 2) });
+      out.push(`ids:    ${fails.length ? fails.length + ' FAIL' : 'all 8 ok'}`);
+      for (const c of fails) out.push(`        ${c.line}`);
     }
   }
 
-  // Probes — one line each
+  // Probes — only show non-OK in detail
   if (!IS_LOCAL_FILE) {
     const today = new Date().toISOString().slice(0, 10);
     const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
     const wk = new Date(Date.now() - 7*86400000).toISOString().slice(0, 10);
     const probes = [
-      ['gmail/posku',         `/api/gmail/messages?label=posku`],
-      ['gmail/posku today',   `/api/gmail/messages?label=posku&after=${today}&before=${today}`],
-      ['gmail/posku +1day',   `/api/gmail/messages?label=posku&after=${today}&before=${tomorrow}`],
-      ["gmail/sam's 7d",      `/api/gmail/messages?label=posku&to=walmart@viatrading.com&after=${wk}&before=${tomorrow}`],
-      ['gmail/wyf 7d',        `/api/gmail/messages?label=posku&to=wayfair@viatrading.com&after=${wk}&before=${tomorrow}`],
-      ['rules',               `/api/rules`],
+      ['gmail',         `/api/gmail/messages?label=posku`],
+      ['gmail+1d',      `/api/gmail/messages?label=posku&after=${today}&before=${tomorrow}`],
+      ["gmail sam 7d",  `/api/gmail/messages?label=posku&to=walmart@viatrading.com&after=${wk}&before=${tomorrow}`],
+      ['gmail wyf 7d',  `/api/gmail/messages?label=posku&to=wayfair@viatrading.com&after=${wk}&before=${tomorrow}`],
+      ['rules',         `/api/rules`],
     ];
-    out.push('[probes]');
-    for (const [label, url] of probes) {
-      const p = await probe(url);
-      const cls = p.ok ? 'OK' : 'FAIL';
-      out.push(`  ${cls.padEnd(4)} ${String(p.status).padStart(3)} ${String(p.ms).padStart(4)}ms  ${label}${p.hint}`);
-      if (!p.ok && p.body) raw.push({ title: `probe ${label} body`, body: p.body.slice(0, 2000) });
+    const results = await Promise.all(probes.map(([l, u]) => probe(u, l)));
+    const fails = results.map((r, i) => ({ ...r, label: probes[i][0] })).filter(r => !r.ok);
+    if (!fails.length) {
+      out.push(`probes: all ${results.length} ok`);
+    } else {
+      out.push(`probes: ${fails.length}/${results.length} FAIL`);
+      for (const f of fails) out.push(`        ${f.status} ${f.label}${f.hint}`);
     }
-  } else {
-    out.push('[probes]  skipped — local-file mode');
   }
 
-  // Push history — compact list, full detail only for latest failure
+  // Pushes — last 5 only, one line each
   let history = [];
   try { history = JSON.parse(localStorage.getItem('posku.push.history.v1') || '[]'); } catch {}
-  out.push('');
   if (!history.length) {
-    out.push('[pushes]  none captured');
+    out.push('pushes: none');
   } else {
-    out.push(`[pushes]  last ${history.length} (newest first)`);
-    for (let i = 0; i < history.length; i++) {
-      const h = history[i];
+    out.push(`pushes: last ${Math.min(5, history.length)}`);
+    for (const h of history.slice(0, 5)) {
       const ok = h.response.ok;
-      const code = h.response.status || '';
-      const err = ok ? '' : ` ${h.response.error || shortenJson(h.response.data || h.response.body, 80)}`;
-      const when = (h.at || '').slice(0, 19);
-      out.push(`  ${ok ? 'OK  ' : 'FAIL'} ${code.toString().padStart(3)}  ${when}  ${h.env}  ${h.supplier.padEnd(5)} ${h.sku}${err}`);
+      const code = h.response.status || '?';
+      const when = (h.at || '').slice(11, 19);
+      const err = ok ? '' : ` "${String(h.response.error || '').slice(0, 60)}"`;
+      out.push(`  ${ok ? 'OK' : 'XX'} ${code} ${when} ${h.env} ${h.supplier} ${h.sku}${err}`);
     }
-    const latestFail = history.find(h => !h.response.ok);
-    if (latestFail) {
-      out.push('');
-      out.push(`[latest-fail detail]  ${latestFail.sku}  env=${latestFail.env}`);
-      out.push(`  request : ${JSON.stringify(latestFail.request.body).slice(0, 600)}`);
-      out.push(`  response: ${JSON.stringify(latestFail.response).slice(0, 600)}`);
-      raw.push({ title: `push ${latestFail.sku} request (full)`,  body: JSON.stringify(latestFail.request,  null, 2) });
-      raw.push({ title: `push ${latestFail.sku} response (full)`, body: JSON.stringify(latestFail.response, null, 2) });
+    const fail = history.find(h => !h.response.ok);
+    if (fail) {
+      _failBlob = `POSKU FAILED PUSH · ${fail.at}\nsku=${fail.sku} supplier=${fail.supplier} env=${fail.env}\n\nREQUEST:\n${JSON.stringify(fail.request, null, 2)}\n\nRESPONSE:\n${JSON.stringify(fail.response, null, 2)}`;
+      document.getElementById('copy-fail').disabled = false;
     }
-    raw.push({ title: 'all push history (full)', body: JSON.stringify(history, null, 2) });
   }
 
-  _lastReport = out.join('\n');
-  document.getElementById('summary').textContent = _lastReport;
-
-  // Raw goes in collapsed <details> so it's there if needed but doesn't bloat the copy
-  const rawHtml = raw.map(r =>
-    `<details><summary>raw · ${r.title}</summary><pre>${r.body.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</pre></details>`
-  ).join('');
-  document.getElementById('raw').innerHTML = rawHtml;
+  _summary = out.join('\n');
+  document.getElementById('summary').textContent = _summary;
 }
 
-function copySummary() {
-  navigator.clipboard.writeText(_lastReport).then(() => {
-    const btn = document.getElementById('copy-btn');
+function copy(which) {
+  const text = which === 'fail' ? _failBlob : _summary;
+  const btn = document.getElementById(which === 'fail' ? 'copy-fail' : 'copy-sum');
+  const label = btn.textContent;
+  navigator.clipboard.writeText(text).then(() => {
     btn.textContent = 'Copied ✓';
-    setTimeout(() => btn.textContent = 'Copy summary', 2000);
+    setTimeout(() => btn.textContent = label, 1500);
   });
 }
 
