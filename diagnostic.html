@@ -179,6 +179,19 @@ async function runAll() {
     lines.push(section('6 · Gmail probes', '<span class="err">Skipped — local-file mode (Pages Function not available)</span>'));
   }
 
+  // ── 7. Last push captures (request payload + response) ───────────────────
+  let history = [];
+  try { history = JSON.parse(localStorage.getItem('posku.push.history.v1') || '[]'); } catch {}
+  if (history.length) {
+    const blocks = history.map((h, i) => {
+      const summary = `${i === 0 ? '🟢 LATEST · ' : ''}${h.at} · ${h.supplier} · ${h.sku} · env=${h.env} · response ${h.response.ok ? 'OK ' + (h.response.status || '') : 'FAIL ' + (h.response.status || '') + ' ' + (h.response.error || '')}`;
+      return `<span class="${h.response.ok ? 'ok' : 'err'}">${summary}</span>\n\nRequest body (the JSON we POST to /api/products):\n${JSON.stringify(h.request.body, null, 2)}\n\nResponse:\n${JSON.stringify(h.response, null, 2)}\n${'─'.repeat(80)}`;
+    });
+    lines.push(section(`7 · Last push captures (${history.length} recent) — copy these and paste to Claude`, blocks.join('\n\n')));
+  } else {
+    lines.push(section('7 · Last push captures', '<span class="warn">No recent pushes captured yet. Push a SKU from posku, then refresh this page.</span>'));
+  }
+
   out.innerHTML = lines.join('');
 }
 

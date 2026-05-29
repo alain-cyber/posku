@@ -1645,6 +1645,22 @@ async function pushLoad(load) {
   console.log('[Posku] POST payload:', JSON.stringify(payload, null, 2));
   const r = await erpRequest('POST', '/api/products', payload);
   console.log('[Posku] POST response:', JSON.stringify(r, null, 2));
+  // Stash the request + response in localStorage for the diagnostic page to
+  // display — saves the user from digging through DevTools.
+  try {
+    const capture = {
+      at:        new Date().toISOString(),
+      env:       loadEnv(),
+      sku:       liveSku,
+      supplier:  load.supplierKey,
+      request:   { method: 'POST', path: '/api/products', body: payload },
+      response:  { ok: r.ok, status: r.status, error: r.error, data: r.data },
+    };
+    const history = JSON.parse(localStorage.getItem('posku.push.history.v1') || '[]');
+    history.unshift(capture);
+    while (history.length > 10) history.pop();
+    localStorage.setItem('posku.push.history.v1', JSON.stringify(history));
+  } catch {}
   if (r.ok) {
     const erpId = r.data?.newProductId ?? r.data?.id ?? r.data?.data?.id ?? r.data?.product_id ?? null;
     return { ok: true, erpId, raw: r.data };
