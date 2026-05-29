@@ -5,174 +5,49 @@
 <title>Posku Diagnostics</title>
 <style>
   body { font-family: 'DM Mono', monospace; background: #111; color: #ccc; padding: 2rem; margin: 0; max-width: 900px; }
-  h1 { color: #fff; margin: 0 0 0.25rem; font-size: 1.1rem; }
+  h1 { color: #fff; margin: 0 0 0.5rem; font-size: 1.1rem; }
   .sub { color: #666; font-size: 0.75rem; margin-bottom: 1rem; }
-  pre { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 1rem; white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; color: #ccc; margin: 0 0 1rem; }
-  .btn { background: #222; border: 1px solid #444; color: #ccc; padding: 0.35rem 0.9rem; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 0.75rem; margin-right: 0.4rem; }
+  pre { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 1rem; white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; color: #ccc; margin: 0; }
+  .btn { background: #222; border: 1px solid #444; color: #ccc; padding: 0.4rem 1rem; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 0.8rem; margin-bottom: 1rem; }
   .btn:hover { background: #333; }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
 </head>
 <body>
-<h1>Posku Diagnostics</h1>
-<p class="sub">Click "Copy summary", paste to dev. Use "Copy failed push" only if asked.</p>
+<h1>Posku Diagnostics — last push</h1>
+<p class="sub">Click Copy, paste to dev.</p>
 
-<button class="btn" onclick="runAll()">↻ Re-run</button>
-<button class="btn" id="copy-sum" onclick="copy('summary')">Copy summary</button>
-<button class="btn" id="copy-fail" onclick="copy('fail')" disabled>Copy failed push</button>
-
-<pre id="summary" style="margin-top:1rem">Running…</pre>
+<button class="btn" onclick="copyIt()">Copy</button>
+<pre id="out">Loading…</pre>
 
 <script>
-const LS_CFG = 'posku.cfg.v3';
-const IS_LOCAL_FILE = location.protocol === 'file:';
+let _blob = '';
 
-function loadCfg() {
-  try { return JSON.parse(localStorage.getItem(LS_CFG)) || {}; } catch { return {}; }
-}
-
-async function apiGet(path) {
-  const cfg = loadCfg();
-  let url = path;
-  const headers = { 'Content-Type': 'application/json' };
-  if (IS_LOCAL_FILE) {
-    url = (cfg.baseUrl || 'https://viatrading.biz').replace(/\/+$/, '') + path;
-    headers['api-key'] = cfg.apiKey;
-  }
-  try {
-    const res = await fetch(url, { headers, cache: 'no-store' });
-    const text = await res.text();
-    let data; try { data = JSON.parse(text); } catch { data = text; }
-    return { ok: res.ok, status: res.status, data };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-}
-
-function checkId(label, arr, id) {
-  if (!Array.isArray(arr)) return { ok: false, line: `? ${label} ${id} (shape mismatch)` };
-  const m = arr.find(x => x.id == id);
-  return m ? { ok: true } : { ok: false, line: `✗ ${label} ${id} NOT FOUND` };
-}
-
-async function probe(url, label) {
-  const t0 = performance.now();
-  try {
-    const res = await fetch(url, { cache: 'no-store' });
-    const ms = Math.round(performance.now() - t0);
-    let hint = '';
-    if (!res.ok) {
-      try {
-        const j = await res.clone().json();
-        if (j.error) hint = ` "${String(j.error).slice(0, 80)}"`;
-      } catch {}
-    }
-    return { ok: res.ok, status: res.status, ms, hint };
-  } catch (e) {
-    return { ok: false, status: 0, ms: Math.round(performance.now() - t0), hint: ` ${e.message}` };
-  }
-}
-
-let _summary = '';
-let _failBlob = '';
-
-async function runAll() {
-  document.getElementById('summary').textContent = 'Running…';
-  document.getElementById('copy-fail').disabled = true;
-  _failBlob = '';
-
-  const cfg = loadCfg();
-  const out = [];
-  out.push(`POSKU DIAG · ${new Date().toISOString()}`);
-
-  // Config
-  const mode = IS_LOCAL_FILE ? 'local-file' : 'pages';
-  const key  = IS_LOCAL_FILE ? (cfg.apiKey ? 'set' : 'MISSING') : 'server';
-  out.push(`config: mode=${mode} key=${key} env=${cfg.env || 'test'}`);
-
-  // IDs — only show failures
-  if (IS_LOCAL_FILE && !cfg.apiKey) {
-    out.push('ids:    skipped (no key)');
-  } else {
-    const r = await apiGet('/api/products/dropdowns');
-    if (!r.ok) {
-      out.push(`ids:    HTTP ${r.status || 'n/a'} ${r.error || ''}`);
-    } else {
-      const d = r.data;
-      const checks = [
-        checkId('packing 198',  d?.packings   ?? d?.packing,   198),
-        checkId('cond 63',      d?.conditions ?? d?.condition,  63),
-        checkId('cond 61',      d?.conditions ?? d?.condition,  61),
-        checkId('cond 62',      d?.conditions ?? d?.condition,  62),
-        checkId('manif 603',    d?.manifested ?? d?.manifest,  603),
-        checkId('manif 514',    d?.manifested ?? d?.manifest,  514),
-        checkId('store 89',     d?.stores,                      89),
-        checkId('suppl 770',    d?.suppliers,                  770),
-      ];
-      const fails = checks.filter(c => !c.ok);
-      out.push(`ids:    ${fails.length ? fails.length + ' FAIL' : 'all 8 ok'}`);
-      for (const c of fails) out.push(`        ${c.line}`);
-    }
-  }
-
-  // Probes — only show non-OK in detail
-  if (!IS_LOCAL_FILE) {
-    const today = new Date().toISOString().slice(0, 10);
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-    const wk = new Date(Date.now() - 7*86400000).toISOString().slice(0, 10);
-    const probes = [
-      ['gmail',         `/api/gmail/messages?label=posku`],
-      ['gmail+1d',      `/api/gmail/messages?label=posku&after=${today}&before=${tomorrow}`],
-      ["gmail sam 7d",  `/api/gmail/messages?label=posku&to=walmart@viatrading.com&after=${wk}&before=${tomorrow}`],
-      ['gmail wyf 7d',  `/api/gmail/messages?label=posku&to=wayfair@viatrading.com&after=${wk}&before=${tomorrow}`],
-      ['rules',         `/api/rules`],
-    ];
-    const results = await Promise.all(probes.map(([l, u]) => probe(u, l)));
-    const fails = results.map((r, i) => ({ ...r, label: probes[i][0] })).filter(r => !r.ok);
-    if (!fails.length) {
-      out.push(`probes: all ${results.length} ok`);
-    } else {
-      out.push(`probes: ${fails.length}/${results.length} FAIL`);
-      for (const f of fails) out.push(`        ${f.status} ${f.label}${f.hint}`);
-    }
-  }
-
-  // Pushes — last 5 only, one line each
+function run() {
   let history = [];
   try { history = JSON.parse(localStorage.getItem('posku.push.history.v1') || '[]'); } catch {}
   if (!history.length) {
-    out.push('pushes: none');
+    _blob = 'No pushes captured yet. Push a SKU from posku, then refresh.';
   } else {
-    out.push(`pushes: last ${Math.min(5, history.length)}`);
-    for (const h of history.slice(0, 5)) {
-      const ok = h.response.ok;
-      const code = h.response.status || '?';
-      const when = (h.at || '').slice(11, 19);
-      const err = ok ? '' : ` "${String(h.response.error || '').slice(0, 60)}"`;
-      out.push(`  ${ok ? 'OK' : 'XX'} ${code} ${when} ${h.env} ${h.supplier} ${h.sku}${err}`);
-    }
-    const fail = history.find(h => !h.response.ok);
-    if (fail) {
-      _failBlob = `POSKU FAILED PUSH · ${fail.at}\nsku=${fail.sku} supplier=${fail.supplier} env=${fail.env}\n\nREQUEST:\n${JSON.stringify(fail.request, null, 2)}\n\nRESPONSE:\n${JSON.stringify(fail.response, null, 2)}`;
-      document.getElementById('copy-fail').disabled = false;
-    }
+    const h = history[0];
+    _blob = [
+      `${h.at} · ${h.supplier} · ${h.sku} · env=${h.env}`,
+      `response: ${h.response.ok ? 'OK' : 'FAIL'} ${h.response.status || ''} ${h.response.error || ''}`,
+      '',
+      'REQUEST:',
+      JSON.stringify(h.request, null, 2),
+      '',
+      'RESPONSE:',
+      JSON.stringify(h.response, null, 2),
+    ].join('\n');
   }
-
-  _summary = out.join('\n');
-  document.getElementById('summary').textContent = _summary;
+  document.getElementById('out').textContent = _blob;
 }
 
-function copy(which) {
-  const text = which === 'fail' ? _failBlob : _summary;
-  const btn = document.getElementById(which === 'fail' ? 'copy-fail' : 'copy-sum');
-  const label = btn.textContent;
-  navigator.clipboard.writeText(text).then(() => {
-    btn.textContent = 'Copied ✓';
-    setTimeout(() => btn.textContent = label, 1500);
-  });
+function copyIt() {
+  navigator.clipboard.writeText(_blob);
 }
 
-runAll();
+run();
 </script>
 </body>
 </html>
