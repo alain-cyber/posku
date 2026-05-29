@@ -692,10 +692,8 @@ const SUPPLIERS = {
     manifestedGroupIds:    [],
 
     // Per-supplier constants pinned on every push.
-    //   layout_id = 40 → "Program Manifested" (from airbyte_sync.products_layouts).
-    //   psku_type stays 'regular' — that field is unrelated to the form's
-    //   Product Type select (verified via SMSMCA33).
-    layoutId:             40,
+    //   productType = 40 (Program Manifested) — only Product Type is needed
+    //   on the form; layout_id was being sent but isn't required.
     productType:          40,
     restrictPriceChange:  true,
     taxable:              true,
@@ -1641,7 +1639,6 @@ function buildPayload(load) {
   }
   // Per-supplier pinned constants (set on every push regardless of manifest).
   if (sup.peachtreeQty != null)       data.peachtree_qty         = sup.peachtreeQty;
-  if (sup.layoutId != null)           data.layout_id             = sup.layoutId;
   if (sup.productType != null)        data.productType           = sup.productType;
   if (sup.restrictPriceChange != null) data.restrict_price_change = sup.restrictPriceChange;
   if (sup.taxable != null)            data.taxable               = sup.taxable;
