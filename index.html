@@ -685,9 +685,12 @@ const SUPPLIERS = {
     categoryIds:           [191, 56],
     manifestedCategoryIds: [],
 
-    // Per-supplier constants pinned on every push. Live SMSMCA33 has
-    // psku_type='regular' — the "Product Type" select shown in the UI is
-    // computed at display time, not stored, so we leave psku_type alone.
+    // Per-supplier constants pinned on every push.
+    //   layout_id = 40 → "Program Manifested" (from airbyte_sync.products_layouts).
+    //   psku_type stays 'regular' — that field is unrelated to the form's
+    //   Product Type select (verified via SMSMCA33).
+    layoutId:             40,
+    productType:          40,
     restrictPriceChange:  true,
     taxable:              true,
     peachtreeQty:         1,
@@ -1602,12 +1605,6 @@ function buildPayload(load) {
     user_id:         179,
     user_id_created: 179,
     peachtree_code:  sup.ptCode,
-    // Constants that the per-supplier rule may pin (e.g. SMS pins program +
-    // restrict_price_change to true). Wayfair leaves them undefined and the
-    // ERP keeps its own defaults.
-    ...(sup.program ? { program: sup.program } : {}),
-    ...(sup.restrictPriceChange != null ? { restrict_price_change: sup.restrictPriceChange } : {}),
-    ...(sup.taxable != null ? { taxable: sup.taxable } : {}),
   };
 
   // Manifest-derived load totals (only present when load has manifest rows).
@@ -1622,9 +1619,12 @@ function buildPayload(load) {
     if (totals.retail_price_per_unit != null) data.retail_price_per_unit = totals.retail_price_per_unit;
     if (totals.price_per_pallet != null)      data.price_per_pallet      = totals.price_per_pallet;
   }
-  // PT Quantity = Peachtree accounting unit count. For Sam's it's always 1
-  // (the whole load is one accounting line); pinned per-supplier via sup.peachtreeQty.
-  if (sup.peachtreeQty != null) data.peachtree_qty = sup.peachtreeQty;
+  // Per-supplier pinned constants (set on every push regardless of manifest).
+  if (sup.peachtreeQty != null)       data.peachtree_qty         = sup.peachtreeQty;
+  if (sup.layoutId != null)           data.layout_id             = sup.layoutId;
+  if (sup.productType != null)        data.productType           = sup.productType;
+  if (sup.restrictPriceChange != null) data.restrict_price_change = sup.restrictPriceChange;
+  if (sup.taxable != null)            data.taxable               = sup.taxable;
 
   return { data };
 }
