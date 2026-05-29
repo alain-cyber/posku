@@ -549,11 +549,14 @@ const SUPPLIERS = {
     manifestTraits: { S: 514 },  // Salvage = Unmanifested
     manifestNames:  { S: 'Unmanifested' },
 
-    // Taxonomy / product categories (IDs from products_segments table)
-    //   201 = Furniture       (applied to ALL WYF loads — matches 100% of live WYF rows)
-    //   56  = Load Center     (added only when load is manifested — matches ~90% of live WYF rows)
+    // Taxonomy. Per the products API schema, `categories` and `groups` are
+    // SEPARATE arrays — 56 (Load Center) is a group, not a category.
+    //   201 = Furniture   (category, applied to ALL WYF loads)
+    //   56  = Load Center (group, added only when load is manifested)
     categoryIds:           [201],
-    manifestedCategoryIds: [56],
+    manifestedCategoryIds: [],
+    groupIds:              [],
+    manifestedGroupIds:    [56],
 
     // Locations where type is always HDO (inferred from location, not email text)
     hdoLocations: new Set(['CI', 'POR']),
@@ -679,11 +682,14 @@ const SUPPLIERS = {
     manifestTraits:  {},                    // none — always default 603 (Manifested)
     manifestNames:   {},
 
-    // Categories applied to every Sam's load (mirrors 99% of live SMS rows)
-    //   191 = Assorted Mixed Lots (displayed as cat_id 102 in the ERP UI)
-    //   56  = Load Center        (displayed as cat_id 738)
-    categoryIds:           [191, 56],
+    // Categories / groups for every Sam's load. Per the API schema these are
+    // separate arrays: 191 is a category, 56 is a group (Load Center).
+    //   191 = Assorted Mixed Lots (category)
+    //   56  = Load Center         (group)
+    categoryIds:           [191],
     manifestedCategoryIds: [],
+    groupIds:              [56],
+    manifestedGroupIds:    [],
 
     // Per-supplier constants pinned on every push.
     //   layout_id = 40 → "Program Manifested" (from airbyte_sync.products_layouts).
@@ -1557,11 +1563,17 @@ function buildLoadTotals(load) {
 function buildPayload(load) {
   const sup = SUPPLIERS[load.supplierKey] || SUPPLIERS.WYF;
 
-  // Categories: always include defaults; add manifested-only categories when applicable.
-  // (manifestTrait === 603 means Manifested; 514 is Unmanifested.)
+  // Per the products API edit-form schema, `categories` and `groups` are
+  // SEPARATE arrays. 56 ("Load Center") is a group, not a category — putting
+  // it under categories was a long-standing bug that caused the saved record
+  // to show categories: [] for SMS and group memberships to be missing.
   const categories = [...(sup.categoryIds || [])];
   if (load.manifestTrait === 603 && Array.isArray(sup.manifestedCategoryIds)) {
     categories.push(...sup.manifestedCategoryIds);
+  }
+  const groups = [...(sup.groupIds || [])];
+  if (load.manifestTrait === 603 && Array.isArray(sup.manifestedGroupIds)) {
+    groups.push(...sup.manifestedGroupIds);
   }
 
   // Apply env-driven suffix: TEST → "...-test", LIVE → no suffix.
@@ -1580,22 +1592,23 @@ function buildPayload(load) {
     psku_type:       'regular',
     active:          load.active ?? 1,
     make_an_offer:   false,
-    store_id:        sup.storeId,
+    // Server input key is `store` (not `store_id`) per the products API
+    // edit-form schema — `store_id` was being silently dropped.
+    store:           sup.storeId,
 
     // translation (flat on data per Pattern A — top-level i18n is ignored)
     lang_id:         1,
     slug:            finalSku.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
 
-    // traits (IDs from /api/products/dropdowns)
-    // Server input key is `packing_id` — `packing` was being silently dropped
-    // (saved column shows packingId: null). Verified by diffing a known-good
-    // live SKU (SMSCB743) where packingId / packingName came back populated.
-    packing_id:      sup.packingTrait,
+    // traits (IDs from /api/products/dropdowns) — keys taken from the
+    // products API edit-form schema.
+    packing:         sup.packingTrait,
     condition:       load.condTrait,
     manifested:      load.manifestTrait,
 
-    // taxonomy (segment IDs — API field is "categories" per the POST spec)
+    // taxonomy — categories and groups are distinct arrays in the API
     categories:      categories,
+    groups:          groups,
 
     // shipping
     fobStates:       load.fobId ? [load.fobId] : [],
@@ -1620,7 +1633,9 @@ function buildPayload(load) {
     if (totals.pallets_qty != null)           data.pallets_qty           = totals.pallets_qty;
     if (totals.price != null)                 data.price                 = totals.price;
     if (totals.retail_price != null)          data.retail_price          = totals.retail_price;
-    if (totals.price_per_unit != null)        data.price_per_unit        = totals.price_per_unit;
+    // Server input key is `unit_price` (not `price_per_unit`) per the
+    // products API edit-form schema.
+    if (totals.price_per_unit != null)        data.unit_price            = totals.price_per_unit;
     if (totals.retail_price_per_unit != null) data.retail_price_per_unit = totals.retail_price_per_unit;
     if (totals.price_per_pallet != null)      data.price_per_pallet      = totals.price_per_pallet;
   }
@@ -2026,13 +2041,16 @@ function renderLoads() {
         ${(() => {
           const cats = [...(sup2.categoryIds || [])];
           if (load.manifestTrait === 603 && Array.isArray(sup2.manifestedCategoryIds)) cats.push(...sup2.manifestedCategoryIds);
+          const grps = [...(sup2.groupIds || [])];
+          if (load.manifestTrait === 603 && Array.isArray(sup2.manifestedGroupIds)) grps.push(...sup2.manifestedGroupIds);
           const labels = { 201: 'Furniture', 56: 'Load Center', 191: 'Assorted Mixed Lots' };
-          const named  = cats.map(id => `${id}=${labels[id] || '?'}`).join(', ');
-          return `<span class="chip-mini"><b>productCategories</b> <i>[${cats.join(',')}]</i> <em>(${named})</em></span>`;
+          const named = (ids) => ids.map(id => `${id}=${labels[id] || '?'}`).join(', ');
+          return `<span class="chip-mini"><b>categories</b> <i>[${cats.join(',')}]</i> <em>(${named(cats)})</em></span>
+                  <span class="chip-mini"><b>groups</b> <i>[${grps.join(',')}]</i> <em>(${named(grps)})</em></span>`;
         })()}
         <span class="chip-mini more">+ ${8} more fields ▾
           <div class="tip">
-            <div class="row"><b>store_id</b> <i>${sup2.storeId}</i></div>
+            <div class="row"><b>store</b> <i>${sup2.storeId}</i></div>
             <div class="row"><b>psku</b> <i>${esc(sup2.psku)}</i></div>
             <div class="row"><b>peachtree_code</b> <i>${esc(sup2.ptCode)}</i></div>
             <div class="row"><b>status_id</b> <i>${sup2.statusId}</i></div>
