@@ -15,39 +15,58 @@
 <pre id="out">…</pre>
 
 <script>
+const REFERENCE_SKU = 'SMSCB743';  // known-good live SKU — used for field-name diffing
+
+async function get(path, env) {
+  const res = await fetch(path, {
+    headers: { 'X-Posku-Env': env, 'Content-Type': 'application/json' },
+    cache: 'no-store',
+  });
+  const text = await res.text();
+  let data; try { data = JSON.parse(text); } catch { data = text; }
+  return { status: res.status, data };
+}
+
 async function run() {
   let h;
   try { h = (JSON.parse(localStorage.getItem('posku.push.history.v1') || '[]'))[0]; } catch {}
-  if (!h) { document.getElementById('out').textContent = 'no pushes yet'; return; }
 
-  const lines = [
-    `${h.sku}  ·  env=${h.env}  ·  ${h.response.ok ? 'OK' : 'FAIL'} ${h.response.status || ''}  ${h.response.error || ''}`,
-    '',
-    '── REQUEST (what we sent) ──',
-    JSON.stringify(h.request?.body ?? h.request, null, 2),
-    '',
-    '── CREATE RESPONSE (server ack) ──',
-    JSON.stringify(h.response?.data ?? h.response, null, 2),
-  ];
+  const lines = [];
 
-  // Try to fetch the product back so we can see what the server *actually saved*
-  const id = h.response?.data?.newProductId ?? h.response?.data?.id ?? h.response?.data?.product_id;
-  if (id) {
-    lines.push('', `── SAVED PRODUCT (GET /api/products/${id}) ──`);
-    try {
-      const res = await fetch(`/api/products/${id}`, {
-        headers: { 'X-Posku-Env': h.env || 'test', 'Content-Type': 'application/json' },
-        cache: 'no-store',
-      });
-      const text = await res.text();
-      let data; try { data = JSON.parse(text); } catch { data = text; }
-      lines.push(`HTTP ${res.status}`);
-      lines.push(typeof data === 'string' ? data : JSON.stringify(data, null, 2));
-    } catch (e) {
-      lines.push(`fetch failed: ${e.message}`);
-    }
+  if (!h) {
+    lines.push('(no pushes captured yet — push a SKU from posku to populate this section)');
   } else {
-    lines.push('', '(no product id in response — cannot fetch saved state)');
+    lines.push(`${h.sku}  ·  env=${h.env}  ·  ${h.response.ok ? 'OK' : 'FAIL'} ${h.response.status || ''}  ${h.response.error || ''}`);
+    lines.push('');
+    lines.push('── REQUEST (what we sent) ──');
+    lines.push(JSON.stringify(h.request?.body ?? h.request, null, 2));
+    lines.push('');
+    lines.push('── CREATE RESPONSE (server ack) ──');
+    lines.push(JSON.stringify(h.response?.data ?? h.response, null, 2));
+
+    const id = h.response?.data?.newProductId ?? h.response?.data?.id ?? h.response?.data?.product_id;
+    if (id) {
+      lines.push('', `── SAVED PRODUCT (GET /api/products/${id} · env=${h.env}) ──`);
+      try {
+        const r = await get(`/api/products/${id}`, h.env || 'test');
+        lines.push(`HTTP ${r.status}`);
+        lines.push(typeof r.data === 'string' ? r.data : JSON.stringify(r.data, null, 2));
+      } catch (e) {
+        lines.push(`fetch failed: ${e.message}`);
+      }
+    }
+  }
+
+  // Reference known-good SKU — always fetched from LIVE, regardless of push env.
+  // We diff its column names against the saved-product response above to find
+  // which keys the server actually populates correctly.
+  lines.push('', `── REFERENCE SKU ${REFERENCE_SKU} (GET /api/products?sku=${REFERENCE_SKU} · env=live) ──`);
+  try {
+    const r = await get(`/api/products?sku=${encodeURIComponent(REFERENCE_SKU)}`, 'live');
+    lines.push(`HTTP ${r.status}`);
+    lines.push(typeof r.data === 'string' ? r.data : JSON.stringify(r.data, null, 2));
+  } catch (e) {
+    lines.push(`fetch failed: ${e.message}`);
   }
 
   document.getElementById('out').textContent = lines.join('\n');
