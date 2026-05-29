@@ -1588,17 +1588,14 @@ function buildPayload(load) {
     condition:       load.condTrait,
     manifested:      load.manifestTrait,
 
-    // taxonomy (IDs from products_segments — verify API field name on first push)
-    // Categories — try both naming conventions; the API picks the one it understands
-    productCategories: categories,
-    product_categories: categories,
+    // taxonomy (segment IDs — API field is "categories" per the POST spec)
+    categories:      categories,
 
-    // shipping — same dual-key approach
+    // shipping
     fobStates:       load.fobId ? [load.fobId] : [],
-    fob_states:      load.fobId ? [load.fobId] : [],
 
-    // supplier — DB column is supplier_id (snake_case); was sending supplierId before
-    supplier_id:     sup.erpSupplier,
+    // supplier (camelCase per spec)
+    supplierId:      sup.erpSupplier,
 
     // audit + ERP bookkeeping
     status_id:       sup.statusId,
