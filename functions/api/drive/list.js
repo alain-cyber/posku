@@ -89,9 +89,10 @@ export async function onRequest(context) {
 
   // Classify each file into a tree by its filename pattern
   const files = [];
+  const unclassified = [];
   for (const f of all) {
     const tree = classifyTree(f.name);
-    if (!tree) continue;
+    if (!tree) { unclassified.push(f.name); continue; }
     if (treeFilter && tree.toLowerCase() !== treeFilter) continue;
     files.push({
       id:           f.id,
@@ -106,7 +107,43 @@ export async function onRequest(context) {
   // Newest upload first
   files.sort((a, b) => (b.createdTime || '').localeCompare(a.createdTime || ''));
 
-  return json(200, { ok: true, files, query: q });
+  // Diagnostic: if we returned 0, run a wider probe (just date + trashed=false,
+  // no mime/filename filter) so the UI can tell whether it's an access problem
+  // (probe=0 → SA can't see anything) vs a filter problem (probe>0 → filenames
+  // or mime types are excluding real manifests).
+  const diag = { matched: all.length, classified: files.length, unclassifiedSample: unclassified.slice(0, 5) };
+  if (files.length === 0) {
+    const probeParts = ['trashed = false'];
+    if (after)  probeParts.push(`createdTime >= '${after}T00:00:00Z'`);
+    if (before) {
+      const [y, m, d] = before.split('-').map(Number);
+      const next = new Date(Date.UTC(y, m - 1, d + 1));
+      probeParts.push(`createdTime < '${next.toISOString().slice(0, 10)}T00:00:00Z'`);
+    }
+    const probeQ = probeParts.join(' and ');
+    try {
+      const params = new URLSearchParams({
+        q: probeQ,
+        fields: 'files(id, name, mimeType, createdTime)',
+        pageSize: '20',
+        supportsAllDrives: 'true',
+        includeItemsFromAllDrives: 'true',
+      });
+      const res = await fetch(`${DRIVE_BASE}/files?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const j = await res.json();
+        diag.probe = {
+          query: probeQ,
+          totalSeenSample: (j.files || []).length,
+          sample: (j.files || []).slice(0, 10).map(f => ({ name: f.name, mimeType: f.mimeType, createdTime: f.createdTime })),
+        };
+      }
+    } catch {}
+  }
+
+  return json(200, { ok: true, files, query: q, diag });
 }
 
 // Map a filename to one of the four manifest categories. Order matters —

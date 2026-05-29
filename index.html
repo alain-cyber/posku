@@ -2804,7 +2804,22 @@ async function mfetchRun() {
   }
   const files = j.files || [];
   if (!files.length) {
-    setStatus($('mfetch-status'), 'warn', `No manifests found in ${tree} between ${after} and ${before}.`);
+    const d = j.diag || {};
+    let why;
+    if (d.matched > 0) {
+      const ex = (d.unclassifiedSample || []).slice(0, 3).map(n => `"${n}"`).join(', ');
+      why = `Drive returned ${d.matched} file(s) matching the manifest filters but none classified as a known tree. Sample: ${ex || '(none)'}`;
+    } else if (d.probe) {
+      if (d.probe.totalSeenSample > 0) {
+        const ex = (d.probe.sample || []).slice(0, 3).map(s => `"${s.name}"`).join(', ');
+        why = `Drive saw ${d.probe.totalSeenSample}+ file(s) in this date range but none matched the mime/filename filter. Sample: ${ex}`;
+      } else {
+        why = `Drive returned 0 files for this date range even without filters — either no uploads in this window, or the service account can't see the target folders.`;
+      }
+    } else {
+      why = '(no diagnostic info)';
+    }
+    setStatus($('mfetch-status'), 'warn', `No manifests found in ${tree} between ${after} and ${before}. ${why}`);
     return;
   }
   setStatus($('mfetch-status'), 'ok', `Found ${files.length} manifest(s). Resolving SKUs…`);
