@@ -620,11 +620,7 @@ const SUPPLIERS = {
     psku:        'LOAD-SMSST',
     ptCode:      'LOAD-SAMS',
     statusId:    2,
-    // LTL packing id. NB: the products_packings dropdown table is env-specific:
-    //   test (viatrading.biz):     LTL = 96
-    //   live (ops.viatrading.com): LTL = 203 (per known-good SMSCB743)
-    // Configured for test below; needs runtime lookup for cross-env support.
-    packingTrait: 96,
+    packingTrait: 96,  // LTL (verified against /api/products/dropdowns)
     gmailLabel:  'posku',
     gmailToFilter: 'walmart@viatrading.com',
     sheetTab:    "Sam's Club",
@@ -696,10 +692,7 @@ const SUPPLIERS = {
     manifestedGroupIds:    [],
 
     // Per-supplier constants pinned on every push.
-    //   productType id for "Program - Manifested" — env-specific:
-    //     test (viatrading.biz):     263
-    //     live (ops.viatrading.com): TBD (was guessed as 40 — wrong on live too)
-    //   Configured for test below; needs runtime lookup for cross-env support.
+    //   productType 263 = "Program - Manifested" (from /api/products/dropdowns)
     productType:          263,
     restrictPriceChange:  true,
     taxable:              true,
