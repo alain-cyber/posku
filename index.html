@@ -1599,8 +1599,10 @@ function buildPayload(load) {
     slug:            finalSku.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
 
     // traits (IDs from /api/products/dropdowns) — keys taken from the
-    // products API edit-form schema.
-    packing:         sup.packingTrait,
+    // products API edit-form schema. packing is stringified because the
+    // numeric form was being silently dropped despite the dev confirming
+    // the endpoint accepts the key.
+    packing:         sup.packingTrait != null ? String(sup.packingTrait) : null,
     condition:       load.condTrait,
     manifested:      load.manifestTrait,
 
@@ -1639,7 +1641,7 @@ function buildPayload(load) {
   }
   // Per-supplier pinned constants (set on every push regardless of manifest).
   if (sup.peachtreeQty != null)       data.peachtree_qty         = sup.peachtreeQty;
-  if (sup.productType != null)        data.productType           = sup.productType;
+  if (sup.productType != null)        data.productType           = String(sup.productType);
   if (sup.restrictPriceChange != null) data.restrict_price_change = sup.restrictPriceChange;
   if (sup.taxable != null)            data.taxable               = sup.taxable;
 
