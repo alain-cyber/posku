@@ -685,11 +685,9 @@ const SUPPLIERS = {
     categoryIds:           [191, 56],
     manifestedCategoryIds: [],
 
-    // Per-supplier constants pinned on every push. The "Program - Manifested"
-    // string belongs in psku_type / class (NOT program — program is read from
-    // the parent SKU). Restrict Price Change + Taxable are the form checkboxes.
-    psku_type:            'Program - Manifested',  // user-visible "Product Type" select
-    class:                'Program - Manifested',  // fallback in case API reads class
+    // Per-supplier constants pinned on every push. Live SMSMCA33 has
+    // psku_type='regular' — the "Product Type" select shown in the UI is
+    // computed at display time, not stored, so we leave psku_type alone.
     restrictPriceChange:  true,
     taxable:              true,
     peachtreeQty:         1,
@@ -1525,13 +1523,15 @@ async function checkSKUExists(sku) {
 // the ERP product record. Returns null if there's no manifest yet so the
 // payload skips these fields.
 // Aggregate per-line manifest rows into the load-level totals the ERP expects.
-// Field semantics verified against alain_via_erp.products_flat on 2026-05-28:
-//   - manifest_value      = total RETAIL value of the items in the manifest
-//   - retail_price        = OUR total sell price (counter-intuitive ERP naming)
-//   - retail_price_per_unit = retail per unit
-//   - price_per_unit      = our sell price per unit
-//   - price_per_pallet    = our sell price per pallet
-//   - price               = cart "headline" price = price_per_pallet
+// Field semantics verified against airbyte_sync.products on a live SMS SKU
+// (SMSMCA33: qty=46, price=391.12, retail_price=1057.08, price_per_unit=8.5,
+// retail_price_per_unit=22.98, price_per_pallet=195.56). The actual raw
+// products columns:
+//   price                 = qty × price_per_unit          = OUR total sell
+//   retail_price          = qty × retail_price_per_unit   = TOTAL RETAIL value
+//   price_per_unit        = our sell per unit
+//   retail_price_per_unit = retail per unit
+//   price_per_pallet      = our sell per pallet
 function buildLoadTotals(load) {
   const rows = load.manifestRows || [];
   if (!rows.length) return null;
@@ -1540,18 +1540,14 @@ function buildLoadTotals(load) {
   const totalSell   = rows.reduce((s, r) => s + (Number(r['Your EXT Price']) || 0), 0);
   const pallets     = new Set((load.manifestPalletIds || []).filter(Boolean));
   const pCount      = pallets.size || undefined;
-  const pricePerPallet = pCount ? round2(totalSell / pCount) : undefined;
   return {
-    units_qty:              totalQty,
+    qty:                    totalQty,
     pallets_qty:            pCount,
-    manifest_value:         round2(totalRetail),
-    manifest_value_basis:   'retail',
-    pricing_model:          'manifested_retail',
-    retail_price:           round2(totalSell),
-    retail_price_per_unit:  totalQty ? round2(totalRetail / totalQty) : undefined,
+    price:                  round2(totalSell),
+    retail_price:           round2(totalRetail),
     price_per_unit:         totalQty ? round2(totalSell   / totalQty) : undefined,
-    price_per_pallet:       pricePerPallet,
-    price:                  pricePerPallet,
+    retail_price_per_unit:  totalQty ? round2(totalRetail / totalQty) : undefined,
+    price_per_pallet:       pCount   ? round2(totalSell   / pCount)   : undefined,
   };
 }
 
@@ -1578,8 +1574,7 @@ function buildPayload(load) {
     sku:             finalSku,
     name:            load.name,
     psku:            sup.psku,
-    psku_type:       sup.psku_type || 'regular',
-    ...(sup.class ? { class: sup.class } : {}),
+    psku_type:       'regular',
     active:          load.active ?? 1,
     make_an_offer:   false,
     store_id:        sup.storeId,
@@ -1594,13 +1589,16 @@ function buildPayload(load) {
     manifested:      load.manifestTrait,
 
     // taxonomy (IDs from products_segments — verify API field name on first push)
+    // Categories — try both naming conventions; the API picks the one it understands
     productCategories: categories,
+    product_categories: categories,
 
-    // shipping
+    // shipping — same dual-key approach
     fobStates:       load.fobId ? [load.fobId] : [],
+    fob_states:      load.fobId ? [load.fobId] : [],
 
-    // supplier
-    supplierId:      sup.erpSupplier,
+    // supplier — DB column is supplier_id (snake_case); was sending supplierId before
+    supplier_id:     sup.erpSupplier,
 
     // audit + ERP bookkeeping
     status_id:       sup.statusId,
@@ -1616,19 +1614,16 @@ function buildPayload(load) {
   };
 
   // Manifest-derived load totals (only present when load has manifest rows).
-  // Field naming mirrors alain_via_erp.products_flat — see buildLoadTotals().
+  // Field names match the raw airbyte_sync.products columns verified against
+  // a known-good live SKU (SMSMCA33).
   if (totals) {
-    if (totals.units_qty)                     data.units_qty             = totals.units_qty;
-    if (totals.units_qty)                     data.qty                   = totals.units_qty;  // alias kept for ERP backward-compat
+    if (totals.qty)                           data.qty                   = totals.qty;
     if (totals.pallets_qty != null)           data.pallets_qty           = totals.pallets_qty;
-    if (totals.manifest_value != null)        data.manifest_value        = totals.manifest_value;
-    if (totals.manifest_value_basis)          data.manifest_value_basis  = totals.manifest_value_basis;
-    if (totals.pricing_model)                 data.pricing_model         = totals.pricing_model;
-    if (totals.retail_price != null)          data.retail_price          = totals.retail_price;
-    if (totals.retail_price_per_unit != null) data.retail_price_per_unit = totals.retail_price_per_unit;
-    if (totals.price_per_unit != null)        data.price_per_unit        = totals.price_per_unit;
-    if (totals.price_per_pallet != null)      data.price_per_pallet      = totals.price_per_pallet;
     if (totals.price != null)                 data.price                 = totals.price;
+    if (totals.retail_price != null)          data.retail_price          = totals.retail_price;
+    if (totals.price_per_unit != null)        data.price_per_unit        = totals.price_per_unit;
+    if (totals.retail_price_per_unit != null) data.retail_price_per_unit = totals.retail_price_per_unit;
+    if (totals.price_per_pallet != null)      data.price_per_pallet      = totals.price_per_pallet;
   }
   // PT Quantity = Peachtree accounting unit count. For Sam's it's always 1
   // (the whole load is one accounting line); pinned per-supplier via sup.peachtreeQty.
