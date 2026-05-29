@@ -620,7 +620,10 @@ const SUPPLIERS = {
     psku:        'LOAD-SMSST',
     ptCode:      'LOAD-SAMS',
     statusId:    2,
-    packingTrait: 96,  // LTL (verified against /api/products/dropdowns)
+    packingTrait: 96,        // LTL id (from /api/products/dropdowns) — kept for back-compat
+    packingName:  'LTL',     // name — Vicki reports packing as a label-typed field; try this
+                             // alongside the id since neither id 203 (airbyte) nor 96 (dropdowns)
+                             // has been sticking on the create endpoint.
     gmailLabel:  'posku',
     gmailToFilter: 'walmart@viatrading.com',
     sheetTab:    "Sam's Club",
@@ -1609,10 +1612,13 @@ function buildPayload(load) {
     slug:            finalSku.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
 
     // traits (IDs from /api/products/dropdowns) — keys taken from the
-    // products API edit-form schema. packing is stringified because the
-    // numeric form was being silently dropped despite the dev confirming
-    // the endpoint accepts the key.
+    // products API edit-form schema. Send both id and name for packing:
+    // numeric forms (96 from dropdowns, 203 from airbyte) both saved as
+    // null on the create endpoint. Vicki's analytics describes packing
+    // as a label-typed field, so packing_label as a string is the next
+    // candidate. Whichever the server reads wins.
     packing:         sup.packingTrait != null ? String(sup.packingTrait) : null,
+    packing_label:   sup.packingName || null,
     condition:       load.condTrait,
     manifested:      load.manifestTrait,
 
