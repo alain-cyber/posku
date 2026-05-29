@@ -686,10 +686,11 @@ const SUPPLIERS = {
     manifestedCategoryIds: [],
 
     // Per-supplier constants pinned on every push (the ERP form labels these
-    // "Type", "Restrict Price Change", "Taxable")
+    // "Type", "Restrict Price Change", "Taxable", "PT Quantity")
     program:              'Program - Manifested',
     restrictPriceChange:  true,
     taxable:              true,
+    peachtreeQty:         1,
 
     locations: [],  // not used — clubs auto-detected from manifest #
     types: [],      // not used — always GM
@@ -939,18 +940,43 @@ function applyRulesOverride() {
 function applySamsRulesOverride(s) {
   const sms = SUPPLIERS.SMS;
   // String fields: empty string is a valid override (means "no filter").
-  ['psku','ptCode','skuTemplate','gmailLabel','gmailToFilter','sheetTab'].forEach(k => {
+  ['psku','ptCode','skuTemplate','gmailLabel','gmailToFilter','sheetTab','program'].forEach(k => {
     if (s[k] !== undefined) sms[k] = s[k];
   });
   // Numeric fields: empty/blank falls back to the baked-in default.
-  ['erpSupplier','storeId','statusId','packingTrait'].forEach(k => {
+  ['erpSupplier','storeId','statusId','packingTrait','peachtreeQty'].forEach(k => {
     if (s[k] !== undefined && s[k] !== '' && s[k] !== null) {
       const n = Number(s[k]);
       if (Number.isFinite(n)) sms[k] = n;
     }
   });
+  // Boolean fields
+  if (typeof s.restrictPriceChange === 'boolean') sms.restrictPriceChange = s.restrictPriceChange;
+  if (typeof s.taxable === 'boolean')             sms.taxable             = s.taxable;
   if (Array.isArray(s.categoryIds))           sms.categoryIds           = s.categoryIds.map(Number).filter(n => Number.isFinite(n));
   if (Array.isArray(s.manifestedCategoryIds)) sms.manifestedCategoryIds = s.manifestedCategoryIds.map(Number).filter(n => Number.isFinite(n));
+  // Pricing logic: per-category default + per-club overrides
+  if (s.defaultMarkups && typeof s.defaultMarkups === 'object') {
+    const cleaned = {};
+    for (const [cat, val] of Object.entries(s.defaultMarkups)) {
+      const n = Number(val);
+      if (Number.isFinite(n)) cleaned[cat] = n;
+    }
+    if (Object.keys(cleaned).length) sms.defaultMarkups = cleaned;
+  }
+  if (s.clubMarkups && typeof s.clubMarkups === 'object') {
+    const cleaned = {};
+    for (const [code, byCat] of Object.entries(s.clubMarkups)) {
+      if (!byCat || typeof byCat !== 'object') continue;
+      const inner = {};
+      for (const [cat, val] of Object.entries(byCat)) {
+        const n = Number(val);
+        if (Number.isFinite(n)) inner[cat] = n;
+      }
+      if (Object.keys(inner).length) cleaned[code] = inner;
+    }
+    sms.clubMarkups = cleaned;
+  }
   if (Array.isArray(s.clubs) && s.clubs.length) {
     sms.fobIds = {}; sms.fobNames = {}; sms.clubCities = {}; sms.clubByManifest = {};
     s.clubs.forEach(c => {
@@ -993,6 +1019,12 @@ function currentSamsRulesAsEditable() {
     sheetTab:              s.sheetTab || "Sam's Club",
     categoryIds:           [...(s.categoryIds || [])],
     manifestedCategoryIds: [...(s.manifestedCategoryIds || [])],
+    defaultMarkups:        { ...(s.defaultMarkups || {}) },
+    clubMarkups:           Object.fromEntries(Object.entries(s.clubMarkups || {}).map(([k, v]) => [k, { ...v }])),
+    program:               s.program || '',
+    restrictPriceChange:   s.restrictPriceChange != null ? s.restrictPriceChange : true,
+    taxable:               s.taxable != null ? s.taxable : true,
+    peachtreeQty:          s.peachtreeQty != null ? s.peachtreeQty : 1,
     clubs,
   };
 }
@@ -1594,9 +1626,10 @@ function buildPayload(load) {
     if (totals.price_per_unit != null)        data.price_per_unit        = totals.price_per_unit;
     if (totals.price_per_pallet != null)      data.price_per_pallet      = totals.price_per_pallet;
     if (totals.price != null)                 data.price                 = totals.price;
-    // PT Quantity = pallet count (UI label is "PT Quantity"; column is peachtree_qty)
-    if (totals.pallets_qty != null)           data.peachtree_qty         = totals.pallets_qty;
   }
+  // PT Quantity = Peachtree accounting unit count. For Sam's it's always 1
+  // (the whole load is one accounting line); pinned per-supplier via sup.peachtreeQty.
+  if (sup.peachtreeQty != null) data.peachtree_qty = sup.peachtreeQty;
 
   return { data };
 }
@@ -3273,6 +3306,61 @@ function drawCfgUISams() {
     </div>
 
     <div class="cfg-block">
+      <h3>ERP form fields (per-supplier constants)</h3>
+      <div class="cfg-hint">Sent on every Sam's SKU push so the product lands fully configured. The ERP form labels these "Type", "Restrict Price Change", "Taxable".</div>
+      <div class="cfg-row">
+        <div class="cfg-field" style="grid-column:span 2;">
+          <label>Type (program)</label>
+          <input type="text" data-c="program" value="${esc(d.program)}" placeholder="Program - Manifested">
+        </div>
+        <div class="cfg-field">
+          <label>Restrict Price Change</label>
+          <select data-c="restrictPriceChange">
+            <option value="true" ${d.restrictPriceChange ? 'selected' : ''}>Yes</option>
+            <option value="false" ${d.restrictPriceChange ? '' : 'selected'}>No</option>
+          </select>
+        </div>
+        <div class="cfg-field">
+          <label>Taxable</label>
+          <select data-c="taxable">
+            <option value="true" ${d.taxable ? 'selected' : ''}>Yes</option>
+            <option value="false" ${d.taxable ? '' : 'selected'}>No</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="cfg-block">
+      <h3>Pricing — markup % by Main Category</h3>
+      <div class="cfg-hint">These are the "Your Price %" markups applied to each manifest line, multiplied against the raw retail to get our sell price. Defaults apply to every Sam's load; per-club overrides below replace the defaults for that club only.</div>
+      <div class="cfg-row">
+        ${['APPAREL','General Merchandise','Electronics','Food'].map(cat => `
+          <div class="cfg-field">
+            <label>${esc(cat)}</label>
+            <input type="number" step="0.001" min="0" max="1" data-sms-markup-default="${esc(cat)}" value="${esc(d.defaultMarkups?.[cat] ?? '')}" placeholder="e.g. 0.20">
+          </div>
+        `).join('')}
+      </div>
+      <div class="cfg-hint" style="margin-top:0.8rem;">Per-club overrides (only the clubs that deviate from the defaults need a row).</div>
+      <div class="cfg-table-wrap">
+        <table class="cfg-table">
+          <thead><tr>
+            <th class="narrow">Club code</th>
+            <th class="narrow">APPAREL</th>
+            <th class="narrow">General Merchandise</th>
+            <th class="narrow">Electronics</th>
+            <th class="narrow">Food</th>
+            <th class="x-col"></th>
+          </tr></thead>
+          <tbody id="cfg-sms-markup-body">
+            ${Object.entries(d.clubMarkups || {}).map(([code, byCat], i) => samsMarkupRow(code, byCat, i)).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:0.5rem;"><button class="btn ghost" id="cfg-sms-add-markup">+ Add club override</button></div>
+    </div>
+
+    <div class="cfg-block">
       <h3>Google Sheet headers</h3>
       <div class="cfg-hint">Overwrites row 1 of the configured Sheet tab with the canonical 16 Load-Center headers. Use this once if the headers got split into the wrong cells, or any time you need to reset them.</div>
       <div class="cfg-row">
@@ -3325,11 +3413,29 @@ function samsClubRow(c, i) {
   </tr>`;
 }
 
+function samsMarkupRow(code, byCat, i) {
+  const get = c => byCat?.[c] != null ? byCat[c] : '';
+  return `<tr data-smi="${i}">
+    <td class="narrow"><input data-smk="code" value="${esc(code)}" placeholder="HAR"></td>
+    <td class="narrow"><input data-smk="APPAREL" type="number" step="0.001" min="0" max="1" value="${esc(get('APPAREL'))}" placeholder="0.25"></td>
+    <td class="narrow"><input data-smk="General Merchandise" type="number" step="0.001" min="0" max="1" value="${esc(get('General Merchandise'))}" placeholder="0.37"></td>
+    <td class="narrow"><input data-smk="Electronics" type="number" step="0.001" min="0" max="1" value="${esc(get('Electronics'))}" placeholder="0.38"></td>
+    <td class="narrow"><input data-smk="Food" type="number" step="0.001" min="0" max="1" value="${esc(get('Food'))}" placeholder="0.25"></td>
+    <td class="x-col"><button class="x-btn" data-sms-markup-del="${i}" title="Remove">×</button></td>
+  </tr>`;
+}
+
 function bindCfgHandlersSams() {
-  $('cfg-section').querySelectorAll('input[data-c]').forEach(el => {
-    el.oninput = () => {
+  $('cfg-section').querySelectorAll('input[data-c], select[data-c]').forEach(el => {
+    el.oninput = el.onchange = () => {
       const k = el.dataset.c;
-      cfgDraft[k] = ['erpSupplier','storeId','statusId','packingTrait'].includes(k) ? Number(el.value) : el.value;
+      if (['erpSupplier','storeId','statusId','packingTrait','peachtreeQty'].includes(k)) {
+        cfgDraft[k] = Number(el.value);
+      } else if (['restrictPriceChange','taxable'].includes(k)) {
+        cfgDraft[k] = el.value === 'true';
+      } else {
+        cfgDraft[k] = el.value;
+      }
       if (k === 'skuTemplate') {
         $('cfg-sku-preview').value = cfgDraft.skuTemplate.replace('{loc}','IF').replace('{seq}','143');
       }
@@ -3337,6 +3443,49 @@ function bindCfgHandlersSams() {
   });
   $('cfg-sms-cats').oninput = () => {
     cfgDraft.categoryIds = $('cfg-sms-cats').value.split(',').map(s => parseInt(s.trim(), 10)).filter(Number.isFinite);
+  };
+  // Default per-category markups
+  document.querySelectorAll('[data-sms-markup-default]').forEach(el => {
+    el.oninput = () => {
+      cfgDraft.defaultMarkups = cfgDraft.defaultMarkups || {};
+      const cat = el.dataset.smsMarkupDefault;
+      const n = parseFloat(el.value);
+      if (Number.isFinite(n)) cfgDraft.defaultMarkups[cat] = n;
+      else delete cfgDraft.defaultMarkups[cat];
+    };
+  });
+  // Per-club markup overrides — table rows
+  function rebuildClubMarkups() {
+    const out = {};
+    document.querySelectorAll('#cfg-sms-markup-body tr').forEach(tr => {
+      const codeEl = tr.querySelector('input[data-smk="code"]');
+      const code = (codeEl?.value || '').trim().toUpperCase();
+      if (!code) return;
+      const inner = {};
+      tr.querySelectorAll('input[data-smk]').forEach(input => {
+        const cat = input.dataset.smk;
+        if (cat === 'code') return;
+        const n = parseFloat(input.value);
+        if (Number.isFinite(n)) inner[cat] = n;
+      });
+      if (Object.keys(inner).length) out[code] = inner;
+    });
+    cfgDraft.clubMarkups = out;
+  }
+  document.querySelectorAll('#cfg-sms-markup-body input[data-smk]').forEach(el => {
+    el.oninput = rebuildClubMarkups;
+  });
+  document.querySelectorAll('[data-sms-markup-del]').forEach(b => {
+    b.onclick = () => {
+      const tr = b.closest('tr'); if (tr) tr.remove();
+      rebuildClubMarkups();
+    };
+  });
+  $('cfg-sms-add-markup').onclick = () => {
+    const tbody = $('cfg-sms-markup-body');
+    const i = tbody.querySelectorAll('tr').length;
+    tbody.insertAdjacentHTML('beforeend', samsMarkupRow('', {}, i));
+    bindCfgHandlersSams();  // re-bind to pick up new row
   };
   $('cfg-sms-club-body').querySelectorAll('input[data-sck]').forEach(el => {
     el.oninput = () => {
