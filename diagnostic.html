@@ -2,52 +2,29 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Posku Diagnostics</title>
+<title>Posku Diag</title>
 <style>
-  body { font-family: 'DM Mono', monospace; background: #111; color: #ccc; padding: 2rem; margin: 0; max-width: 900px; }
-  h1 { color: #fff; margin: 0 0 0.5rem; font-size: 1.1rem; }
-  .sub { color: #666; font-size: 0.75rem; margin-bottom: 1rem; }
-  pre { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 1rem; white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; color: #ccc; margin: 0; }
-  .btn { background: #222; border: 1px solid #444; color: #ccc; padding: 0.4rem 1rem; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 0.8rem; margin-bottom: 1rem; }
+  body { font-family: 'DM Mono', monospace; background: #111; color: #ccc; padding: 2rem; margin: 0; }
+  pre { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 1rem; white-space: pre-wrap; word-break: break-word; font-size: 0.9rem; color: #ccc; margin: 0 0 1rem; }
+  .btn { background: #222; border: 1px solid #444; color: #ccc; padding: 0.4rem 1rem; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 0.8rem; }
   .btn:hover { background: #333; }
 </style>
 </head>
 <body>
-<h1>Posku Diagnostics — last push</h1>
-<p class="sub">Click Copy, paste to dev.</p>
-
-<button class="btn" onclick="copyIt()">Copy</button>
-<pre id="out">Loading…</pre>
+<pre id="out">…</pre>
+<button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('out').textContent)">Copy</button>
 
 <script>
-let _blob = '';
+let h;
+try { h = (JSON.parse(localStorage.getItem('posku.push.history.v1') || '[]'))[0]; } catch {}
 
-function run() {
-  let history = [];
-  try { history = JSON.parse(localStorage.getItem('posku.push.history.v1') || '[]'); } catch {}
-  if (!history.length) {
-    _blob = 'No pushes captured yet. Push a SKU from posku, then refresh.';
-  } else {
-    const h = history[0];
-    _blob = [
-      `${h.at} · ${h.supplier} · ${h.sku} · env=${h.env}`,
-      `response: ${h.response.ok ? 'OK' : 'FAIL'} ${h.response.status || ''} ${h.response.error || ''}`,
-      '',
-      'REQUEST:',
-      JSON.stringify(h.request, null, 2),
-      '',
-      'RESPONSE:',
-      JSON.stringify(h.response, null, 2),
+document.getElementById('out').textContent = !h
+  ? 'no pushes yet'
+  : [
+      `sku:    ${h.sku}`,
+      `status: ${h.response.ok ? 'OK' : 'FAIL'} ${h.response.status || ''}`,
+      `error:  ${h.response.error || (h.response.data && h.response.data.error) || '(none)'}`,
     ].join('\n');
-  }
-  document.getElementById('out').textContent = _blob;
-}
-
-function copyIt() {
-  navigator.clipboard.writeText(_blob);
-}
-
-run();
 </script>
 </body>
 </html>
