@@ -680,9 +680,16 @@ const SUPPLIERS = {
     manifestNames:   {},
 
     // Categories applied to every Sam's load (mirrors 99% of live SMS rows)
-    //   191 = Assorted Mixed Lots, 56 = Load Center
+    //   191 = Assorted Mixed Lots (displayed as cat_id 102 in the ERP UI)
+    //   56  = Load Center        (displayed as cat_id 738)
     categoryIds:           [191, 56],
     manifestedCategoryIds: [],
+
+    // Per-supplier constants pinned on every push (the ERP form labels these
+    // "Type", "Restrict Price Change", "Taxable")
+    program:              'Program - Manifested',
+    restrictPriceChange:  true,
+    taxable:              true,
 
     locations: [],  // not used — clubs auto-detected from manifest #
     types: [],      // not used — always GM
@@ -1565,6 +1572,12 @@ function buildPayload(load) {
     user_id:         179,
     user_id_created: 179,
     peachtree_code:  sup.ptCode,
+    // Constants that the per-supplier rule may pin (e.g. SMS pins program +
+    // restrict_price_change to true). Wayfair leaves them undefined and the
+    // ERP keeps its own defaults.
+    ...(sup.program ? { program: sup.program } : {}),
+    ...(sup.restrictPriceChange != null ? { restrict_price_change: sup.restrictPriceChange } : {}),
+    ...(sup.taxable != null ? { taxable: sup.taxable } : {}),
   };
 
   // Manifest-derived load totals (only present when load has manifest rows).
@@ -1581,6 +1594,8 @@ function buildPayload(load) {
     if (totals.price_per_unit != null)        data.price_per_unit        = totals.price_per_unit;
     if (totals.price_per_pallet != null)      data.price_per_pallet      = totals.price_per_pallet;
     if (totals.price != null)                 data.price                 = totals.price;
+    // PT Quantity = pallet count (UI label is "PT Quantity"; column is peachtree_qty)
+    if (totals.pallets_qty != null)           data.peachtree_qty         = totals.pallets_qty;
   }
 
   return { data };
