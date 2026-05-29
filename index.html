@@ -1587,7 +1587,10 @@ function buildPayload(load) {
     slug:            finalSku.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
 
     // traits (IDs from /api/products/dropdowns)
-    packing:         sup.packingTrait,
+    // Server input key is `packing_id` — `packing` was being silently dropped
+    // (saved column shows packingId: null). Verified by diffing a known-good
+    // live SKU (SMSCB743) where packingId / packingName came back populated.
+    packing_id:      sup.packingTrait,
     condition:       load.condTrait,
     manifested:      load.manifestTrait,
 
@@ -1611,7 +1614,9 @@ function buildPayload(load) {
   // Field names match the raw airbyte_sync.products columns verified against
   // a known-good live SKU (SMSMCA33).
   if (totals) {
-    if (totals.qty)                           data.qty                   = totals.qty;
+    // Server input key is `unit_qty` — `qty` was being silently dropped
+    // (saved column shows unit_qty: null). Verified against SMSCB743.
+    if (totals.qty)                           data.unit_qty              = totals.qty;
     if (totals.pallets_qty != null)           data.pallets_qty           = totals.pallets_qty;
     if (totals.price != null)                 data.price                 = totals.price;
     if (totals.retail_price != null)          data.retail_price          = totals.retail_price;
