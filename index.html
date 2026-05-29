@@ -962,6 +962,17 @@ function applySamsRulesOverride(s) {
   if (typeof s.taxable === 'boolean')             sms.taxable             = s.taxable;
   if (Array.isArray(s.categoryIds))           sms.categoryIds           = s.categoryIds.map(Number).filter(n => Number.isFinite(n));
   if (Array.isArray(s.manifestedCategoryIds)) sms.manifestedCategoryIds = s.manifestedCategoryIds.map(Number).filter(n => Number.isFinite(n));
+  if (Array.isArray(s.groupIds))              sms.groupIds              = s.groupIds.map(Number).filter(n => Number.isFinite(n));
+  if (Array.isArray(s.manifestedGroupIds))    sms.manifestedGroupIds    = s.manifestedGroupIds.map(Number).filter(n => Number.isFinite(n));
+  // Migration: 56 (Load Center) used to be lumped into categoryIds before the
+  // API was correctly understood as having separate categories + groups
+  // arrays. Strip it out of any persisted categoryIds and add it to groupIds.
+  const moveLoadCenter = (cats, grps) => {
+    if (!cats?.includes(56)) return { cats, grps };
+    return { cats: cats.filter(id => id !== 56), grps: [...new Set([...(grps || []), 56])] };
+  };
+  ({ cats: sms.categoryIds,           grps: sms.groupIds }           = moveLoadCenter(sms.categoryIds,           sms.groupIds));
+  ({ cats: sms.manifestedCategoryIds, grps: sms.manifestedGroupIds } = moveLoadCenter(sms.manifestedCategoryIds, sms.manifestedGroupIds));
   // Pricing logic: per-category default + per-club overrides
   if (s.defaultMarkups && typeof s.defaultMarkups === 'object') {
     const cleaned = {};
