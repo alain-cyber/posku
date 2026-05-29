@@ -6,15 +6,26 @@
 <style>
   body { font-family: 'DM Mono', monospace; background: #111; color: #ccc; padding: 2rem; margin: 0; max-width: 1000px; }
   pre { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 1rem; white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; color: #ccc; margin: 0 0 1rem; }
-  .btn { background: #222; border: 1px solid #444; color: #ccc; padding: 0.4rem 1rem; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 0.8rem; margin-bottom: 1rem; }
+  .btn { background: #222; border: 1px solid #444; color: #ccc; padding: 0.4rem 1rem; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 0.8rem; margin-bottom: 1rem; transition: background 0.13s, transform 0.08s, box-shadow 0.08s, filter 0.15s; user-select: none; }
   .btn:hover { background: #333; }
+  .btn:active { transform: scale(0.96); box-shadow: inset 0 2px 5px rgba(0,0,0,0.4); filter: brightness(0.85); }
+  .btn-flash { animation: btn-flash 0.35s ease-out; }
+  @keyframes btn-flash { 0% { box-shadow: 0 0 0 0 rgba(255,255,255,0.5); } 100% { box-shadow: 0 0 0 8px transparent; } }
 </style>
 </head>
 <body>
-<button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('out').textContent)">Copy</button>
+<button class="btn" id="copy-btn" onclick="copyOut(this)">Copy</button>
 <pre id="out">…</pre>
 
 <script>
+function copyOut(btn) {
+  navigator.clipboard.writeText(document.getElementById('out').textContent);
+  const orig = btn.textContent;
+  btn.textContent = 'Copied ✓';
+  btn.classList.add('btn-flash');
+  setTimeout(() => { btn.textContent = orig; btn.classList.remove('btn-flash'); }, 1200);
+}
+
 const REFERENCE_SKU = 'SMSCB743';  // known-good live SKU — used for field-name diffing
 
 async function get(path, env) {

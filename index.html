@@ -51,7 +51,28 @@ body.theme-dark {
 body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-serif; min-height: 100vh; }
 
 /* ── App shell: dark navy sidebar + light/themed main ───────────────────── */
-.app-shell { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+.app-shell { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; transition: grid-template-columns 0.18s ease; }
+.app-shell.sidebar-collapsed { grid-template-columns: 64px 1fr; }
+/* Collapsed-state: hide every label, keep the icon */
+.sidebar-collapsed .sidebar-parent-brand .vt-text,
+.sidebar-collapsed .sidebar-brand-text,
+.sidebar-collapsed .sidebar-brand-mark,
+.sidebar-collapsed .sidebar-section-title,
+.sidebar-collapsed .nav-label,
+.sidebar-collapsed .sidebar-meta,
+.sidebar-collapsed .vicki-mark .v-text { display: none; }
+.sidebar-collapsed .sidebar { padding: 1.4rem 0 1rem; }
+.sidebar-collapsed .sidebar-parent-brand { justify-content: center; padding: 0 0.5rem 0.75rem; }
+.sidebar-collapsed .sidebar-brand { padding: 0.4rem 0.5rem 0.9rem; justify-content: center; }
+.sidebar-collapsed .sidebar-section { padding: 0 0.3rem; }
+.sidebar-collapsed .nav-item { justify-content: center; padding: 0.55rem 0.4rem; gap: 0; }
+.sidebar-collapsed .nav-item .nav-icon { margin: 0; }
+.sidebar-collapsed .sidebar-footer { padding: 0.6rem 0.4rem 0.4rem; }
+.sidebar-collapsed .env-switch-side button { font-size: 0.5rem; padding: 0.3rem 0.1rem; letter-spacing: 0.04em; }
+/* Toggle button (positioned in the parent-brand bar) */
+.sidebar-toggle { margin-left: auto; background: transparent; border: 1px solid rgba(255,255,255,0.12); color: #7b8aa0; width: 22px; height: 22px; border-radius: 5px; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.9rem; line-height: 1; padding: 0; display: inline-flex; align-items: center; justify-content: center; transition: background 0.12s, border-color 0.12s, color 0.12s; }
+.sidebar-toggle:hover { background: rgba(255,255,255,0.06); color: #c9d3e2; border-color: rgba(255,255,255,0.2); }
+.sidebar-collapsed .sidebar-toggle { margin: 0 auto; transform: rotate(180deg); }
 
 /* Sidebar is intentionally dark in BOTH themes — independent palette */
 .sidebar {
@@ -154,9 +175,18 @@ textarea { width: 100%; min-height: 200px; background: var(--surface2); color: v
 textarea:focus { outline: none; border-style: solid; border-color: var(--green); background: #fff; }
 textarea::placeholder { color: var(--text4); }
 
-.btn { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.55rem 0.95rem; background: var(--green-dim); color: var(--green); border: 1px solid rgba(30,127,86,0.35); border-radius: 8px; font-family: 'DM Mono', monospace; font-size: 0.68rem; letter-spacing: 0.15em; text-transform: uppercase; cursor: pointer; transition: background 0.13s, border-color 0.13s; white-space: nowrap; }
+.btn { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.55rem 0.95rem; background: var(--green-dim); color: var(--green); border: 1px solid rgba(30,127,86,0.35); border-radius: 8px; font-family: 'DM Mono', monospace; font-size: 0.68rem; letter-spacing: 0.15em; text-transform: uppercase; cursor: pointer; transition: background 0.13s, border-color 0.13s, transform 0.08s, box-shadow 0.08s, filter 0.15s; white-space: nowrap; user-select: none; }
 .btn:hover { background: rgba(30,127,86,0.18); border-color: var(--green); }
+.btn:active:not(:disabled) { transform: scale(0.96); box-shadow: inset 0 2px 5px rgba(0,0,0,0.28); filter: brightness(0.9); }
 .btn:disabled { opacity: 0.4; cursor: default; }
+/* Flash class added briefly on click (JS) so even async actions show feedback */
+.btn.btn-flash, .nav-item.btn-flash { animation: btn-flash 0.35s ease-out; }
+@keyframes btn-flash {
+  0%   { box-shadow: 0 0 0 0 currentColor; }
+  100% { box-shadow: 0 0 0 8px transparent; }
+}
+.nav-item { transition: background 0.13s, color 0.13s, transform 0.08s; }
+.nav-item:active:not(:disabled) { transform: scale(0.97); }
 .btn.ghost { background: transparent; color: var(--text2); border-color: var(--border2); }
 .btn.ghost:hover { color: var(--text); border-color: var(--text3); background: var(--surface2); }
 .btn.danger { background: var(--red-dim); color: var(--red); border-color: rgba(184,57,44,0.35); }
@@ -295,6 +325,7 @@ textarea::placeholder { color: var(--text4); }
     <div class="sidebar-parent-brand">
       <span class="vt-mark">VT</span>
       <span class="vt-text">Via <em>Trading</em></span>
+      <button class="sidebar-toggle" id="sidebar-toggle" title="Collapse menu" aria-label="Toggle sidebar">‹</button>
     </div>
     <div class="sidebar-brand">
       <div class="sidebar-brand-mark">P</div>
@@ -306,22 +337,22 @@ textarea::placeholder { color: var(--text4); }
 
     <div class="sidebar-section">
       <div class="sidebar-section-title">Suppliers</div>
-      <button class="nav-item active" data-supplier="WYF"><span class="nav-icon">🪑</span>Wayfair</button>
-      <button class="nav-item" data-supplier="SMS"><span class="nav-icon">🛒</span>Sam's Club</button>
-      <button class="nav-item" disabled><span class="nav-icon">🔧</span>Harbor Freight<span class="soon-pill">soon</span></button>
-      <button class="nav-item" disabled><span class="nav-icon">📦</span>Amazon<span class="soon-pill">soon</span></button>
+      <button class="nav-item active" data-supplier="WYF" title="Wayfair"><span class="nav-icon">🪑</span><span class="nav-label">Wayfair</span></button>
+      <button class="nav-item" data-supplier="SMS" title="Sam's Club"><span class="nav-icon">🛒</span><span class="nav-label">Sam's Club</span></button>
+      <button class="nav-item" disabled title="Harbor Freight (soon)"><span class="nav-icon">🔧</span><span class="nav-label">Harbor Freight<span class="soon-pill">soon</span></span></button>
+      <button class="nav-item" disabled title="Amazon (soon)"><span class="nav-icon">📦</span><span class="nav-label">Amazon<span class="soon-pill">soon</span></span></button>
     </div>
 
     <div class="sidebar-section">
       <div class="sidebar-section-title">Tools</div>
-      <a class="nav-item" href="diagnostic.html" target="_blank"><span class="nav-icon">🩺</span>Diagnostics</a>
-      <button class="nav-item" id="cfg-dropdowns"><span class="nav-icon">🔍</span>Check ERP IDs</button>
+      <a class="nav-item" href="diagnostic.html" target="_blank" title="Diagnostics"><span class="nav-icon">🩺</span><span class="nav-label">Diagnostics</span></a>
+      <button class="nav-item" id="cfg-dropdowns" title="Check ERP IDs"><span class="nav-icon">🔍</span><span class="nav-label">Check ERP IDs</span></button>
     </div>
 
     <div class="sidebar-section">
       <div class="sidebar-section-title">Admin</div>
-      <button class="nav-item" id="cfg-rules-btn"><span class="nav-icon">⚙️</span>Wayfair rules</button>
-      <button class="nav-item" id="cfg-theme"><span class="nav-icon">🌓</span>Toggle theme</button>
+      <button class="nav-item" id="cfg-rules-btn" title="Wayfair rules"><span class="nav-icon">⚙️</span><span class="nav-label">Wayfair rules</span></button>
+      <button class="nav-item" id="cfg-theme" title="Toggle theme"><span class="nav-icon">🌓</span><span class="nav-label">Toggle theme</span></button>
     </div>
 
     <div class="sidebar-footer">
@@ -3907,6 +3938,33 @@ document.getElementById('cfg-theme').onclick = () => {
 };
 initSettings();
 applySupplierUI();
+
+// Collapsible sidebar — state persists in localStorage so it survives reloads.
+(() => {
+  const KEY = 'posku.sidebar.collapsed';
+  const shell = document.querySelector('.app-shell');
+  const toggle = document.getElementById('sidebar-toggle');
+  if (!shell || !toggle) return;
+  if (localStorage.getItem(KEY) === '1') shell.classList.add('sidebar-collapsed');
+  toggle.addEventListener('click', () => {
+    shell.classList.toggle('sidebar-collapsed');
+    localStorage.setItem(KEY, shell.classList.contains('sidebar-collapsed') ? '1' : '0');
+    toggle.title = shell.classList.contains('sidebar-collapsed') ? 'Expand menu' : 'Collapse menu';
+  });
+  toggle.title = shell.classList.contains('sidebar-collapsed') ? 'Expand menu' : 'Collapse menu';
+})();
+
+// Global click-flash: any .btn or .nav-item gets a brief ring animation on
+// click so the user always sees a press confirmation — even for buttons whose
+// underlying action is async (fetch/push) and takes a moment to show progress.
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('.btn, .nav-item');
+  if (!el || el.disabled) return;
+  el.classList.remove('btn-flash');
+  // Force reflow so the animation restarts on rapid repeat clicks
+  void el.offsetWidth;
+  el.classList.add('btn-flash');
+});
 // Fetch master rules from KV, then apply. JS defaults stand in until this
 // resolves so the app is usable even on a cold start or KV outage.
 (async () => {
