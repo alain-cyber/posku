@@ -685,9 +685,11 @@ const SUPPLIERS = {
     categoryIds:           [191, 56],
     manifestedCategoryIds: [],
 
-    // Per-supplier constants pinned on every push (the ERP form labels these
-    // "Type", "Restrict Price Change", "Taxable", "PT Quantity")
-    program:              'Program - Manifested',
+    // Per-supplier constants pinned on every push. The "Program - Manifested"
+    // string belongs in psku_type / class (NOT program — program is read from
+    // the parent SKU). Restrict Price Change + Taxable are the form checkboxes.
+    psku_type:            'Program - Manifested',  // user-visible "Product Type" select
+    class:                'Program - Manifested',  // fallback in case API reads class
     restrictPriceChange:  true,
     taxable:              true,
     peachtreeQty:         1,
@@ -1576,7 +1578,8 @@ function buildPayload(load) {
     sku:             finalSku,
     name:            load.name,
     psku:            sup.psku,
-    psku_type:       'regular',
+    psku_type:       sup.psku_type || 'regular',
+    ...(sup.class ? { class: sup.class } : {}),
     active:          load.active ?? 1,
     make_an_offer:   false,
     store_id:        sup.storeId,
