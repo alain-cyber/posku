@@ -52,11 +52,15 @@ export async function onRequest(context) {
     "(name contains 'Load' or name contains 'Manifest' or name contains 'Outlet' or name contains 'Perigold')",
     'trashed = false',
   ];
-  if (after)  parts.push(`modifiedTime >= '${after}T00:00:00Z'`);
+  // UI labels these as "upload date" — that's createdTime in Drive terms.
+  // modifiedTime is last-edit, which can predate the upload (file edited
+  // locally before uploading) or postdate it (someone re-saved later) and
+  // was causing manifests to be invisible to date searches.
+  if (after)  parts.push(`createdTime >= '${after}T00:00:00Z'`);
   if (before) {
     const [y, m, d] = before.split('-').map(Number);
     const next = new Date(Date.UTC(y, m - 1, d + 1));
-    parts.push(`modifiedTime < '${next.toISOString().slice(0, 10)}T00:00:00Z'`);
+    parts.push(`createdTime < '${next.toISOString().slice(0, 10)}T00:00:00Z'`);
   }
   const q = parts.join(' and ');
 
@@ -66,7 +70,7 @@ export async function onRequest(context) {
   do {
     const params = new URLSearchParams({
       q,
-      fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, size)',
+      fields: 'nextPageToken, files(id, name, mimeType, createdTime, modifiedTime, size)',
       pageSize: '1000',
       supportsAllDrives: 'true',
       includeItemsFromAllDrives: 'true',
@@ -93,13 +97,14 @@ export async function onRequest(context) {
       id:           f.id,
       name:         f.name,
       mimeType:     f.mimeType,
+      createdTime:  f.createdTime,
       modifiedTime: f.modifiedTime,
       size:         f.size,
       tree,
     });
   }
-  // Newest first
-  files.sort((a, b) => (b.modifiedTime || '').localeCompare(a.modifiedTime || ''));
+  // Newest upload first
+  files.sort((a, b) => (b.createdTime || '').localeCompare(a.createdTime || ''));
 
   return json(200, { ok: true, files, query: q });
 }
