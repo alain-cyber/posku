@@ -4,15 +4,15 @@
 <meta charset="UTF-8">
 <title>Posku Diag</title>
 <style>
-  body { font-family: 'DM Mono', monospace; background: #111; color: #ccc; padding: 2rem; margin: 0; }
-  pre { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 1rem; white-space: pre-wrap; word-break: break-word; font-size: 0.9rem; color: #ccc; margin: 0 0 1rem; }
-  .btn { background: #222; border: 1px solid #444; color: #ccc; padding: 0.4rem 1rem; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 0.8rem; }
+  body { font-family: 'DM Mono', monospace; background: #111; color: #ccc; padding: 2rem; margin: 0; max-width: 1000px; }
+  pre { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 1rem; white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; color: #ccc; margin: 0 0 1rem; }
+  .btn { background: #222; border: 1px solid #444; color: #ccc; padding: 0.4rem 1rem; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 0.8rem; margin-bottom: 1rem; }
   .btn:hover { background: #333; }
 </style>
 </head>
 <body>
-<pre id="out">…</pre>
 <button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('out').textContent)">Copy</button>
+<pre id="out">…</pre>
 
 <script>
 let h;
@@ -21,9 +21,13 @@ try { h = (JSON.parse(localStorage.getItem('posku.push.history.v1') || '[]'))[0]
 document.getElementById('out').textContent = !h
   ? 'no pushes yet'
   : [
-      `sku:    ${h.sku}`,
-      `status: ${h.response.ok ? 'OK' : 'FAIL'} ${h.response.status || ''}`,
-      `error:  ${h.response.error || (h.response.data && h.response.data.error) || '(none)'}`,
+      `${h.sku}  ·  env=${h.env}  ·  ${h.response.ok ? 'OK' : 'FAIL'} ${h.response.status || ''}  ${h.response.error || ''}`,
+      '',
+      '── REQUEST (what we sent) ──',
+      JSON.stringify(h.request?.body ?? h.request, null, 2),
+      '',
+      '── RESPONSE (what the server saved) ──',
+      JSON.stringify(h.response?.data ?? h.response, null, 2),
     ].join('\n');
 </script>
 </body>
