@@ -140,12 +140,9 @@ body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-seri
   border-right: 1px solid rgba(255,255,255,0.06);
 }
 .sidebar-parent-brand { padding: 0 1.25rem 0.75rem; display: flex; align-items: center; gap: 0.55rem; }
-/* Via Trading mark — wordmark using brand blue (#0093DF light, #0174AF primary).
-   Renders crisp at any zoom and never 404s. */
-.sidebar-parent-brand .vt-mark { width: auto; height: 22px; padding: 0; background: transparent; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
-.sidebar-parent-brand .vt-mark svg { height: 22px; width: auto; display: block; }
-.sidebar-parent-brand .vt-text { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.18em; color: #fff; text-transform: uppercase; font-style: normal; }
-.sidebar-parent-brand .vt-text em { font-style: normal; color: #5cb3e8; font-weight: 700; }
+.sidebar-parent-brand .vt-mark { width: 26px; height: 26px; border-radius: 6px; background: #1e7f56; display: inline-flex; align-items: center; justify-content: center; font-family: 'DM Serif Display', serif; font-style: italic; font-size: 0.85rem; color: #fff; font-weight: 700; flex: 0 0 26px; }
+.sidebar-parent-brand .vt-text { font-family: 'DM Serif Display', serif; font-size: 0.95rem; font-style: italic; color: #fff; letter-spacing: -0.01em; }
+.sidebar-parent-brand .vt-text em { font-style: italic; color: #8fcaa7; }
 .sidebar-brand { padding: 0.4rem 1.25rem 1.25rem; display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 1rem; }
 .sidebar-brand-mark { width: 42px; height: 42px; border-radius: 10px; background: linear-gradient(135deg, #ff7a3d, #e54f2c); display: flex; align-items: center; justify-content: center; color: #fff; font-family: 'DM Serif Display', serif; font-size: 1.4rem; font-style: italic; flex: 0 0 42px; }
 .sidebar-brand-text h1 { font-family: 'DM Serif Display', serif; font-size: 1.15rem; font-weight: 400; color: #fff; letter-spacing: -0.005em; line-height: 1.1; margin: 0; }
@@ -178,15 +175,10 @@ body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-seri
 .sidebar-footer .env-switch-side button.active[data-env="live"] { background: rgba(239,106,94,0.22); color: #ff8a7c; }
 .sidebar-footer .env-switch-side button + button { border-left: 1px solid rgba(255,255,255,0.10); }
 .sidebar-meta { font-family: 'DM Mono', monospace; font-size: 0.55rem; letter-spacing: 0.12em; text-transform: uppercase; color: #4e5a72; padding: 0.4rem 0.2rem; text-align: center; }
-/* Vicki Intelligence mark — purple→magenta sparkle + gradient wordmark.
-   Matches the brand from the Via AI Chat product. Inline SVG so it scales
-   and never needs an external asset. */
-.vicki-mark { display: flex; align-items: center; justify-content: center; gap: 0.45rem; padding: 0.7rem 0.4rem 0.3rem; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 0.4rem; }
-.vicki-mark .v-icon { width: 20px; height: 20px; background: transparent; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 20px; padding: 0; border-radius: 0; }
-.vicki-mark .v-icon svg { width: 100%; height: 100%; display: block; }
-.vicki-mark .v-text { font-family: 'Inter', sans-serif; font-size: 0.78rem; font-weight: 500; letter-spacing: 0; color: #c9d3e2; line-height: 1; }
-.vicki-mark .v-text .v-vicki { font-weight: 700; background: linear-gradient(135deg, #a855f7, #ec4899); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.vicki-mark .v-text strong { color: #c9d3e2; font-weight: 500; }
+.vicki-mark { display: flex; align-items: center; justify-content: center; gap: 0.4rem; padding: 0.6rem 0.4rem 0.2rem; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 0.4rem; }
+.vicki-mark .v-icon { width: 18px; height: 18px; background: linear-gradient(135deg, #9b6dff, #5b8cff); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem; color: #fff; font-weight: 700; font-family: 'DM Serif Display', serif; font-style: italic; }
+.vicki-mark .v-text { font-family: 'DM Mono', monospace; font-size: 0.62rem; letter-spacing: 0.06em; color: #8a96ad; }
+.vicki-mark .v-text strong { color: #c9d3e2; font-weight: 600; }
 
 /* Main content area */
 .main { padding: 1.6rem 2.2rem 3rem; max-width: 1320px; margin: 0 auto; width: 100%; }
@@ -430,19 +422,7 @@ textarea::placeholder { color: var(--text4); }
   <!-- ── Sidebar ────────────────────────────────────────────────────────── -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-parent-brand">
-      <!-- Via Trading brand mark — small "V" cube in brand blue. -->
-      <span class="vt-mark" aria-hidden="true">
-        <svg viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="vtg" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stop-color="#0093DF"/>
-              <stop offset="100%" stop-color="#0174AF"/>
-            </linearGradient>
-          </defs>
-          <rect x="0" y="0" width="22" height="22" rx="5" fill="url(#vtg)"/>
-          <path d="M6 6 L11 16 L16 6" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-        </svg>
-      </span>
+      <span class="vt-mark">VT</span>
       <span class="vt-text">Via <em>Trading</em></span>
       <button class="sidebar-toggle" id="sidebar-toggle" title="Collapse menu" aria-label="Toggle sidebar">‹</button>
     </div>
@@ -507,21 +487,8 @@ textarea::placeholder { color: var(--text4); }
       </div>
       <div class="sidebar-meta" id="cfg-status-meta">Cloudflare proxy</div>
       <div class="vicki-mark" title="Vicki Intelligence — Via Trading's AI suite">
-        <span class="v-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <linearGradient id="vkg" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stop-color="#a855f7"/>
-                <stop offset="100%" stop-color="#ec4899"/>
-              </linearGradient>
-            </defs>
-            <!-- 4-pointed sparkle: thin tall + thin wide diamond crossed -->
-            <path d="M12 1.5 L13.2 10.8 L22.5 12 L13.2 13.2 L12 22.5 L10.8 13.2 L1.5 12 L10.8 10.8 Z" fill="url(#vkg)"/>
-            <!-- small accent dot top-right for sparkle feel -->
-            <circle cx="18.5" cy="6" r="1.4" fill="url(#vkg)" opacity="0.85"/>
-          </svg>
-        </span>
-        <span class="v-text"><span class="v-vicki">Vicki</span> Intelligence</span>
+        <span class="v-icon">V</span>
+        <span class="v-text">Powered by <strong>Vicki Intelligence</strong></span>
       </div>
     </div>
   </aside>
