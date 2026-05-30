@@ -555,7 +555,8 @@ const SUPPLIERS = {
     psku:        'LOAD-WYF',
     ptCode:      'LOAD-WYF',
     statusId:    2,
-    packingTrait: 88,   // Load (verified via /api/products/dropdowns)
+    packingTrait: 88,   // Load (verified via /api/products/dropdowns) — kept for back-compat / config UI
+    packingName:  'Load',  // name sent to the API; server resolves to trait id via SQL lookup
     gmailLabel:  'posku',  // override in rules if a different label is used
     gmailToFilter: 'wayfair@viatrading.com',  // only fetch emails sent to this recipient
     sheetTab:    'Wayfair',  // Google Sheet tab name for Load Center append
@@ -1642,14 +1643,13 @@ function buildPayload(load) {
     lang_id:         1,
     slug:            finalSku.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
 
-    // traits (IDs from /api/products/dropdowns) — keys taken from the
-    // products API edit-form schema. Send both id and name for packing:
-    // numeric forms (96 from dropdowns, 203 from airbyte) both saved as
-    // null on the create endpoint. Vicki's analytics describes packing
-    // as a label-typed field, so packing_label as a string is the next
-    // candidate. Whichever the server reads wins.
-    packing:         sup.packingTrait != null ? String(sup.packingTrait) : null,
-    packing_label:   sup.packingName || null,
+    // Per dev: the API takes the packing NAME as input ($Packing) and the
+    // server-side code resolves it to the trait id via SQL:
+    //   SELECT pt.id FROM products_traits pt JOIN products_traits_type ptt
+    //     ON ptt.id = pt.type_id AND ptt.name = 'packing'
+    //     WHERE pt.name = '{$Packing}'
+    // So `packing` must be 'LTL' / 'Load' / 'Pallet' etc, not a numeric id.
+    packing:         sup.packingName || null,
     condition:       load.condTrait,
     manifested:      load.manifestTrait,
 
