@@ -1,5 +1,15 @@
 # Posku Roadmap
 
+## TODO — revisit
+- **Real Via Trading + Vicki Intelligence logos in sidebar.** First attempt
+  (commit `b44b12a`, reverted by `bcb05bc`) built both as inline SVG —
+  Vicki sparkle was close to the brand but the Via Trading mark was
+  approximate. The official PNG (`Viatrading-white-600.png`, Drive id
+  `1-f7GtFBGnEe7AsdA6dIXdmWVS0ZIiRcz`) is too big to inline through chat
+  tools. Next step: commit the PNG to `assets/`, replace the placeholder
+  marks with `<img>` tags, and rebuild the Vicki sparkle from a high-res
+  source (or get the brand SVG from the design team).
+
 ## Current state (POC)
 - Static `index.html` running locally
 - User pastes/drops Wayfair load emails → parser generates SKUs
