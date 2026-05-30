@@ -74,6 +74,48 @@ body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-seri
 .sidebar-collapsed .nav-item .nav-icon { margin: 0; }
 .sidebar-collapsed .sidebar-footer { padding: 0.6rem 0.4rem 0.4rem; }
 .sidebar-collapsed .env-switch-side button { font-size: 0.5rem; padding: 0.3rem 0.1rem; letter-spacing: 0.04em; }
+/* Push HUD — small stats strip near the top of the sidebar */
+.push-hud { margin: 0 0.7rem 1rem; padding: 0.55rem 0.7rem; background: linear-gradient(135deg, rgba(74,222,128,0.08), rgba(129,140,248,0.06)); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; display: flex; gap: 0.5rem; align-items: center; justify-content: space-between; }
+.hud-stat { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.hud-num { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 1.1rem; color: #c9d3e2; letter-spacing: -0.02em; line-height: 1; transition: transform 0.2s, color 0.2s; }
+.hud-lbl { font-family: 'DM Mono', monospace; font-size: 0.5rem; letter-spacing: 0.12em; text-transform: uppercase; color: #5d6a82; margin-top: 0.2rem; }
+.hud-today .hud-num { color: #4ade80; }
+.hud-streak .hud-num { color: #fbbf24; }
+.hud-num.pop { animation: hud-pop 0.5s cubic-bezier(.34,1.56,.64,1); }
+@keyframes hud-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.4); color: #fff; }
+  100% { transform: scale(1); }
+}
+.sidebar-collapsed .push-hud { flex-direction: column; padding: 0.4rem 0.2rem; margin: 0 0.3rem 0.8rem; }
+.sidebar-collapsed .hud-lbl { display: none; }
+.sidebar-collapsed .hud-num { font-size: 0.85rem; }
+
+/* Floating "+N" text spawned at the push site */
+.push-float { position: fixed; pointer-events: none; font-family: 'Inter', sans-serif; font-weight: 700; font-size: 1.1rem; color: #4ade80; text-shadow: 0 2px 8px rgba(0,0,0,0.4); z-index: 9999; animation: push-float-up 1s cubic-bezier(.25,.8,.5,1) forwards; }
+@keyframes push-float-up {
+  0%   { opacity: 0; transform: translate(-50%, 0) scale(0.8); }
+  20%  { opacity: 1; transform: translate(-50%, -10px) scale(1.1); }
+  100% { opacity: 0; transform: translate(-50%, -60px) scale(1); }
+}
+
+/* Confetti particles spawned around the push site */
+.push-particle { position: fixed; pointer-events: none; width: 6px; height: 6px; border-radius: 50%; z-index: 9998; animation: push-particle 0.9s cubic-bezier(.2,.7,.3,1) forwards; }
+@keyframes push-particle {
+  0%   { opacity: 1; transform: translate(0, 0) scale(1); }
+  100% { opacity: 0; transform: var(--end) scale(0.4); }
+}
+
+/* Milestone toast — centered, brief, dismisses itself */
+.milestone-toast { position: fixed; top: 28%; left: 50%; transform: translate(-50%, -50%); background: linear-gradient(135deg, rgba(74,222,128,0.18), rgba(129,140,248,0.18)); border: 1px solid rgba(255,255,255,0.12); border-radius: 14px; padding: 1.2rem 2rem; color: #fff; font-family: 'Inter', sans-serif; font-weight: 700; font-size: 1.5rem; letter-spacing: -0.02em; backdrop-filter: blur(12px); box-shadow: 0 20px 60px rgba(0,0,0,0.4); z-index: 9999; pointer-events: none; animation: milestone-toast 2s cubic-bezier(.34,1.56,.64,1) forwards; text-align: center; }
+.milestone-toast .ms-sub { display: block; font-weight: 500; font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; color: #b1bbcf; margin-top: 0.4rem; }
+@keyframes milestone-toast {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
+  15%  { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+  25%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  85%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+}
 /* Zoom controls — three small buttons in the sidebar admin section */
 .zoom-row { display: flex; gap: 0.3rem; padding: 0 0.65rem; }
 .zoom-btn { flex: 1; background: rgba(255,255,255,0.04); color: #c9d3e2; border: 1px solid rgba(255,255,255,0.10); border-radius: 5px; padding: 0.4rem 0.4rem; font-family: 'DM Mono', monospace; font-size: 0.75rem; cursor: pointer; transition: background 0.12s, border-color 0.12s, transform 0.08s; user-select: none; }
@@ -389,6 +431,22 @@ textarea::placeholder { color: var(--text4); }
       <div class="sidebar-brand-text">
         <h1>Posku <em>SKU</em></h1>
         <div class="sub">Load builder</div>
+      </div>
+    </div>
+
+    <!-- Push HUD — gamified counters: today, streak, total. -->
+    <div class="push-hud" id="push-hud" title="Pushes today · current streak · all-time">
+      <div class="hud-stat hud-today">
+        <span class="hud-num" id="hud-today">0</span>
+        <span class="hud-lbl">today</span>
+      </div>
+      <div class="hud-stat hud-streak" id="hud-streak-wrap" style="display:none;">
+        <span class="hud-num"><span id="hud-streak-icon">🔥</span> <span id="hud-streak">0</span></span>
+        <span class="hud-lbl">streak</span>
+      </div>
+      <div class="hud-stat hud-total">
+        <span class="hud-num" id="hud-total">0</span>
+        <span class="hud-lbl">all-time</span>
       </div>
     </div>
 
@@ -1774,6 +1832,175 @@ function buildPayload(load) {
   return { data };
 }
 
+// ── Push stats / HUD / particles / milestone toasts ─────────────────────────
+// Adds a little game feel to a workflow that's otherwise heads-down. The HUD
+// tracks today's pushes, an all-time total, and a current streak (consecutive
+// successful pushes — resets on a failure). Each successful push fires a
+// particle burst from the click site plus a floating "+1" and bumps the
+// counters. Streak milestones (5, 10, 25, 50, 100) trigger a centered toast.
+const STATS_KEY = 'posku.stats.v1';
+const MILESTONES = {
+  streak: {
+    5:   { title: '🎯 5 in a row',          sub: 'Keep the chain alive' },
+    10:  { title: '🔥 10 streak',           sub: "You're on fire" },
+    25:  { title: '⚡ 25 unstoppable',       sub: 'Locked in' },
+    50:  { title: '💎 50 perfect',           sub: 'Half a hundred clean' },
+    100: { title: '👑 100 streak',           sub: 'Untouchable' },
+  },
+  today: {
+    10:  { title: '✨ 10 today',             sub: 'Warming up' },
+    25:  { title: '🚀 25 today',             sub: 'Building velocity' },
+    50:  { title: '🌟 50 today',             sub: 'Half a hundred' },
+    100: { title: '💯 Century today',        sub: 'A hundred clean pushes' },
+  },
+  total: {
+    100:  { title: '🏆 100 all-time',        sub: 'First hundred — many more to come' },
+    500:  { title: '🥇 500 all-time',        sub: 'You know this app cold' },
+    1000: { title: '🏅 1000 all-time',       sub: 'Posku veteran' },
+  },
+};
+
+function loadStats() {
+  try { return JSON.parse(localStorage.getItem(STATS_KEY)) || {}; } catch { return {}; }
+}
+function saveStats(s) { try { localStorage.setItem(STATS_KEY, JSON.stringify(s)); } catch {} }
+
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+
+function getStats() {
+  const s = loadStats();
+  if (s.lastPushDate !== todayStr()) s.pushedToday = 0;
+  s.pushedToday   = s.pushedToday   || 0;
+  s.pushedAllTime = s.pushedAllTime || 0;
+  s.currentStreak = s.currentStreak || 0;
+  s.bestStreak    = s.bestStreak    || 0;
+  return s;
+}
+
+function renderHud() {
+  const s = getStats();
+  const today = document.getElementById('hud-today');
+  const total = document.getElementById('hud-total');
+  const streak = document.getElementById('hud-streak');
+  const streakWrap = document.getElementById('hud-streak-wrap');
+  if (today) today.textContent = s.pushedToday;
+  if (total) total.textContent = s.pushedAllTime;
+  if (streak && streakWrap) {
+    streak.textContent = s.currentStreak;
+    streakWrap.style.display = s.currentStreak >= 2 ? '' : 'none';
+  }
+}
+
+// Bump counters on a successful push. Returns the new stats so the caller can
+// fire visual effects keyed off the deltas.
+function recordPushSuccess() {
+  const s = getStats();
+  s.pushedToday   += 1;
+  s.pushedAllTime += 1;
+  s.currentStreak += 1;
+  if (s.currentStreak > s.bestStreak) s.bestStreak = s.currentStreak;
+  s.lastPushDate = todayStr();
+  saveStats(s);
+  renderHud();
+  bounceHudNums();
+  return s;
+}
+
+function recordPushFailure() {
+  const s = getStats();
+  s.currentStreak = 0;
+  s.lastPushDate = todayStr();
+  saveStats(s);
+  renderHud();
+}
+
+function bounceHudNums() {
+  ['hud-today', 'hud-total', 'hud-streak'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('pop');
+    void el.offsetWidth;
+    el.classList.add('pop');
+  });
+}
+
+// Spawn a small confetti burst centered on (cx, cy) — the click site.
+function spawnParticles(cx, cy) {
+  const colors = ['#4ade80', '#fbbf24', '#818cf8', '#f87171', '#22d3ee'];
+  const count = 14;
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement('div');
+    el.className = 'push-particle';
+    el.style.left = (cx - 3) + 'px';
+    el.style.top  = (cy - 3) + 'px';
+    el.style.background = colors[i % colors.length];
+    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.4;
+    const dist = 40 + Math.random() * 50;
+    el.style.setProperty('--end', `translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist - 18}px)`);
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 1000);
+  }
+}
+
+// Floating "+1" (or "+N") text that drifts up from (cx, cy) and fades.
+function spawnFloater(cx, cy, text) {
+  const el = document.createElement('div');
+  el.className = 'push-float';
+  el.style.left = cx + 'px';
+  el.style.top = cy + 'px';
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1100);
+}
+
+// Centered milestone toast. Auto-dismisses; one at a time (replaces any prior).
+let _milestoneTimer = null;
+function showMilestone(title, sub) {
+  document.querySelectorAll('.milestone-toast').forEach(t => t.remove());
+  const el = document.createElement('div');
+  el.className = 'milestone-toast';
+  el.innerHTML = `<div>${title}</div><div class="ms-sub">${sub}</div>`;
+  document.body.appendChild(el);
+  clearTimeout(_milestoneTimer);
+  _milestoneTimer = setTimeout(() => el.remove(), 2200);
+}
+
+// Given an event target (a Push button or a row), find a good origin point
+// for the particle burst. Falls back to the HUD's today number if nothing
+// else makes sense.
+function getEffectOrigin(el) {
+  if (el && el.getBoundingClientRect) {
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+  const hud = document.getElementById('hud-today');
+  if (hud) {
+    const r = hud.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+  return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+}
+
+// Called after one or more successful pushes complete. originEl is the element
+// that anchored the click (a Push button or, for bulk pushes, the bulk button).
+function celebratePush(originEl, count, statsBefore) {
+  const origin = getEffectOrigin(originEl);
+  spawnParticles(origin.x, origin.y);
+  spawnFloater(origin.x, origin.y - 8, count > 1 ? `+${count}` : '+1');
+  // Check for milestones crossed
+  const s = getStats();
+  const crossed = (table, before, after) => {
+    for (const k of Object.keys(table).map(Number).sort((a, b) => a - b)) {
+      if (before < k && after >= k) return { key: k, info: table[k] };
+    }
+    return null;
+  };
+  const ms = crossed(MILESTONES.streak, statsBefore.currentStreak, s.currentStreak)
+          || crossed(MILESTONES.today,  statsBefore.pushedToday,   s.pushedToday)
+          || crossed(MILESTONES.total,  statsBefore.pushedAllTime, s.pushedAllTime);
+  if (ms) showMilestone(ms.info.title, ms.info.sub);
+}
+
 // Compact inbox-fetch diagnostic, surfaced on /diagnostic so I can debug
 // auto-attach issues without asking the user to open DevTools.
 function stashInboxDiag(payload) {
@@ -2352,6 +2579,11 @@ async function doPush(indices) {
     return;
   }
   clearStatus($('push-status'));
+  // Capture the click origin so the particle burst spawns from the button
+  // the user pressed (or the bulk-push button for a batch).
+  const originEl = _lastPushClick || document.querySelector('[data-push]') || $('push-all-btn');
+  const statsBefore = getStats();
+  let okCount = 0;
   for (const idx of indices) {
     const load = loads[idx];
     if (!load || load.status === 'done') continue;
@@ -2363,15 +2595,21 @@ async function doPush(indices) {
       load.selected = true;  // auto-select so Generate PO is ready without a second click
       load.productId = result.erpId;
       load.erpResult = `ERP id: ${result.erpId ?? 'n/a'}`;
+      okCount++;
+      recordPushSuccess();
     } else if (result.skipped) {
       load.status = 'dup';
       load.erpResult = result.error;
+      // Duplicates don't break a streak (they're a no-op) but don't add to it.
     } else {
       load.status = 'failed';
       load.erpResult = result.error;
+      recordPushFailure();
     }
     renderLoads();
   }
+  if (okCount > 0) celebratePush(originEl, okCount, statsBefore);
+  _lastPushClick = null;
   const done = loads.filter(l => l.status === 'done').length;
   const failed = loads.filter(l => l.status === 'failed').length;
   const dup = loads.filter(l => l.status === 'dup').length;
@@ -4244,6 +4482,7 @@ document.getElementById('cfg-theme').onclick = () => {
 };
 initSettings();
 applySupplierUI();
+renderHud();
 
 // Zoom controls — sidebar buttons that scale the page via CSS zoom. Persisted
 // in localStorage so a user's preferred zoom survives reloads. Supports
@@ -4296,9 +4535,14 @@ applySupplierUI();
 // Global click-flash: any .btn or .nav-item gets a brief ring animation on
 // click so the user always sees a press confirmation — even for buttons whose
 // underlying action is async (fetch/push) and takes a moment to show progress.
+// Also remembers the last Push-button click as the origin for the particle
+// burst in celebratePush().
+let _lastPushClick = null;
 document.addEventListener('click', (e) => {
   const el = e.target.closest('.btn, .nav-item');
   if (!el || el.disabled) return;
+  // Stash push-button clicks so celebratePush can spawn from the right spot.
+  if (el.hasAttribute('data-push') || el.id === 'push-all-btn') _lastPushClick = el;
   el.classList.remove('btn-flash');
   // Force reflow so the animation restarts on rapid repeat clicks
   void el.offsetWidth;
