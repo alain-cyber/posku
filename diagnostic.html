@@ -80,6 +80,36 @@ async function run() {
     lines.push(`fetch failed: ${e.message}`);
   }
 
+  // Inbox auto-attach diagnostic — stashed by the inbox-fetch flow.
+  // Lets me see exactly which loads got CSVs auto-attached and why the
+  // others didn't, without asking the user to open DevTools.
+  let inbox;
+  try { inbox = JSON.parse(localStorage.getItem('posku.inbox.diag.v1') || 'null'); } catch {}
+  if (inbox) {
+    lines.push('', `── LAST INBOX FETCH (${inbox.supplier} · ${inbox.fetchedAt}) ──`);
+    lines.push(`messages=${inbox.msgCount}  ·  parsed=${inbox.allFoundCount}  ·  attached=${(inbox.autoAttached || []).length}  ·  failed=${(inbox.autoAttachFailed || []).length}`);
+    if ((inbox.autoAttached || []).length) {
+      lines.push('', 'auto-attached:');
+      for (const a of inbox.autoAttached) lines.push(`  OK  ${a.sku || '(no sku)'}  load=${a.loadId}  rows=${a.rows}  src="${a.source || '?'}"`);
+    }
+    if ((inbox.autoAttachFailed || []).length) {
+      lines.push('', 'NOT attached:');
+      for (const f of inbox.autoAttachFailed) lines.push(`  XX  ${f.sku || '(no sku)'}  load=${f.loadId}  reason: ${f.reason}`);
+    }
+    if ((inbox.parseLog || []).length) {
+      lines.push('', 'per-email:');
+      for (const p of inbox.parseLog) {
+        const atts = (p.attachments || []).map(a => `${a.filename}(${a.bytes || 0}b)`).join(', ') || '(none)';
+        lines.push(`  · "${(p.subject || '').slice(0, 70)}"`);
+        lines.push(`      from=${p.from || '—'}  body=${p.bodyLen}b  attachments=[${atts}]`);
+        lines.push(`      parsed loads: ${(p.parsedManifests || []).join(', ') || '(0)'}`);
+        for (const [loadId, m] of Object.entries(p.csvMatches || {})) {
+          lines.push(`        load ${loadId} → picked "${m.picked || '(none)'}" ${m.exact ? '(exact match)' : m.fallback ? '(FALLBACK to attachments[0])' : ''}`);
+        }
+      }
+    }
+  }
+
   // Dropdown reference — id+name for packings and product_types so we can
   // verify the values posku is pinning are real options the API recognizes.
   lines.push('', '── DROPDOWNS (id → name for packings & product_types) ──');

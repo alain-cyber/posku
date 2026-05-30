@@ -1699,6 +1699,12 @@ function buildPayload(load) {
   return { data };
 }
 
+// Compact inbox-fetch diagnostic, surfaced on /diagnostic so I can debug
+// auto-attach issues without asking the user to open DevTools.
+function stashInboxDiag(payload) {
+  try { localStorage.setItem('posku.inbox.diag.v1', JSON.stringify(payload)); } catch {}
+}
+
 async function pushLoad(load) {
   if (!load.sku) return { ok: false, error: 'SKU not generated — fix location/type first.' };
 
@@ -2707,32 +2713,42 @@ async function inboxFetch() {
   setStatus($('inbox-status'), 'info', `Got ${msgs.length} message(s) for ${human} — parsing with ${sup.label}…`);
   const allFound = [];
   const csvByManifest = {};
+  const csvSourceByManifest = {};  // which attachment filename each load got matched to (for diagnostics)
   const parseLog = [];
   for (const m of msgs) {
     const blob = `${m.subject}\n\n${m.body || m.snippet}`;
     const found = parseEmail(blob, activeSupplier);
+    const attachInfo = (m.attachments || []).map(a => ({ filename: a.filename, mimeType: a.mimeType, bytes: (a.text || '').length }));
+    const matches = {};  // per-load: which attachment did it pick?
+    if (activeSupplier === 'SMS' && Array.isArray(m.attachments) && m.attachments.length) {
+      for (const l of found) {
+        const exact = m.attachments.find(a => a.filename && a.filename.includes(l.loadId));
+        const match = exact || m.attachments[0];
+        matches[l.loadId] = { picked: match?.filename || null, exact: !!exact, fallback: !exact };
+        if (match) {
+          csvByManifest[l.loadId] = match.text;
+          csvSourceByManifest[l.loadId] = match.filename;
+        }
+      }
+    }
     parseLog.push({
       subject: m.subject,
       from: m.from,
       date: m.date,
       bodyLen: (m.body || '').length,
       snippetLen: (m.snippet || '').length,
-      attachments: (m.attachments || []).map(a => a.filename),
+      attachments: attachInfo,
       parsedCount: found.length,
       parsedManifests: found.map(l => l.loadId),
+      csvMatches: matches,
     });
-    if (activeSupplier === 'SMS' && Array.isArray(m.attachments) && m.attachments.length) {
-      for (const l of found) {
-        const match = m.attachments.find(a => a.filename && a.filename.includes(l.loadId)) || m.attachments[0];
-        if (match) csvByManifest[l.loadId] = match.text;
-      }
-    }
     allFound.push(...found);
   }
   console.log('[Posku] inbox parse results:', parseLog);
   if (!allFound.length) {
     const subjects = parseLog.map((p, i) => `${i+1}. "${p.subject}" (from ${p.from || '—'}) — ${p.bodyLen}b body, ${p.attachments.length} attachment(s)`).join('\n');
     setStatus($('inbox-status'), 'warn', `Fetched ${msgs.length} message(s) but none matched the ${sup.label} parser.\n\nSubjects fetched:\n${subjects}\n\nFull details logged to DevTools console.`);
+    stashInboxDiag({ supplier: activeSupplier, fetchedAt: new Date().toISOString(), msgCount: msgs.length, parseLog, allFoundCount: 0, autoAttached: [], autoAttachFailed: [] });
     return;
   }
 
@@ -2742,19 +2758,35 @@ async function inboxFetch() {
     // Auto-attach each manifest CSV (now that SKUs are assigned).
     for (const l of allFound) {
       const csv = csvByManifest[l.loadId];
-      if (!csv || !l.sku) continue;
+      if (!csv || !l.sku) { l._autoAttachReason = !csv ? 'no CSV matched' : 'no SKU assigned'; continue; }
       try {
         const result = transformSamsManifest(csv, l.sku, l.locCode || '');
         if (result.rows.length) {
           l.manifestRows = result.rows;
           l.manifestPalletIds = result.palletIds;
           l.manifestExpanded = false;  // collapse by default
+          l._autoAttachReason = `OK — ${result.rows.length} rows from "${csvSourceByManifest[l.loadId]}"`;
+        } else {
+          l._autoAttachReason = `parser returned 0 rows from "${csvSourceByManifest[l.loadId]}"`;
         }
       } catch (err) {
         l.manifestError = `Auto-parse failed: ${err.message}`;
+        l._autoAttachReason = `parser threw: ${err.message}`;
       }
     }
   }
+
+  // Stash a compact diagnostic so the /diagnostic page can show why each
+  // load did or didn't get its manifest CSV auto-attached.
+  stashInboxDiag({
+    supplier:        activeSupplier,
+    fetchedAt:       new Date().toISOString(),
+    msgCount:        msgs.length,
+    parseLog,
+    allFoundCount:   allFound.length,
+    autoAttached:    allFound.filter(l => l.manifestRows?.length).map(l => ({ sku: l.sku, loadId: l.loadId, rows: l.manifestRows.length, source: csvSourceByManifest[l.loadId] })),
+    autoAttachFailed: allFound.filter(l => !l.manifestRows?.length).map(l => ({ sku: l.sku, loadId: l.loadId, reason: l._autoAttachReason || 'unknown' })),
+  });
 
   const existing = new Set(loads.map(l => l.loadId + '|' + l.locCode + '|' + l.typeCode));
   const added = allFound.filter(l => !existing.has(l.loadId + '|' + l.locCode + '|' + l.typeCode));
