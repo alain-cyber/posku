@@ -1924,7 +1924,7 @@ function renderLoads() {
       if (load.status === 'failed') return `<span class="chip red">failed</span>`;
       if (load.status === 'review') return `<span class="chip amber">review</span>`;
       if (load.status === 'pushing') return `<span class="chip blue">pushing…</span>`;
-      if (load.status === 'dup')    return `<span class="chip">duplicate</span>`;
+      if (load.status === 'dup')    return `<span class="chip red" title="A product with this SKU already exists in the ERP — cannot push">✗ duplicate in ERP</span>`;
       return `<span class="chip green" style="background:var(--green-dim);color:var(--green);">ready</span>`;
     };
 
@@ -1940,10 +1940,11 @@ function renderLoads() {
       <td style="font-size:0.78rem;">${esc(load.manifestName)}</td>
       <td>${statusChip()}</td>
       <td style="white-space:nowrap;">
-        ${load.status !== 'done' && load.status !== 'pushing' ? `
+        ${load.status !== 'done' && load.status !== 'pushing' && load.status !== 'dup' ? `
           <button class="btn small" data-push="${idx}" ${!load.sku ? 'disabled' : ''}>Push</button>
           <button class="btn ghost small" data-edit="${idx}">Edit</button>
         ` : ''}
+        ${load.status === 'dup' ? `<button class="btn ghost small" data-edit="${idx}">Edit</button>` : ''}
         <button class="btn danger small" data-remove="${idx}">×</button>
       </td>`;
 
