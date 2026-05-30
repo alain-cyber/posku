@@ -358,6 +358,57 @@ textarea::placeholder { color: var(--text4); }
 .chip-mini.more:hover .tip { display: block; }
 
 /* PO draft cards */
+/* ── Invoice drafts ─ same skeleton as PO drafts, different palette ───────── */
+.inv-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem 1.2rem; margin-bottom: 1rem; }
+.inv-card.done   { background: var(--green-dim); border-color: rgba(30,127,86,0.4); }
+.inv-card.failed { background: var(--red-dim);   border-color: rgba(184,57,44,0.4); }
+.inv-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; flex-wrap: wrap; gap: 0.5rem; }
+.inv-head .inv-title { font-family: 'DM Mono', monospace; font-size: 0.85rem; color: var(--text); letter-spacing: 0.05em; }
+.inv-head .inv-title .lbl { color: var(--text3); font-size: 0.72rem; margin-left: 0.5rem; }
+.inv-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem 0.8rem; margin-bottom: 0.9rem; }
+@media (max-width: 900px) { .inv-grid { grid-template-columns: repeat(2, 1fr); } }
+.inv-field { display: flex; flex-direction: column; }
+.inv-field.wide { grid-column: span 2; }
+.inv-field.full { grid-column: 1 / -1; }
+.inv-field label { font-family: 'DM Mono', monospace; font-size: 0.6rem; color: var(--text3); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.3rem; }
+.inv-field input, .inv-field select, .inv-field textarea { background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 0.45rem 0.55rem; font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--text); }
+.inv-field textarea { min-height: 60px; resize: vertical; }
+.inv-items { border: 1px solid var(--border); border-radius: 6px; margin-bottom: 0.9rem; overflow: hidden; }
+.inv-items table { width: 100%; border-collapse: collapse; }
+.inv-items th, .inv-items td { padding: 0.5rem 0.7rem; text-align: left; font-family: 'DM Mono', monospace; font-size: 0.72rem; }
+.inv-items th { background: var(--surface); color: var(--text3); font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+.inv-items td { border-top: 1px solid var(--border); }
+.inv-items td input { background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 0.2rem 0.4rem; font-family: inherit; font-size: 0.75rem; color: var(--text); width: 100%; }
+.inv-items td input:hover, .inv-items td input:focus { border-color: var(--border2); background: var(--surface); }
+.inv-items td.price-null input { border-color: rgba(251,191,36,0.5); background: rgba(251,191,36,0.06); }
+.inv-totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; padding: 0.8rem; background: var(--surface); border-radius: 6px; margin-bottom: 0.9rem; }
+.inv-totals .ttl-row { display: flex; justify-content: space-between; font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--text2); }
+.inv-totals .ttl-row.grand { font-weight: 700; color: var(--text); font-size: 0.92rem; grid-column: 1 / -1; padding-top: 0.4rem; border-top: 1px solid var(--border); }
+.inv-result { font-family: 'DM Mono', monospace; font-size: 0.72rem; padding: 0.4rem 0.6rem; border-radius: 5px; margin-top: 0.5rem; }
+.inv-result.ok   { background: var(--green-dim); color: var(--green); }
+.inv-result.fail { background: var(--red-dim);   color: var(--red);   }
+.unique-toggle { display: inline-flex; align-items: center; gap: 0.25rem; font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text3); cursor: pointer; user-select: none; padding: 0.15rem 0.35rem; border-radius: 4px; border: 1px solid var(--border2); }
+.unique-toggle:hover { color: var(--text2); border-color: var(--text3); }
+.unique-toggle.on { color: var(--green); border-color: rgba(30,127,86,0.45); background: var(--green-dim); }
+
+/* Customer typeahead picker */
+.cust-picker { position: relative; }
+.cust-picker .cust-input { width: 100%; }
+.cust-picker .cust-recent { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.4rem; }
+.cust-picker .cust-recent .recent-chip { font-family: 'DM Mono', monospace; font-size: 0.66rem; padding: 0.2rem 0.55rem; border-radius: 4px; background: var(--surface); border: 1px solid var(--border2); cursor: pointer; color: var(--text2); }
+.cust-picker .cust-recent .recent-chip:hover { color: var(--text); border-color: var(--text3); }
+.cust-picker .cust-results { position: absolute; top: 100%; left: 0; right: 0; background: var(--surface2); border: 1px solid var(--border2); border-radius: 6px; margin-top: 4px; max-height: 280px; overflow-y: auto; z-index: 50; display: none; box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
+.cust-picker .cust-results.show { display: block; }
+.cust-picker .cust-results .cust-item { padding: 0.5rem 0.7rem; cursor: pointer; border-bottom: 1px solid var(--border); }
+.cust-picker .cust-results .cust-item:last-child { border-bottom: none; }
+.cust-picker .cust-results .cust-item:hover { background: var(--surface); }
+.cust-picker .cust-results .cust-item .ci-email { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--text); }
+.cust-picker .cust-results .cust-item .ci-meta  { font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text3); margin-top: 0.15rem; }
+.cust-picker .cust-results .cust-empty { padding: 0.6rem 0.7rem; font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--text3); }
+.cust-picker .cust-chosen { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.7rem; background: var(--green-dim); border: 1px solid rgba(30,127,86,0.35); border-radius: 5px; }
+.cust-picker .cust-chosen .cc-email { font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--green); }
+.cust-picker .cust-chosen .cc-clear { margin-left: auto; cursor: pointer; color: var(--text3); font-size: 0.85rem; padding: 0 0.3rem; }
+
 .po-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem 1.2rem; margin-bottom: 1rem; }
 .po-card.done { background: var(--green-dim); border-color: rgba(30,127,86,0.4); }
 .po-card.failed { background: var(--red-dim); border-color: rgba(184,57,44,0.4); }
@@ -680,6 +731,8 @@ textarea::placeholder { color: var(--text4); }
       <div id="push-status" class="status" style="margin-top:1rem;"></div>
       <div class="btn-row" id="po-action-row" style="margin-top:1rem;display:none;">
         <button class="btn" id="generate-po-btn">Generate PO drafts from selected</button>
+        <button class="btn ghost" id="generate-inv-btn">Generate <span id="inv-count">0</span> invoice draft(s)</button>
+        <button class="btn ghost" id="refresh-inv-btn" title="Recompute the invoice grouping after toggling unique-invoice flags">↻ Refresh grouping</button>
         <span class="hint" id="select-count" style="margin-left:0.5rem;"></span>
       </div>
     </div>
@@ -695,6 +748,19 @@ textarea::placeholder { color: var(--text4); }
       </div>
       <div id="po-list"></div>
       <div id="po-status" class="status" style="margin-top:1rem;"></div>
+    </div>
+
+    <!-- Invoice drafts section -->
+    <div class="card" id="inv-section" style="display:none;">
+      <div class="loads-header">
+        <div class="loads-title">Invoice drafts <span class="hint" style="margin-left:0.5rem;">one customer per draft — edit and push individually or all at once</span></div>
+        <div class="btn-row" style="margin-top:0;">
+          <button class="btn" id="push-all-invs-btn">Push all invoices</button>
+          <button class="btn ghost" id="clear-invs-btn">Clear drafts</button>
+        </div>
+      </div>
+      <div id="inv-list"></div>
+      <div id="inv-status" class="status" style="margin-top:1rem;"></div>
     </div>
   </div>
 </main>
@@ -2249,7 +2315,7 @@ function renderLoads() {
       <td class="mono">${esc(load.fobName)}</td>
       <td style="font-size:0.78rem;">${esc(load.condName)}</td>
       <td style="font-size:0.78rem;">${esc(load.manifestName)}</td>
-      <td>${statusChip()}</td>
+      <td>${statusChip()}${load.status === 'done' ? ` <label class="unique-toggle ${load.uniqueInvoice === false ? '' : 'on'}" title="When on, this SKU gets its own invoice. Off lets it merge with other 'off' SKUs going to the same customer."><input type="checkbox" data-unique-invoice="${idx}" ${load.uniqueInvoice === false ? '' : 'checked'} style="margin:0;"> unique inv</label>` : ''}</td>
       <td style="white-space:nowrap;">
         ${load.status !== 'done' && load.status !== 'pushing' && load.status !== 'dup' ? `
           <button class="btn small" data-push="${idx}" ${!load.sku ? 'disabled' : ''}>Push</button>
@@ -2495,6 +2561,17 @@ function updatePoActionRow() {
   $('generate-po-btn').disabled = selCount === 0;
   // sync select-all
   $('select-all').checked = pushedCount > 0 && selCount === pushedCount;
+
+  // Update invoice button: show predicted draft count for current selection.
+  const invBtn = $('generate-inv-btn');
+  if (invBtn) {
+    const previewCount = previewInvoiceGroups().length;
+    $('inv-count').textContent = previewCount;
+    invBtn.disabled = selCount === 0;
+    invBtn.style.display = selCount === 0 ? 'none' : '';
+    const refreshBtn = $('refresh-inv-btn');
+    if (refreshBtn) refreshBtn.style.display = selCount === 0 ? 'none' : '';
+  }
 }
 
 function updateSummary() {
@@ -2594,6 +2671,17 @@ function attachHandlers() {
   $('loads-body').querySelectorAll('[data-select]').forEach(cb => {
     cb.onchange = () => {
       loads[+cb.dataset.select].selected = cb.checked;
+      updatePoActionRow();
+    };
+  });
+  // Per-load `unique invoice` toggle — drives the invoice draft grouping.
+  $('loads-body').querySelectorAll('[data-unique-invoice]').forEach(cb => {
+    cb.onchange = () => {
+      const idx = +cb.dataset.uniqueInvoice;
+      loads[idx].uniqueInvoice = cb.checked;
+      // Re-render the toggle's parent label so the .on class refreshes
+      const lbl = cb.closest('.unique-toggle');
+      if (lbl) lbl.classList.toggle('on', cb.checked);
       updatePoActionRow();
     };
   });
@@ -4506,6 +4594,532 @@ document.querySelectorAll('[data-supplier]').forEach(tab => {
     applySupplierUI();
   };
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// INVOICE FLOW
+// Each draft = one customer, one or more line items. Loads marked
+// `uniqueInvoice: true` (default) → their own draft. `uniqueInvoice: false`
+// → cluster with other non-unique loads going to the same customer.
+// Each draft posts to /api/orders with the env-aware proxy.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Hardcoded enums (per ERP team — no /dropdowns endpoint exposed for orders).
+const INV_ORDER_TYPES = [
+  { id: 1,  name: 'Other' },        { id: 2,  name: 'Phone' },
+  { id: 3,  name: 'Auction' },      { id: 6,  name: 'Walk-in' },
+  { id: 7,  name: 'Internet' },     { id: 9,  name: 'Email' },
+  { id: 11, name: 'Show' },         { id: 13, name: 'Inbound phone' },
+  { id: 14, name: 'Outbound phone' },{ id: 15, name: 'Program' },
+];
+const INV_PAYMENT_METHODS = [
+  { id: 2,  name: 'Cash' },         { id: 5,  name: 'Wire Transfer' },
+  { id: 7,  name: 'Check' },        { id: 15, name: 'Credit Card (3% fee)' },
+  { id: 16, name: 'Paypal (3% fee)' },{ id: 18, name: 'Net 30' },
+  { id: 21, name: 'Other' },        { id: 22, name: 'Zelle' },
+  { id: 36, name: 'Customer Credit' },{ id: 37, name: 'ACH' },
+];
+const INV_SHIPPING_METHODS = [
+  { id: 64,  name: 'Truckload' },         { id: 65,  name: 'Direct Truckload' },
+  { id: 66,  name: 'LTL' },               { id: 68,  name: 'Walk-In/Pick-Up' },
+  { id: 70,  name: 'Domestic Courier' },  { id: 71,  name: 'International Courier' },
+  { id: 72,  name: 'Container' },         { id: 73,  name: 'SoCalShip' },
+  { id: 74,  name: 'Direct LTL' },        { id: 77,  name: 'Direct Domestic Courier' },
+  { id: 94,  name: 'TBD' },               { id: 277, name: 'Not Applicable' },
+];
+const INV_DEFAULT_ORDER_TYPE = 15;   // Program
+const INV_DEFAULT_PAYMENT    = 5;    // Wire Transfer
+const INV_DEFAULT_SHIPPING   = { SMS: 74, WYF: 65 };  // Direct LTL / Direct Truckload
+
+const RECENT_CUSTOMERS_KEY = 'posku.invoice.recentCustomers.v1';
+const RECENT_CUSTOMERS_MAX = 6;
+
+let invoiceDrafts = [];  // [{ id, customer, items[], header fields..., status, result }]
+
+// ── Recent-customers cache (localStorage) ────────────────────────────────────
+
+function loadRecentCustomers() {
+  try { return JSON.parse(localStorage.getItem(RECENT_CUSTOMERS_KEY)) || []; } catch { return []; }
+}
+function rememberCustomer(c) {
+  if (!c?.customer_id) return;
+  const recent = loadRecentCustomers().filter(r => r.customer_id !== c.customer_id);
+  recent.unshift({ customer_id: c.customer_id, email: c.email, name: c.name, company: c.company });
+  while (recent.length > RECENT_CUSTOMERS_MAX) recent.pop();
+  try { localStorage.setItem(RECENT_CUSTOMERS_KEY, JSON.stringify(recent)); } catch {}
+}
+
+// ── Customer search (BigQuery via /api/customers/search) ─────────────────────
+
+const _custSearchCache = new Map();   // q → array (1-min TTL)
+async function searchCustomers(q) {
+  q = (q || '').trim().toLowerCase();
+  if (q.length < 2) return [];
+  const hit = _custSearchCache.get(q);
+  if (hit && (Date.now() - hit.at < 60_000)) return hit.results;
+  try {
+    const r = await fetch(`/api/customers/search?q=${encodeURIComponent(q)}&max=12`, { cache: 'no-store' });
+    const j = await r.json();
+    if (!r.ok || !j.ok) return [];
+    _custSearchCache.set(q, { at: Date.now(), results: j.customers || [] });
+    return j.customers || [];
+  } catch { return []; }
+}
+
+// ── Resolve a load's default customer via rules (Tier 2 — for later) ─────────
+// Placeholder: rules-editor wiring lands in a follow-up commit. For now this
+// always returns null and the user picks the customer from the typeahead.
+function resolveInvoiceCustomer(load) {
+  const sup = SUPPLIERS[load.supplierKey];
+  if (!sup) return null;
+  const email = load.supplierKey === 'SMS'
+    ? (sup.invoiceCustomerByLoc || {})[load.locCode]
+    : (sup.invoiceCustomerByLocType || {})[`${load.locCode}_${load.typeCode}`];
+  return email || null;
+}
+
+// ── Grouping logic ───────────────────────────────────────────────────────────
+// Selected eligible loads → array of draft "groups": [{ customerKey, loads[] }]
+// uniqueInvoice=true loads each become their own group (1 load).
+// uniqueInvoice=false loads cluster by resolved customer email.
+function previewInvoiceGroups() {
+  const eligible = loads.filter(l => l.status === 'done' && l.selected);
+  const groups = [];
+  const merged = new Map();  // customerKey → group
+  for (const l of eligible) {
+    const isUnique = l.uniqueInvoice !== false;  // default true
+    const ruleEmail = resolveInvoiceCustomer(l) || '';
+    if (isUnique) {
+      groups.push({ key: `unique:${l.loadId}:${l.sku}`, ruleEmail, loads: [l] });
+    } else {
+      const key = ruleEmail || '__unset__';
+      if (!merged.has(key)) merged.set(key, { key: `merged:${key}`, ruleEmail, loads: [] });
+      merged.get(key).loads.push(l);
+    }
+  }
+  for (const g of merged.values()) groups.push(g);
+  return groups;
+}
+
+// ── Generate drafts from current selection ───────────────────────────────────
+
+function generateInvoiceDrafts() {
+  const groups = previewInvoiceGroups();
+  if (!groups.length) { setStatus($('push-status'), 'warn', 'Select 1+ pushed SKUs first.'); return; }
+
+  invoiceDrafts = groups.map((g, i) => {
+    const supKey = g.loads[0].supplierKey;
+    return {
+      id:                'd' + i + '_' + Date.now(),
+      supplierKey:       supKey,
+      customer:          null,   // {customer_id, email, name, billing_address, shipping_address}
+      ruleEmail:         g.ruleEmail || '',
+      order_type_id:     INV_DEFAULT_ORDER_TYPE,
+      payment_method_id: INV_DEFAULT_PAYMENT,
+      shipping_method_id: INV_DEFAULT_SHIPPING[supKey] || 94,
+      salesrep_id:       '',
+      promo_code:        '',
+      shipping_cost:     '0',
+      tax_rate:          '0',
+      note:              '',
+      items: g.loads.map(l => {
+        // Sales price from the SKU we pushed. The product's `price` field is
+        // our source of truth (per the ERP team — there's no separate
+        // customer-facing price). May be null → user fills in.
+        const skuPrice = readSkuPriceFromLoad(l);
+        return {
+          loadIdx:        loads.indexOf(l),
+          sku:            withEnvSuffix(l.sku),
+          product_id:     l.productId || null,
+          product_name:   l.name || '',
+          qty:            '1',
+          original_price: skuPrice != null ? String(skuPrice) : '',
+          discount:       '0',
+          discount_type:  1,
+          price:          skuPrice != null ? String(skuPrice) : '',
+        };
+      }),
+      status: 'draft',
+      result: null,
+    };
+  });
+
+  // Try to auto-fill the customer from a rule email when the group has one.
+  // We resolve via search to get the full customer record (with addresses).
+  invoiceDrafts.forEach(async (d) => {
+    if (!d.ruleEmail) return;
+    const matches = await searchCustomers(d.ruleEmail);
+    const exact = matches.find(c => (c.email || '').toLowerCase() === d.ruleEmail.toLowerCase());
+    if (exact) { d.customer = exact; renderInvoiceDrafts(); }
+  });
+
+  $('inv-section').style.display = 'block';
+  renderInvoiceDrafts();
+  setTimeout(() => $('inv-section').scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+}
+
+// Walk a load's totals / push capture to find the SKU sell price. The price
+// we POST on /api/products lives on the load's totals object; after a
+// successful push we don't re-fetch it, so we read it back from there.
+function readSkuPriceFromLoad(l) {
+  const totals = buildLoadTotals(l);
+  // First preference: the manifest-derived price-per-unit we sent as `unit_price`.
+  if (totals && totals.price_per_unit != null) return totals.price_per_unit;
+  if (totals && totals.price != null)          return totals.price;
+  return null;
+}
+
+// ── Render invoice drafts ────────────────────────────────────────────────────
+
+function renderInvoiceDrafts() {
+  const list = $('inv-list');
+  if (!invoiceDrafts.length) {
+    list.innerHTML = '<div class="hint">No drafts yet — select pushed SKUs above and click "Generate invoice draft(s)".</div>';
+    $('inv-section').style.display = 'none';
+    return;
+  }
+  $('inv-section').style.display = 'block';
+
+  list.innerHTML = invoiceDrafts.map((d, idx) => {
+    const cls = d.status === 'done' ? 'done' : (d.status === 'failed' ? 'failed' : '');
+    const subTotal = d.items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
+    const shipping = Number(d.shipping_cost) || 0;
+    const taxRate  = Number(d.tax_rate) || 0;
+    const taxAmt   = subTotal * (taxRate / 100);
+    const grand    = subTotal + shipping + taxAmt;
+    return `
+      <div class="inv-card ${cls}" id="inv-card-${idx}">
+        <div class="inv-head">
+          <div class="inv-title">
+            Invoice draft #${idx + 1}
+            <span class="lbl">${d.items.length} line item(s) · ${d.supplierKey}</span>
+          </div>
+          <div>
+            ${d.status === 'done' ? `<span class="chip green">pushed</span>` :
+              d.status === 'pushing' ? `<span class="chip blue">pushing…</span>` :
+              d.status === 'failed' ? `<span class="chip red">failed</span>` :
+              `<span class="chip">draft</span>`}
+          </div>
+        </div>
+
+        <!-- Customer picker -->
+        <div class="inv-field full" style="margin-bottom:0.9rem;">
+          <label>Customer (email or name) ${d.ruleEmail ? `· rule default: <code>${esc(d.ruleEmail)}</code>` : ''}</label>
+          ${renderCustomerPicker(d, idx)}
+        </div>
+
+        <!-- Header fields -->
+        <div class="inv-grid">
+          <div class="inv-field">
+            <label>Order type</label>
+            <select data-inv-h="${idx}" data-k="order_type_id">
+              ${INV_ORDER_TYPES.map(o => `<option value="${o.id}" ${d.order_type_id === o.id ? 'selected' : ''}>${o.id} — ${esc(o.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="inv-field">
+            <label>Payment method</label>
+            <select data-inv-h="${idx}" data-k="payment_method_id">
+              ${INV_PAYMENT_METHODS.map(o => `<option value="${o.id}" ${d.payment_method_id === o.id ? 'selected' : ''}>${o.id} — ${esc(o.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="inv-field">
+            <label>Shipping method</label>
+            <select data-inv-h="${idx}" data-k="shipping_method_id">
+              ${INV_SHIPPING_METHODS.map(o => `<option value="${o.id}" ${d.shipping_method_id === o.id ? 'selected' : ''}>${o.id} — ${esc(o.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="inv-field">
+            <label>Sales rep id</label>
+            <input type="text" data-inv-h="${idx}" data-k="salesrep_id" value="${esc(d.salesrep_id)}" placeholder="(optional)">
+          </div>
+          <div class="inv-field">
+            <label>Promo code</label>
+            <input type="text" data-inv-h="${idx}" data-k="promo_code" value="${esc(d.promo_code)}" placeholder="(optional)">
+          </div>
+          <div class="inv-field">
+            <label>Shipping cost</label>
+            <input type="number" step="0.01" data-inv-h="${idx}" data-k="shipping_cost" value="${esc(d.shipping_cost)}">
+          </div>
+          <div class="inv-field">
+            <label>Tax rate (%)</label>
+            <input type="number" step="0.01" data-inv-h="${idx}" data-k="tax_rate" value="${esc(d.tax_rate)}">
+          </div>
+          <div class="inv-field wide">
+            <label>Note</label>
+            <input type="text" data-inv-h="${idx}" data-k="note" value="${esc(d.note)}" placeholder="(optional)">
+          </div>
+        </div>
+
+        <!-- Line items -->
+        <div class="inv-items">
+          <table>
+            <thead><tr>
+              <th>SKU</th><th>Description</th><th style="width:80px;">Qty</th><th style="width:120px;">Unit price</th><th style="width:120px;">Line total</th>
+            </tr></thead>
+            <tbody>
+              ${d.items.map((it, j) => {
+                const lineTotal = (Number(it.price) || 0) * (Number(it.qty) || 0);
+                const priceNull = !it.price;
+                return `<tr>
+                  <td><code>${esc(it.sku)}</code></td>
+                  <td style="color:var(--text2);">${esc(it.product_name)}</td>
+                  <td><input type="number" min="1" data-inv-i="${idx}_${j}" data-k="qty" value="${esc(it.qty)}"></td>
+                  <td class="${priceNull ? 'price-null' : ''}"><input type="number" step="0.01" data-inv-i="${idx}_${j}" data-k="price" value="${esc(it.price)}" placeholder="${priceNull ? 'enter price' : ''}"></td>
+                  <td><code>$${lineTotal.toFixed(2)}</code></td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Totals -->
+        <div class="inv-totals">
+          <div class="ttl-row"><span>Subtotal</span><span>$${subTotal.toFixed(2)}</span></div>
+          <div class="ttl-row"><span>Shipping</span><span>$${shipping.toFixed(2)}</span></div>
+          <div class="ttl-row"><span>Tax</span><span>$${taxAmt.toFixed(2)}</span></div>
+          <div class="ttl-row grand"><span>Grand total</span><span>$${grand.toFixed(2)}</span></div>
+        </div>
+
+        ${d.result ? `<div class="inv-result ${d.status === 'done' ? 'ok' : 'fail'}">${esc(d.result)}</div>` : ''}
+
+        <div class="btn-row" style="margin-top:0.9rem;">
+          <button class="btn" data-inv-push="${idx}" ${d.status === 'done' || !d.customer ? 'disabled' : ''}>Push invoice</button>
+          <button class="btn danger small" data-inv-remove="${idx}">Discard draft</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  attachInvoiceHandlers();
+}
+
+// ── Customer picker mini-component (rendered inside each draft) ──────────────
+
+function renderCustomerPicker(d, idx) {
+  if (d.customer) {
+    return `
+      <div class="cust-picker">
+        <div class="cust-chosen">
+          <div>
+            <div class="cc-email">${esc(d.customer.email)}</div>
+            <div style="font-family:'DM Mono',monospace;font-size:0.62rem;color:var(--text3);">
+              ${esc(d.customer.name || '')} ${d.customer.company ? '· ' + esc(d.customer.company) : ''} · id ${d.customer.customer_id}
+            </div>
+          </div>
+          <span class="cc-clear" data-inv-clear-customer="${idx}" title="Clear and pick again">×</span>
+        </div>
+      </div>`;
+  }
+  const recent = loadRecentCustomers();
+  return `
+    <div class="cust-picker">
+      <input type="text" class="cust-input" data-inv-cust-input="${idx}" placeholder="Type email or name — at least 2 chars" autocomplete="off">
+      ${recent.length ? `<div class="cust-recent">${recent.map(r => `<span class="recent-chip" data-inv-cust-recent="${idx}" data-customer-id="${r.customer_id}" data-customer-email="${esc(r.email)}">${esc(r.email)}</span>`).join('')}</div>` : ''}
+      <div class="cust-results" data-inv-cust-results="${idx}"></div>
+    </div>`;
+}
+
+// ── Attach handlers after every render ───────────────────────────────────────
+
+function attachInvoiceHandlers() {
+  // Header inputs / selects
+  document.querySelectorAll('[data-inv-h]').forEach(el => {
+    el.onchange = el.oninput = () => {
+      const idx = +el.dataset.invH;
+      const k = el.dataset.k;
+      const v = el.value;
+      const d = invoiceDrafts[idx];
+      if (!d) return;
+      d[k] = ['order_type_id','payment_method_id','shipping_method_id'].includes(k) ? Number(v) : v;
+      // Re-render only if a total-affecting field changed — otherwise leave alone
+      if (['shipping_cost','tax_rate'].includes(k)) renderInvoiceDrafts();
+    };
+  });
+  // Line-item inputs
+  document.querySelectorAll('[data-inv-i]').forEach(el => {
+    el.onchange = el.oninput = () => {
+      const [idx, j] = el.dataset.invI.split('_').map(Number);
+      const k = el.dataset.k;
+      const d = invoiceDrafts[idx];
+      if (!d?.items[j]) return;
+      d.items[j][k] = el.value;
+      renderInvoiceDrafts();
+    };
+  });
+  // Customer search input — debounced
+  document.querySelectorAll('[data-inv-cust-input]').forEach(input => {
+    const idx = +input.dataset.invCustInput;
+    const resultsEl = document.querySelector(`[data-inv-cust-results="${idx}"]`);
+    let timer = null;
+    input.oninput = () => {
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (q.length < 2) { resultsEl.classList.remove('show'); resultsEl.innerHTML = ''; return; }
+      timer = setTimeout(async () => {
+        resultsEl.innerHTML = `<div class="cust-empty">searching…</div>`;
+        resultsEl.classList.add('show');
+        const matches = await searchCustomers(q);
+        if (!matches.length) {
+          resultsEl.innerHTML = `<div class="cust-empty">no matches</div>`;
+          return;
+        }
+        resultsEl.innerHTML = matches.map(c => `
+          <div class="cust-item" data-pick="${c.customer_id}">
+            <div class="ci-email">${esc(c.email)}</div>
+            <div class="ci-meta">${esc(c.name || '')} ${c.company ? '· ' + esc(c.company) : ''} · id ${c.customer_id}</div>
+          </div>`).join('');
+        // Attach pick handlers
+        resultsEl.querySelectorAll('.cust-item').forEach(item => {
+          item.onclick = () => {
+            const picked = matches.find(c => c.customer_id == item.dataset.pick);
+            if (picked) {
+              invoiceDrafts[idx].customer = picked;
+              rememberCustomer(picked);
+              renderInvoiceDrafts();
+            }
+          };
+        });
+      }, 250);
+    };
+    input.onblur = () => setTimeout(() => resultsEl.classList.remove('show'), 200);
+    input.onfocus = () => { if (resultsEl.innerHTML) resultsEl.classList.add('show'); };
+  });
+  // Recent-customer chips
+  document.querySelectorAll('[data-inv-cust-recent]').forEach(chip => {
+    chip.onclick = async () => {
+      const idx = +chip.dataset.invCustRecent;
+      const email = chip.dataset.customerEmail;
+      const matches = await searchCustomers(email);
+      const c = matches.find(m => m.email.toLowerCase() === email.toLowerCase());
+      if (c) {
+        invoiceDrafts[idx].customer = c;
+        rememberCustomer(c);
+        renderInvoiceDrafts();
+      }
+    };
+  });
+  // Clear customer
+  document.querySelectorAll('[data-inv-clear-customer]').forEach(x => {
+    x.onclick = () => {
+      const idx = +x.dataset.invClearCustomer;
+      invoiceDrafts[idx].customer = null;
+      renderInvoiceDrafts();
+    };
+  });
+  // Push / remove buttons
+  document.querySelectorAll('[data-inv-push]').forEach(b => {
+    b.onclick = () => pushSingleInvoice(+b.dataset.invPush);
+  });
+  document.querySelectorAll('[data-inv-remove]').forEach(b => {
+    b.onclick = () => {
+      invoiceDrafts.splice(+b.dataset.invRemove, 1);
+      renderInvoiceDrafts();
+    };
+  });
+}
+
+// ── Build the POST /api/orders body per the ERP team's example ───────────────
+
+function buildInvoicePayload(d) {
+  if (!d.customer) throw new Error('No customer picked');
+  const subTotal = d.items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
+  const shipping = Number(d.shipping_cost) || 0;
+  const taxRate  = Number(d.tax_rate) || 0;
+  const taxAmt   = subTotal * (taxRate / 100);
+  const grand    = subTotal + shipping + taxAmt;
+  const data = {
+    user_id:            d.customer.customer_id,
+    salesrep_id:        d.salesrep_id ? Number(d.salesrep_id) : null,
+    order_type_id:      d.order_type_id,
+    sub_total:          subTotal.toFixed(2),
+    grand_total:        grand.toFixed(2),
+    tax_rate:           taxRate.toFixed(2),
+    shipping_cost:      shipping.toFixed(2),
+    payment_method_id:  d.payment_method_id,
+    shipping_method_id: d.shipping_method_id,
+    promo_code:         d.promo_code || '',
+    billing_address:    d.customer.billing_address,
+    shipping_address:   d.customer.shipping_address,
+    items:              d.items.map(it => ({
+      product_id:     it.product_id,
+      sku:            it.sku,
+      qty:            String(it.qty),
+      original_price: it.original_price || (Number(it.price) || 0).toFixed(2),
+      discount:       it.discount || '0',
+      discount_type:  it.discount_type || 1,
+      price:          (Number(it.price) || 0).toFixed(2),
+      total:          ((Number(it.price) || 0) * (Number(it.qty) || 0)).toFixed(2),
+    })),
+    payments: [],  // always empty per current spec
+  };
+  if (d.note) data.note = d.note;
+  return { data };
+}
+
+// ── Push (uses the existing env-aware proxy via erpRequest) ──────────────────
+
+async function pushSingleInvoice(idx) {
+  const d = invoiceDrafts[idx];
+  if (!d || d.status === 'done') return;
+  if (!d.customer) { d.result = 'Pick a customer first.'; renderInvoiceDrafts(); return; }
+  // Bail if any item is missing a price
+  const missing = d.items.filter(it => !it.price);
+  if (missing.length) { d.result = `${missing.length} line item(s) missing a price.`; renderInvoiceDrafts(); return; }
+
+  d.status = 'pushing'; d.result = null; renderInvoiceDrafts();
+  let payload;
+  try { payload = buildInvoicePayload(d); }
+  catch (e) { d.status = 'failed'; d.result = e.message; renderInvoiceDrafts(); return; }
+  console.log('[Posku] POST /api/orders payload:', JSON.stringify(payload, null, 2));
+  const r = await erpRequest('POST', '/api/orders', payload);
+  console.log('[Posku] POST /api/orders response:', JSON.stringify(r, null, 2));
+  if (r.ok) {
+    // Field name not yet confirmed by ERP team — look in several common spots.
+    const invId = r.data?.newOrderId ?? r.data?.newId ?? r.data?.id ?? r.data?.order_id ?? r.data?.data?.id ?? null;
+    d.status = 'done';
+    d.invoiceId = invId;
+    d.result = `Pushed · invoice id ${invId ?? '(check response)'}`;
+    // Mark each underlying load as invoiced and bump the HUD gamification.
+    d.items.forEach(it => {
+      const l = loads[it.loadIdx];
+      if (l) { l.invoiced = true; l.invoiceId = invId; }
+    });
+    bumpInvoiceHud(d.items.length, document.querySelector(`[data-inv-push="${idx}"]`));
+  } else {
+    d.status = 'failed';
+    d.result = r.data?.message || r.data?.error || r.error || `HTTP ${r.status}`;
+  }
+  renderInvoiceDrafts();
+}
+
+async function pushAllInvoices() {
+  const pending = invoiceDrafts.map((_, i) => i).filter(i => invoiceDrafts[i].status !== 'done' && invoiceDrafts[i].customer);
+  if (!pending.length) { setStatus($('inv-status'), 'warn', 'No drafts ready to push (each needs a customer).'); return; }
+  for (const i of pending) await pushSingleInvoice(i);
+  const ok = invoiceDrafts.filter(d => d.status === 'done').length;
+  const fail = invoiceDrafts.filter(d => d.status === 'failed').length;
+  setStatus($('inv-status'), fail ? 'err' : 'ok', `${ok} pushed${fail ? ` · ${fail} failed` : ''}.`);
+}
+
+// ── HUD: gamify invoice pushes the same way SKU pushes are gamified ──────────
+
+function bumpInvoiceHud(lineCount, originEl) {
+  const s = getStats();
+  s.invoicedToday   = (s.invoicedToday   || 0) + lineCount;
+  s.invoicedAllTime = (s.invoicedAllTime || 0) + lineCount;
+  s.lastInvoiceDate = todayStr();
+  saveStats(s);
+  // Reuse the existing particle burst + +N floater on the push button.
+  const origin = getEffectOrigin(originEl);
+  spawnParticles(origin.x, origin.y);
+  spawnFloater(origin.x, origin.y - 8, lineCount > 1 ? `+${lineCount} invoiced` : 'invoiced ✓');
+}
+
+// ── Wire the top buttons + bulk actions ──────────────────────────────────────
+
+$('generate-inv-btn').onclick   = generateInvoiceDrafts;
+$('refresh-inv-btn').onclick    = () => updatePoActionRow();  // pure recompute
+$('push-all-invs-btn').onclick  = pushAllInvoices;
+$('clear-invs-btn').onclick     = () => { invoiceDrafts = []; renderInvoiceDrafts(); $('inv-section').style.display = 'none'; };
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 applyTheme();
