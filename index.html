@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=3.0, user-scalable=yes">
 <title>Posku — Via Trading</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ff7a3d'/%3E%3Ctext x='32' y='46' font-family='Georgia,serif' font-size='42' font-style='italic' fill='white' text-anchor='middle' font-weight='700'%3EP%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
@@ -74,6 +74,14 @@ body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-seri
 .sidebar-collapsed .nav-item .nav-icon { margin: 0; }
 .sidebar-collapsed .sidebar-footer { padding: 0.6rem 0.4rem 0.4rem; }
 .sidebar-collapsed .env-switch-side button { font-size: 0.5rem; padding: 0.3rem 0.1rem; letter-spacing: 0.04em; }
+/* Zoom controls — three small buttons in the sidebar admin section */
+.zoom-row { display: flex; gap: 0.3rem; padding: 0 0.65rem; }
+.zoom-btn { flex: 1; background: rgba(255,255,255,0.04); color: #c9d3e2; border: 1px solid rgba(255,255,255,0.10); border-radius: 5px; padding: 0.4rem 0.4rem; font-family: 'DM Mono', monospace; font-size: 0.75rem; cursor: pointer; transition: background 0.12s, border-color 0.12s, transform 0.08s; user-select: none; }
+.zoom-btn:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2); }
+.zoom-btn:active { transform: scale(0.94); }
+.zoom-btn.zoom-level { flex: 1.5; font-size: 0.65rem; color: #8fa1bd; }
+.sidebar-collapsed .zoom-row { flex-direction: column; padding: 0 0.3rem; }
+.sidebar-collapsed .zoom-btn.zoom-level { display: none; }
 /* Toggle button (positioned in the parent-brand bar) */
 .sidebar-toggle { margin-left: auto; background: transparent; border: 1px solid rgba(255,255,255,0.12); color: #7b8aa0; width: 22px; height: 22px; border-radius: 5px; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.9rem; line-height: 1; padding: 0; display: inline-flex; align-items: center; justify-content: center; transition: background 0.12s, border-color 0.12s, color 0.12s; }
 .sidebar-toggle:hover { background: rgba(255,255,255,0.06); color: #c9d3e2; border-color: rgba(255,255,255,0.2); }
@@ -360,6 +368,15 @@ textarea::placeholder { color: var(--text4); }
       <div class="sidebar-section-title">Admin</div>
       <button class="nav-item" id="cfg-rules-btn" title="Wayfair rules"><span class="nav-icon">⚙️</span><span class="nav-label">Wayfair rules</span></button>
       <button class="nav-item" id="cfg-theme" title="Toggle theme"><span class="nav-icon">🌓</span><span class="nav-label">Toggle theme</span></button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Zoom</div>
+      <div class="zoom-row" role="group" aria-label="Page zoom">
+        <button class="zoom-btn" id="zoom-out" title="Zoom out (Ctrl/Cmd −)">−</button>
+        <button class="zoom-btn zoom-level" id="zoom-reset" title="Reset zoom (Ctrl/Cmd 0)">100%</button>
+        <button class="zoom-btn" id="zoom-in" title="Zoom in (Ctrl/Cmd +)">+</button>
+      </div>
     </div>
 
     <div class="sidebar-footer">
@@ -4048,6 +4065,39 @@ document.getElementById('cfg-theme').onclick = () => {
 };
 initSettings();
 applySupplierUI();
+
+// Zoom controls — sidebar buttons that scale the page via CSS zoom. Persisted
+// in localStorage so a user's preferred zoom survives reloads. Supports
+// Ctrl/Cmd +/-/0 keyboard shortcuts on top of the buttons.
+(() => {
+  const KEY = 'posku.zoom.v1';
+  const STEPS = [0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
+  const out = document.getElementById('zoom-out');
+  const reset = document.getElementById('zoom-reset');
+  const inn = document.getElementById('zoom-in');
+  if (!out || !reset || !inn) return;
+
+  const stored = parseFloat(localStorage.getItem(KEY) || '1');
+  let z = STEPS.includes(stored) ? stored : 1;
+
+  const apply = () => {
+    document.body.style.zoom = z;
+    reset.textContent = Math.round(z * 100) + '%';
+    localStorage.setItem(KEY, String(z));
+  };
+  const idx = () => STEPS.indexOf(z);
+  out.addEventListener('click', () => { const i = idx(); if (i > 0) { z = STEPS[i - 1]; apply(); } });
+  inn.addEventListener('click', () => { const i = idx(); if (i < STEPS.length - 1) { z = STEPS[i + 1]; apply(); } });
+  reset.addEventListener('click', () => { z = 1; apply(); });
+  // Keyboard shortcuts (Ctrl/Cmd + / − / 0)
+  document.addEventListener('keydown', (e) => {
+    if (!(e.metaKey || e.ctrlKey)) return;
+    if (e.key === '=' || e.key === '+') { e.preventDefault(); inn.click(); }
+    else if (e.key === '-' || e.key === '_') { e.preventDefault(); out.click(); }
+    else if (e.key === '0') { e.preventDefault(); reset.click(); }
+  });
+  apply();
+})();
 
 // Collapsible sidebar — state persists in localStorage so it survives reloads.
 (() => {
