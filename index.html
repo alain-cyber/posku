@@ -1208,6 +1208,17 @@ function applyRulesOverride() {
   if (Array.isArray(w.hdoLocations)) {
     wyf.hdoLocations = new Set(w.hdoLocations.map(s => s.trim()).filter(Boolean));
   }
+  // Default invoice customer per location + type — { 'PR_LQ': 'email@x.com', ... }
+  // Keys are uppercased locCode '_' typeCode. Read by resolveInvoiceCustomer().
+  if (w.invoiceCustomerByLocType && typeof w.invoiceCustomerByLocType === 'object') {
+    const cleaned = {};
+    for (const [k, email] of Object.entries(w.invoiceCustomerByLocType)) {
+      const key = String(k || '').trim().toUpperCase();
+      const e   = String(email || '').trim().toLowerCase();
+      if (key && e) cleaned[key] = e;
+    }
+    wyf.invoiceCustomerByLocType = cleaned;
+  }
 }
 
 function applySamsRulesOverride(s) {
@@ -1276,6 +1287,17 @@ function applySamsRulesOverride(s) {
       if (c.manifestPrefix)   sms.clubByManifest[String(c.manifestPrefix)] = c.code;
     });
   }
+  // Default invoice customer per location — { DEN: 'email@x.com', LB: '...' }.
+  // Drives invoice draft customer pre-fill via resolveInvoiceCustomer().
+  if (s.invoiceCustomerByLoc && typeof s.invoiceCustomerByLoc === 'object') {
+    const cleaned = {};
+    for (const [code, email] of Object.entries(s.invoiceCustomerByLoc)) {
+      const c = String(code || '').trim().toUpperCase();
+      const e = String(email || '').trim().toLowerCase();
+      if (c && e) cleaned[c] = e;
+    }
+    sms.invoiceCustomerByLoc = cleaned;
+  }
 }
 
 function currentRulesAsEditable() {
@@ -1315,6 +1337,7 @@ function currentSamsRulesAsEditable() {
     taxable:               s.taxable != null ? s.taxable : true,
     peachtreeQty:          s.peachtreeQty != null ? s.peachtreeQty : 1,
     clubs,
+    invoiceCustomerByLoc:  { ...(s.invoiceCustomerByLoc || {}) },
   };
 }
 
@@ -1408,6 +1431,7 @@ function currentWyfRulesAsEditable() {
       patterns: (t.patterns || []).join(', '),
     })),
     hdoLocations: [...(w.hdoLocations || [])],
+    invoiceCustomerByLocType: { ...(w.invoiceCustomerByLocType || {}) },
   };
 }
 
@@ -4132,6 +4156,24 @@ function drawCfgUISams() {
     </div>
 
     <div class="cfg-block">
+      <h3>Default invoice customer per location</h3>
+      <div class="cfg-hint">Pre-fills the customer on the invoice draft when a Sam's load from this club is selected. Use the customer's primary email — Posku resolves it against the warehouse customer record automatically. Leave a row blank and use Add row for new mappings.</div>
+      <div class="cfg-table-wrap">
+        <table class="cfg-table">
+          <thead><tr>
+            <th class="narrow">Club code</th>
+            <th>Customer email</th>
+            <th class="x-col"></th>
+          </tr></thead>
+          <tbody id="cfg-sms-invcust-body">
+            ${Object.entries(d.invoiceCustomerByLoc || {}).map(([code, email], i) => samsInvCustomerRow(code, email, i)).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:0.5rem;"><button class="btn ghost" id="cfg-sms-add-invcust">+ Add row</button></div>
+    </div>
+
+    <div class="cfg-block">
       <h3>Sam's Club locations</h3>
       <div class="cfg-hint">First 4 digits of the manifest # determine the club. Add/edit rows here when a new Sam's Club starts liquidating. <strong>Code</strong> is the 2-4 letter abbreviation that goes into the SKU.</div>
       <div class="cfg-table-wrap">
@@ -4170,6 +4212,14 @@ function samsClubRow(c, i) {
     <td class="narrow"><input data-sck="fobId" type="number" value="${esc(c.fobId)}"></td>
     <td><input data-sck="fobName" value="${esc(c.fobName)}" placeholder="Idaho"></td>
     <td class="x-col"><button class="x-btn" data-sms-club-del="${i}" title="Remove">×</button></td>
+  </tr>`;
+}
+
+function samsInvCustomerRow(code, email, i) {
+  return `<tr data-sici="${i}">
+    <td class="narrow"><input data-sicik="code" value="${esc(code)}" placeholder="DEN" style="text-transform:uppercase;"></td>
+    <td><input data-sicik="email" value="${esc(email)}" placeholder="customer@example.com" type="email"></td>
+    <td class="x-col"><button class="x-btn" data-sms-invcust-del="${i}" title="Remove">×</button></td>
   </tr>`;
 }
 
@@ -4262,6 +4312,29 @@ function bindCfgHandlersSams() {
   $('cfg-sms-add-club').onclick = () => {
     cfgDraft.clubs.push({ manifestPrefix: '', code: '', city: '', fobId: '', fobName: '' });
     drawCfgUI();
+  };
+
+  // Default invoice customer per location — rebuild the map from rows on edit.
+  function rebuildSamsInvCustomers() {
+    const out = {};
+    document.querySelectorAll('#cfg-sms-invcust-body tr').forEach(tr => {
+      const code = (tr.querySelector('input[data-sicik="code"]')?.value || '').trim().toUpperCase();
+      const email = (tr.querySelector('input[data-sicik="email"]')?.value || '').trim().toLowerCase();
+      if (code && email) out[code] = email;
+    });
+    cfgDraft.invoiceCustomerByLoc = out;
+  }
+  document.querySelectorAll('#cfg-sms-invcust-body input[data-sicik]').forEach(el => {
+    el.oninput = rebuildSamsInvCustomers;
+  });
+  document.querySelectorAll('[data-sms-invcust-del]').forEach(b => {
+    b.onclick = () => { b.closest('tr')?.remove(); rebuildSamsInvCustomers(); };
+  });
+  $('cfg-sms-add-invcust').onclick = () => {
+    const tbody = $('cfg-sms-invcust-body');
+    const i = tbody.querySelectorAll('tr').length;
+    tbody.insertAdjacentHTML('beforeend', samsInvCustomerRow('', '', i));
+    bindCfgHandlersSams();  // re-bind to pick up new row
   };
   $('cfg-sms-init-headers').onclick = async () => {
     const btn = $('cfg-sms-init-headers');
@@ -4412,6 +4485,28 @@ function drawCfgUIWyf() {
       </div>
     </div>
 
+    <div class="cfg-block">
+      <h3>Default invoice customer per location + type</h3>
+      <div class="cfg-hint">Pre-fills the customer on the invoice draft when a Wayfair load matches both this location code AND this load type. Use the customer's primary email — Posku resolves it against the warehouse customer record automatically.</div>
+      <div class="cfg-table-wrap">
+        <table class="cfg-table">
+          <thead><tr>
+            <th class="narrow">Location code</th>
+            <th class="narrow">Type code</th>
+            <th>Customer email</th>
+            <th class="x-col"></th>
+          </tr></thead>
+          <tbody id="cfg-wyf-invcust-body">
+            ${Object.entries(d.invoiceCustomerByLocType || {}).map(([key, email], i) => {
+              const [loc, type] = (key || '').split('_');
+              return wyfInvCustomerRow(loc || '', type || '', email, i);
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:0.5rem;"><button class="btn ghost" id="cfg-wyf-add-invcust">+ Add row</button></div>
+    </div>
+
     <div class="cfg-actions">
       <button class="btn" id="cfg-save-btn">Save rules</button>
       <button class="btn ghost" id="cfg-reset-btn" ${hasOverride ? '' : 'disabled'}>Reset to defaults</button>
@@ -4430,6 +4525,15 @@ function locRow(loc, i) {
     <td><input data-lk="fobName" value="${esc(loc.fobName)}"></td>
     <td><input data-lk="patterns" value="${esc(loc.patterns)}"></td>
     <td class="x-col"><button class="x-btn" data-loc-del="${i}" title="Remove">×</button></td>
+  </tr>`;
+}
+
+function wyfInvCustomerRow(loc, type, email, i) {
+  return `<tr data-wici="${i}">
+    <td class="narrow"><input data-wicik="loc"   value="${esc(loc)}"   placeholder="PR" style="text-transform:uppercase;"></td>
+    <td class="narrow"><input data-wicik="type"  value="${esc(type)}"  placeholder="LQ" style="text-transform:uppercase;"></td>
+    <td><input data-wicik="email" value="${esc(email)}" placeholder="customer@example.com" type="email"></td>
+    <td class="x-col"><button class="x-btn" data-wyf-invcust-del="${i}" title="Remove">×</button></td>
   </tr>`;
 }
 
@@ -4494,6 +4598,29 @@ function bindCfgHandlers() {
   // HDO
   $('cfg-hdo').oninput = () => {
     cfgDraft.hdoLocations = $('cfg-hdo').value.split(',').map(s => s.trim()).filter(Boolean);
+  };
+  // Default invoice customer per locCode + typeCode — rebuild map from rows.
+  function rebuildWyfInvCustomers() {
+    const out = {};
+    document.querySelectorAll('#cfg-wyf-invcust-body tr').forEach(tr => {
+      const loc   = (tr.querySelector('input[data-wicik="loc"]')?.value   || '').trim().toUpperCase();
+      const type  = (tr.querySelector('input[data-wicik="type"]')?.value  || '').trim().toUpperCase();
+      const email = (tr.querySelector('input[data-wicik="email"]')?.value || '').trim().toLowerCase();
+      if (loc && type && email) out[`${loc}_${type}`] = email;
+    });
+    cfgDraft.invoiceCustomerByLocType = out;
+  }
+  document.querySelectorAll('#cfg-wyf-invcust-body input[data-wicik]').forEach(el => {
+    el.oninput = rebuildWyfInvCustomers;
+  });
+  document.querySelectorAll('[data-wyf-invcust-del]').forEach(b => {
+    b.onclick = () => { b.closest('tr')?.remove(); rebuildWyfInvCustomers(); };
+  });
+  $('cfg-wyf-add-invcust').onclick = () => {
+    const tbody = $('cfg-wyf-invcust-body');
+    const i = tbody.querySelectorAll('tr').length;
+    tbody.insertAdjacentHTML('beforeend', wyfInvCustomerRow('', '', '', i));
+    bindCfgHandlers();  // re-bind to pick up new row
   };
   // Actions — wired to both the sticky top bar and the bottom row
   const setBoth = t => {
