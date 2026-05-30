@@ -2931,9 +2931,13 @@ function deriveWyfSkuFromFilename(filename, tree, path) {
 }
 
 // Map a display city/warehouse name to our WYF location code. Keep this in sync
-// with SUPPLIERS.WYF.fobNames keys. Only return a code on an exact (case-insensitive) match.
+// with SUPPLIERS.WYF.fobNames keys. Tries exact match first, then strips
+// warehouse-type suffixes ("SmallParcel", "LargeParcel", "SP", "LP", "DC"),
+// then falls back to a prefix match — so filenames like
+// "Liquidation Load 50653 PerrisSmallParcel.xlsx" still resolve to Perris.
 function wyfLocCodeFromCity(city) {
-  const c = String(city || '').trim().toLowerCase();
+  const raw = String(city || '').trim().toLowerCase();
+  if (!raw) return null;
   const map = {
     'perris': 'PR', 'perris, ca': 'PR',
     'lathrop': 'LA', 'lathrop, ca': 'LA',
@@ -2949,7 +2953,21 @@ function wyfLocCodeFromCity(city) {
     // TBD codes — added when user confirms
     // 'houston': 'HTX', 'west palm beach': 'WPB',
   };
-  return map[c] || null;
+  // 1. exact match (handles "Perris", "perris, ca", etc.)
+  if (map[raw]) return map[raw];
+  // 2. strip whitespace + common warehouse-type suffixes that show up in
+  //    filenames without a separator (e.g. "PerrisSmallParcel", "AberdeenSP").
+  const compact = raw.replace(/\s+/g, '');
+  const stripped = compact.replace(/(smallparcel|largeparcel|smallpackage|largepackage|distributioncenter|sp|lp|dc)$/i, '');
+  if (map[stripped]) return map[stripped];
+  // 3. prefix match — any known city that the input starts with wins.
+  //    Sort by length descending so "city of industry" beats "city".
+  const cities = Object.keys(map).sort((a, b) => b.length - a.length);
+  for (const c of cities) {
+    const ckey = c.replace(/\s+/g, '');
+    if (compact.startsWith(ckey) || stripped.startsWith(ckey)) return map[c];
+  }
+  return null;
 }
 
 async function mfetchRun() {
