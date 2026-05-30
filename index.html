@@ -3014,6 +3014,13 @@ async function mfetchRun() {
 
 // Stash so renderLoads() can re-render the match column when loads change.
 let _lastMfetchFiles = null;
+// Cache of ERP dedup results so re-renders don't re-hit the API: sku → 'yes' | 'no' | 'err' | 'pending'
+const _erpDedupCache = new Map();
+// User-entered SKU overrides for rows the filename parser couldn't resolve.
+// Keyed by Drive file id → uppercase SKU string. Persisted across renders
+// but not across reloads (intentional — manual entries are session-only).
+const _manualSkuByFileId = new Map();
+
 function mfetchRenderResults(files) {
   _lastMfetchFiles = files;
   // Index detected loads by their final SKU so each manifest row can show
@@ -3025,11 +3032,21 @@ function mfetchRenderResults(files) {
 
   const rows = files.map(f => {
     const d = deriveWyfSkuFromFilename(f.name, f.tree, f.path);
-    const finalSku = d?.sku ? withEnvSuffix(d.sku) : null;
+    const manual = _manualSkuByFileId.get(f.id);  // user-entered override
+    const finalSku = manual || (d?.sku ? withEnvSuffix(d.sku) : null);
     const matchedLoad = finalSku ? skuToLoad.get(finalSku.toUpperCase()) : null;
-    const skuCell = finalSku
-      ? `<code style="color:var(--green);">${esc(finalSku)}</code>`
-      : `<span style="color:var(--amber);">⚠ ${esc(d?.reason || 'unrecognized filename — skipping')}</span>`;
+    // Derived-SKU cell: either the parser's answer, the manual override, or
+    // an input field letting the user type a SKU (validated against ERP).
+    let skuCell;
+    if (finalSku) {
+      const badge = manual ? ` <span style="color:var(--text4);font-size:0.6rem;">(manual)</span>` : '';
+      skuCell = `<code style="color:var(--green);">${esc(finalSku)}</code>${badge}`;
+    } else {
+      skuCell = `
+        <input type="text" data-manual-sku-input="${esc(f.id)}" placeholder="${esc(d?.reason || 'enter SKU…').slice(0, 38)}"
+               style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-family:'DM Mono',monospace;font-size:0.7rem;padding:0.25rem 0.45rem;border-radius:4px;width:170px;">
+        <span data-manual-sku-status="${esc(f.id)}" style="margin-left:0.4rem;color:var(--text4);font-size:0.65rem;"></span>`;
+    }
     let matchCell;
     if (!finalSku) {
       matchCell = `<span style="color:var(--text4);">—</span>`;
@@ -3038,21 +3055,33 @@ function mfetchRenderResults(files) {
     } else {
       matchCell = `<span style="color:var(--amber);" title="No detected load with this SKU — process this row to add it">○ no match</span>`;
     }
+    // ERP dedup cell starts as a placeholder; an async pass updates it.
+    let erpCell;
+    if (!finalSku) {
+      erpCell = `<span style="color:var(--text4);">—</span>`;
+    } else {
+      const cached = _erpDedupCache.get(finalSku.toUpperCase());
+      erpCell = renderErpCell(cached);
+    }
     const rowHighlight = matchedLoad ? 'background:rgba(30,127,86,0.06);' : '';
     const modDate = f.modifiedTime ? new Date(f.modifiedTime).toISOString().slice(0,16).replace('T',' ') : '—';
-    return `<tr data-file-id="${esc(f.id)}" style="${rowHighlight}">
-      <td style="padding:0.3rem 0.5rem;"><input type="checkbox" data-mfetch-pick="${esc(f.id)}" ${d?.sku ? 'checked' : ''} ${d?.sku ? '' : 'disabled'}></td>
+    const pickable = !!finalSku;
+    return `<tr data-file-id="${esc(f.id)}" data-derived-sku="${esc(finalSku || '')}" style="${rowHighlight}">
+      <td style="padding:0.3rem 0.5rem;"><input type="checkbox" data-mfetch-pick="${esc(f.id)}" ${pickable ? 'checked' : 'disabled'}></td>
       <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.66rem;">${esc(f.tree)}</td>
       <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.66rem;">${esc(f.path || '—')}</td>
       <td style="padding:0.3rem 0.5rem;font-size:0.7rem;">${esc(f.name)}</td>
       <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text3);">${modDate}</td>
       <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.7rem;">${skuCell}</td>
       <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.66rem;">${matchCell}</td>
+      <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.66rem;" data-erp-cell="${esc(finalSku || '')}">${erpCell}</td>
     </tr>`;
   }).join('');
   const matchedCount = files.filter(f => {
     const d = deriveWyfSkuFromFilename(f.name, f.tree, f.path);
-    return d?.sku && skuToLoad.has(withEnvSuffix(d.sku).toUpperCase());
+    const manual = _manualSkuByFileId.get(f.id);
+    const sku = manual || (d?.sku ? withEnvSuffix(d.sku) : null);
+    return sku && skuToLoad.has(sku.toUpperCase());
   }).length;
   $('mfetch-results').innerHTML = `
     <div style="border:1px solid var(--border2);border-radius:8px;overflow:hidden;">
@@ -3066,6 +3095,7 @@ function mfetchRenderResults(files) {
             <th style="padding:0.4rem 0.5rem;text-align:left;">Modified</th>
             <th style="padding:0.4rem 0.5rem;text-align:left;">Derived SKU</th>
             <th style="padding:0.4rem 0.5rem;text-align:left;">In loads?</th>
+            <th style="padding:0.4rem 0.5rem;text-align:left;">In ERP?</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -3073,11 +3103,87 @@ function mfetchRenderResults(files) {
     </div>
     <div style="margin-top:0.6rem;font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text3);">
       ${matchedCount}/${files.length} manifest(s) match a SKU already in the detected-loads table below.
+      For rows the filename couldn't resolve, type a SKU and press Enter — it'll be validated against the ERP.
       Pick a row + click <strong>Process</strong> below to parse + push.
       Parsers wired: <code>FC</code> (LQ / Salvage / Aged / QC). HDO / Outlet / Perigold parsers coming next — those rows will be flagged.
     </div>
   `;
+  attachManualSkuHandlers();
+  // Kick off async ERP dedup checks for any SKU we haven't checked yet.
+  runErpDedupChecks(files);
 }
+
+// Hook up the per-row "type a SKU" inputs: validate against ERP on Enter/blur,
+// and on success treat it the same as a parser-derived SKU.
+function attachManualSkuHandlers() {
+  document.querySelectorAll('[data-manual-sku-input]').forEach(input => {
+    const fileId = input.getAttribute('data-manual-sku-input');
+    const status = document.querySelector(`[data-manual-sku-status="${cssEsc(fileId)}"]`);
+    const validate = async () => {
+      const raw = input.value.trim();
+      if (!raw) { if (status) status.innerHTML = ''; return; }
+      const sku = withEnvSuffix(raw).toUpperCase();
+      if (status) status.innerHTML = `<span style="color:var(--text3);">checking…</span>`;
+      try {
+        const r = await checkSKUExists(sku);
+        if (r.error) { if (status) status.innerHTML = `<span style="color:var(--amber);">err: ${esc(r.error)}</span>`; return; }
+        if (!r.exists) {
+          if (status) status.innerHTML = `<span style="color:var(--red);">✗ not in ERP — only existing SKUs allowed</span>`;
+          return;
+        }
+        // Accept: stash the manual override, mark ERP cache as confirmed,
+        // and re-render so the row picks up the new SKU everywhere.
+        _manualSkuByFileId.set(fileId, sku);
+        _erpDedupCache.set(sku, 'yes');
+        if (_lastMfetchFiles) mfetchRenderResults(_lastMfetchFiles);
+      } catch (e) {
+        if (status) status.innerHTML = `<span style="color:var(--amber);">err: ${esc(e.message)}</span>`;
+      }
+    };
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); validate(); } });
+    input.addEventListener('blur', validate);
+  });
+}
+
+function renderErpCell(state) {
+  if (state === 'yes') return `<span style="color:var(--red);" title="An ERP product already has this SKU — pushing again would be a duplicate">✗ exists</span>`;
+  if (state === 'no')  return `<span style="color:var(--green);" title="No ERP product with this SKU — safe to create">✓ new</span>`;
+  if (state === 'err') return `<span style="color:var(--amber);" title="Dedup check failed (will be retried next render)">? err</span>`;
+  return `<span style="color:var(--text4);">…</span>`;
+}
+
+async function runErpDedupChecks(files) {
+  const skus = [];
+  for (const f of files) {
+    const d = deriveWyfSkuFromFilename(f.name, f.tree, f.path);
+    const manual = _manualSkuByFileId.get(f.id);
+    const sku = manual || (d?.sku ? withEnvSuffix(d.sku).toUpperCase() : null);
+    if (!sku) continue;
+    if (_erpDedupCache.has(sku)) continue;  // already known / in-flight
+    _erpDedupCache.set(sku, 'pending');
+    skus.push(sku);
+  }
+  if (!skus.length) return;
+  // Run 4 at a time — keep ERP load reasonable.
+  const CHUNK = 4;
+  for (let i = 0; i < skus.length; i += CHUNK) {
+    const slice = skus.slice(i, i + CHUNK);
+    await Promise.all(slice.map(async sku => {
+      try {
+        const r = await checkSKUExists(sku);
+        _erpDedupCache.set(sku, r.error ? 'err' : (r.exists ? 'yes' : 'no'));
+      } catch {
+        _erpDedupCache.set(sku, 'err');
+      }
+      const cell = document.querySelector(`[data-erp-cell="${cssEsc(sku)}"]`);
+      if (cell) cell.innerHTML = renderErpCell(_erpDedupCache.get(sku));
+    }));
+  }
+}
+
+// Minimal CSS attribute-selector escape — handles quote + backslash, the only
+// chars that break a double-quoted [attr="..."] selector.
+function cssEsc(s) { return String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"'); }
 
 setupMfetchDefaults();
 $('mfetch-fetch-btn').onclick = mfetchRun;
