@@ -3075,7 +3075,7 @@ function mfetchRenderResults(files) {
       <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text3);">${modDate}</td>
       <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.7rem;">${skuCell}</td>
       <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.66rem;">${matchCell}</td>
-      <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.66rem;" data-erp-cell="${esc(finalSku || '')}">${erpCell}</td>
+      <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.66rem;" data-erp-cell="${esc((finalSku || '').toUpperCase())}">${erpCell}</td>
     </tr>`;
   }).join('');
   const matchedCount = files.filter(f => {
