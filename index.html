@@ -387,6 +387,20 @@ textarea::placeholder { color: var(--text4); }
 .inv-result { font-family: 'DM Mono', monospace; font-size: 0.72rem; padding: 0.4rem 0.6rem; border-radius: 5px; margin-top: 0.5rem; }
 .inv-result.ok   { background: var(--green-dim); color: var(--green); }
 .inv-result.fail { background: var(--red-dim);   color: var(--red);   }
+/* Tri-chip status strip: SKU · PO · INV state at a glance */
+.tri-chip { display: inline-flex; align-items: center; gap: 0; border: 1px solid var(--border2); border-radius: 4px; overflow: hidden; font-family: 'DM Mono', monospace; font-size: 0.6rem; line-height: 1; vertical-align: middle; }
+.tri-chip .tri-pill { padding: 0.25rem 0.45rem; display: inline-flex; align-items: center; gap: 0.22rem; border-right: 1px solid var(--border2); white-space: nowrap; }
+.tri-chip .tri-pill:last-child { border-right: none; }
+.tri-chip .tri-pill .lbl { color: var(--text4); letter-spacing: 0.06em; font-size: 0.55rem; }
+.tri-chip .tri-pill .ic { font-weight: 700; font-size: 0.72rem; }
+.tri-chip .tri-pill.ok      { background: rgba(74,222,128,0.10); }
+.tri-chip .tri-pill.ok .ic    { color: var(--green); }
+.tri-chip .tri-pill.busy    { background: rgba(96,165,250,0.12); }
+.tri-chip .tri-pill.busy .ic  { color: #60a5fa; }
+.tri-chip .tri-pill.fail    { background: rgba(248,113,113,0.12); }
+.tri-chip .tri-pill.fail .ic  { color: var(--red); }
+.tri-chip .tri-pill.pending .ic { color: var(--text4); }
+
 .unique-toggle { display: inline-flex; align-items: center; gap: 0.25rem; font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text3); cursor: pointer; user-select: none; padding: 0.15rem 0.35rem; border-radius: 4px; border: 1px solid var(--border2); }
 .unique-toggle:hover { color: var(--text2); border-color: var(--text3); }
 .unique-toggle.on { color: var(--green); border-color: rgba(30,127,86,0.45); background: var(--green-dim); }
@@ -2321,12 +2335,38 @@ function renderLoads() {
     tr.className = load.status === 'review' ? 'review' : (load.status === 'done' ? 'done' : (load.status === 'failed' ? 'failed' : ''));
 
     const statusChip = () => {
-      if (load.status === 'done')   return `<span class="chip green">pushed</span>`;
-      if (load.status === 'failed') return `<span class="chip red">failed</span>`;
-      if (load.status === 'review') return `<span class="chip amber">review</span>`;
+      // Pre-push or special states stay as a single chip — tri-strip only
+      // makes sense once the SKU has actually landed.
+      if (load.status === 'failed')  return `<span class="chip red">failed</span>`;
+      if (load.status === 'review')  return `<span class="chip amber">review</span>`;
       if (load.status === 'pushing') return `<span class="chip blue">pushing…</span>`;
-      if (load.status === 'dup')    return `<span class="chip red" title="A product with this SKU already exists in the ERP — cannot push">✗ duplicate in ERP</span>`;
-      return `<span class="chip green" style="background:var(--green-dim);color:var(--green);">ready</span>`;
+      if (load.status === 'dup')     return `<span class="chip red" title="A product with this SKU already exists in the ERP — cannot push">✗ duplicate in ERP</span>`;
+      if (load.status !== 'done')    return `<span class="chip green" style="background:var(--green-dim);color:var(--green);">ready</span>`;
+
+      // SKU done → render the three-stage progress strip.
+      const finalSku = withEnvSuffix(load.sku);
+      // PO state: PO drafts store the raw (no env suffix) sku; match on that.
+      const po = (typeof poDrafts !== 'undefined' ? poDrafts : []).find(p => p.sku === load.sku);
+      const poState =
+        po && po.status === 'done'    ? 'ok'   :
+        po && po.status === 'pushing' ? 'busy' :
+        po && po.status === 'failed'  ? 'fail' : 'pending';
+      // Invoice state: load.invoiced is set by pushSingleInvoice on success;
+      // also scan invoiceDrafts for an in-flight draft referencing this SKU.
+      const inv = (typeof invoiceDrafts !== 'undefined' ? invoiceDrafts : [])
+        .find(d => d.items?.some(it => it.sku === finalSku));
+      const invState =
+        load.invoiced                       ? 'ok'   :
+        inv && inv.status === 'pushing'     ? 'busy' :
+        inv && inv.status === 'failed'      ? 'fail' : 'pending';
+
+      const icon = (st) => st === 'ok' ? '✓' : st === 'busy' ? '…' : st === 'fail' ? '✗' : '—';
+      const pill = (lbl, st) => `<span class="tri-pill ${st}"><span class="lbl">${lbl}</span><span class="ic">${icon(st)}</span></span>`;
+      return `<span class="tri-chip" title="SKU push · PO push · Invoice push">
+        ${pill('SKU', 'ok')}
+        ${pill('PO',  poState)}
+        ${pill('INV', invState)}
+      </span>`;
     };
 
     tr.innerHTML = `
@@ -4000,6 +4040,7 @@ async function pushSinglePo(idx) {
     d.result = r.data?.message || r.data?.error || r.error || `HTTP ${r.status}`;
   }
   renderPoDrafts();
+  renderLoads();  // refresh the tri-chip strip so the PO stage flips
 }
 
 $('generate-po-btn').onclick = generatePoDrafts;
@@ -5216,6 +5257,7 @@ async function pushSingleInvoice(idx) {
     d.result = r.data?.message || r.data?.error || r.error || `HTTP ${r.status}`;
   }
   renderInvoiceDrafts();
+  renderLoads();  // refresh the tri-chip strip so the INV stage flips
 }
 
 async function pushAllInvoices() {
