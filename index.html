@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=3.0, user-scalable=yes">
 <title>Posku — Via Trading</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ff7a3d'/%3E%3Ctext x='32' y='46' font-family='Georgia,serif' font-size='42' font-style='italic' fill='white' text-anchor='middle' font-weight='700'%3EP%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg: #f7f6f1;
@@ -166,8 +166,50 @@ main, .legacy-main { padding: 0; max-width: none; margin: 0; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.6rem 1.7rem; margin-bottom: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
 body.theme-dark .card { box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
 .card.dragging { border-color: var(--green); background: var(--green-dim); }
-.card-title { font-family: 'DM Serif Display', serif; font-size: 1.2rem; margin-bottom: 0.25rem; color: var(--text); }
-.card-sub { font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text3); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 1.15rem; }
+/* Card headings — modern sans with a tech accent bar */
+.card-title {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 600;
+  font-size: 1.1rem;
+  letter-spacing: -0.015em;
+  color: var(--text);
+  margin-bottom: 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  line-height: 1.2;
+}
+.card-title::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 1.05em;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--green), rgba(30,127,86,0.4));
+  flex: 0 0 3px;
+}
+.card-sub {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.78rem;
+  color: var(--text3);
+  letter-spacing: 0;
+  text-transform: none;
+  margin-bottom: 1.15rem;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+/* Collapsible card: header acts as toggle; body shows/hides. */
+.card.collapsible .card-header-row { cursor: pointer; user-select: none; display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin: -0.2rem -0.2rem 0.6rem; padding: 0.2rem; border-radius: 6px; transition: background 0.15s; }
+.card.collapsible .card-header-row:hover { background: rgba(255,255,255,0.02); }
+body.theme-light .card.collapsible .card-header-row:hover { background: rgba(0,0,0,0.025); }
+.card.collapsible .card-header-row .card-title { margin-bottom: 0; }
+.card.collapsible .card-header-row .card-toggle { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--text3); padding: 0.15rem 0.5rem; border: 1px solid var(--border2); border-radius: 5px; align-self: center; transition: transform 0.2s, border-color 0.12s, color 0.12s; flex: 0 0 auto; }
+.card.collapsible.collapsed .card-header-row .card-toggle { transform: rotate(-90deg); }
+.card.collapsible.collapsed .card-header-row { margin-bottom: 0; }
+.card.collapsible.collapsed .card-sub,
+.card.collapsible.collapsed .card-body { display: none; }
+.card.collapsible.collapsed { padding-bottom: 0.8rem; }
 
 /* Hide legacy top supplier-tabs (now in sidebar) */
 .supplier-tabs { display: none !important; }
@@ -485,19 +527,27 @@ textarea::placeholder { color: var(--text4); }
     <div id="mfetch-results" style="margin-top:0.6rem;"></div>
   </div>
 
-  <!-- Input card -->
-  <div class="card input-card" id="drop-card">
-    <div class="card-title">Paste or drop email</div>
-    <div class="card-sub" id="input-card-sub">One or multiple Wayfair load emails at once</div>
-    <textarea id="email-input" placeholder="Paste email body here, or drag and drop a .eml / .txt file onto this card…"></textarea>
-    <div class="hint">Tip: paste the email body, or drop a <strong>.eml</strong>, <strong>.txt</strong>, or Outlook <strong>.msg</strong> file.</div>
-    <div class="btn-row">
-      <button class="btn" id="parse-btn">Parse loads</button>
-      <button class="btn ghost" id="clear-input-btn">Clear</button>
-      <input type="file" id="file-input" multiple accept=".eml,.txt,.msg" style="display:none">
-      <button class="btn ghost" id="pick-file-btn">Pick file</button>
+  <!-- Input card — collapsible, defaults to closed so it doesn't dominate
+       the layout when the user is mostly using inbox-fetch or drive-fetch. -->
+  <div class="card input-card collapsible collapsed" id="drop-card">
+    <div class="card-header-row" data-card-toggle>
+      <div>
+        <div class="card-title">Paste or drop email</div>
+        <div class="card-sub" id="input-card-sub">One or multiple Wayfair load emails at once</div>
+      </div>
+      <span class="card-toggle">▾</span>
     </div>
-    <div id="parse-status" class="status"></div>
+    <div class="card-body">
+      <textarea id="email-input" placeholder="Paste email body here, or drag and drop a .eml / .txt file onto this card…"></textarea>
+      <div class="hint">Tip: paste the email body, or drop a <strong>.eml</strong>, <strong>.txt</strong>, or Outlook <strong>.msg</strong> file.</div>
+      <div class="btn-row">
+        <button class="btn" id="parse-btn">Parse loads</button>
+        <button class="btn ghost" id="clear-input-btn">Clear</button>
+        <input type="file" id="file-input" multiple accept=".eml,.txt,.msg" style="display:none">
+        <button class="btn ghost" id="pick-file-btn">Pick file</button>
+      </div>
+      <div id="parse-status" class="status"></div>
+    </div>
   </div>
 
   <!-- Loads section -->
@@ -2426,6 +2476,9 @@ const card = $('drop-card');
 }));
 card.addEventListener('drop', ev => {
   ev.preventDefault();
+  // If the card was collapsed, auto-expand so the user can see the dropped
+  // content land in the textarea / status row.
+  card.classList.remove('collapsed');
   const files = [...(ev.dataTransfer.files || [])];
   if (files.length) {
     loadFiles(files);
@@ -4249,6 +4302,15 @@ document.addEventListener('click', (e) => {
   // Force reflow so the animation restarts on rapid repeat clicks
   void el.offsetWidth;
   el.classList.add('btn-flash');
+});
+
+// Collapsible cards — click the header row to toggle. State NOT persisted
+// (intentional: paste-email starts collapsed every session).
+document.addEventListener('click', (e) => {
+  const hdr = e.target.closest('[data-card-toggle]');
+  if (!hdr) return;
+  const card = hdr.closest('.card.collapsible');
+  if (card) card.classList.toggle('collapsed');
 });
 // Fetch master rules from KV, then apply. JS defaults stand in until this
 // resolves so the app is usable even on a cold start or KV outage.
