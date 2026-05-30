@@ -2148,6 +2148,10 @@ function renderLoads() {
   updateSummary();
   attachHandlers();
   updatePoActionRow();
+  // Keep the Drive-fetch "In loads?" column in sync with the current loads set.
+  if (_lastMfetchFiles && document.getElementById('mfetch-results')?.children.length) {
+    mfetchRenderResults(_lastMfetchFiles);
+  }
 }
 
 function updatePoActionRow() {
@@ -2973,22 +2977,48 @@ async function mfetchRun() {
   mfetchRenderResults(files);
 }
 
+// Stash so renderLoads() can re-render the match column when loads change.
+let _lastMfetchFiles = null;
 function mfetchRenderResults(files) {
+  _lastMfetchFiles = files;
+  // Index detected loads by their final SKU so each manifest row can show
+  // whether it corresponds to a load already parsed from an email body.
+  const skuToLoad = new Map();
+  for (const l of loads) {
+    if (l.sku) skuToLoad.set(withEnvSuffix(l.sku).toUpperCase(), l);
+  }
+
   const rows = files.map(f => {
     const d = deriveWyfSkuFromFilename(f.name, f.tree, f.path);
-    const skuCell = d?.sku
-      ? `<code style="color:var(--green);">${esc(withEnvSuffix(d.sku))}</code>`
+    const finalSku = d?.sku ? withEnvSuffix(d.sku) : null;
+    const matchedLoad = finalSku ? skuToLoad.get(finalSku.toUpperCase()) : null;
+    const skuCell = finalSku
+      ? `<code style="color:var(--green);">${esc(finalSku)}</code>`
       : `<span style="color:var(--amber);">⚠ ${esc(d?.reason || 'unrecognized filename — skipping')}</span>`;
+    let matchCell;
+    if (!finalSku) {
+      matchCell = `<span style="color:var(--text4);">—</span>`;
+    } else if (matchedLoad) {
+      matchCell = `<span style="color:var(--green);" title="This manifest belongs to a load already detected from an email body">✓ in loads</span>`;
+    } else {
+      matchCell = `<span style="color:var(--amber);" title="No detected load with this SKU — process this row to add it">○ no match</span>`;
+    }
+    const rowHighlight = matchedLoad ? 'background:rgba(30,127,86,0.06);' : '';
     const modDate = f.modifiedTime ? new Date(f.modifiedTime).toISOString().slice(0,16).replace('T',' ') : '—';
-    return `<tr data-file-id="${esc(f.id)}">
+    return `<tr data-file-id="${esc(f.id)}" style="${rowHighlight}">
       <td style="padding:0.3rem 0.5rem;"><input type="checkbox" data-mfetch-pick="${esc(f.id)}" ${d?.sku ? 'checked' : ''} ${d?.sku ? '' : 'disabled'}></td>
       <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.66rem;">${esc(f.tree)}</td>
       <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.66rem;">${esc(f.path || '—')}</td>
       <td style="padding:0.3rem 0.5rem;font-size:0.7rem;">${esc(f.name)}</td>
       <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text3);">${modDate}</td>
       <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.7rem;">${skuCell}</td>
+      <td style="padding:0.3rem 0.5rem;font-family:'DM Mono',monospace;font-size:0.66rem;">${matchCell}</td>
     </tr>`;
   }).join('');
+  const matchedCount = files.filter(f => {
+    const d = deriveWyfSkuFromFilename(f.name, f.tree, f.path);
+    return d?.sku && skuToLoad.has(withEnvSuffix(d.sku).toUpperCase());
+  }).length;
   $('mfetch-results').innerHTML = `
     <div style="border:1px solid var(--border2);border-radius:8px;overflow:hidden;">
       <table style="width:100%;border-collapse:collapse;">
@@ -3000,12 +3030,14 @@ function mfetchRenderResults(files) {
             <th style="padding:0.4rem 0.5rem;text-align:left;">Filename</th>
             <th style="padding:0.4rem 0.5rem;text-align:left;">Modified</th>
             <th style="padding:0.4rem 0.5rem;text-align:left;">Derived SKU</th>
+            <th style="padding:0.4rem 0.5rem;text-align:left;">In loads?</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
     <div style="margin-top:0.6rem;font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text3);">
+      ${matchedCount}/${files.length} manifest(s) match a SKU already in the detected-loads table below.
       Pick a row + click <strong>Process</strong> below to parse + push.
       Parsers wired: <code>FC</code> (LQ / Salvage / Aged / QC). HDO / Outlet / Perigold parsers coming next — those rows will be flagged.
     </div>
