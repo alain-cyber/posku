@@ -76,7 +76,10 @@ export async function onRequest(context) {
     if (!res.ok) return { id, error: `HTTP ${res.status}` };
     const m = await res.json();
     const headers = Object.fromEntries((m.payload?.headers || []).map(h => [h.name.toLowerCase(), h.value]));
-    const { attachments, attachmentsSkipped } = await fetchTextAttachments(m, id, accessToken);
+    // Only collect attachment REFS here — fetching the bytes inline costs
+    // one subrequest each, and Workers cap at 50/invocation. The client
+    // calls /api/gmail/attachment per CSV after this returns.
+    const attachmentRefs = collectAttachmentRefs(m.payload);
     return {
       id,
       threadId: m.threadId,
@@ -85,67 +88,30 @@ export async function onRequest(context) {
       date:     headers.date || '',
       snippet:  m.snippet || '',
       body:     extractBody(m.payload),
-      attachments,           // [{ filename, mimeType, text }]
-      attachmentsSkipped,    // [{ filename, reason, ... }] — empty if everything was fetched
+      attachmentRefs,  // [{ filename, mimeType, size, attachmentId }]
     };
   }));
 
   return json(200, { ok: true, messages, query: q });
 }
 
-// Walk the payload, find CSV/text attachments, download each, and return the
-// decoded text. Skips PDFs/images and anything > 1 MB to keep responses sane.
-// Surfaces per-attachment fetch failures (rate limiting, 4xx, etc.) under
-// `_skipped` so we can debug "why didn't this email's CSV come through".
-async function fetchTextAttachments(message, messageId, accessToken) {
-  const parts = [];
+// Walk the payload and return references to every attachment part. Does
+// NOT fetch bytes — that's the client's job, via /api/gmail/attachment.
+function collectAttachmentRefs(payload) {
+  const refs = [];
   (function walk(p) {
     if (!p) return;
-    if (p.filename && p.body?.attachmentId) parts.push(p);
-    if (p.parts) p.parts.forEach(walk);
-  })(message.payload);
-
-  const out = [];
-  const skipped = [];
-  for (const p of parts) {
-    const isCsv = /\.csv$/i.test(p.filename) || (p.mimeType || '').includes('csv');
-    if (!isCsv) { skipped.push({ filename: p.filename, reason: 'not csv', mimeType: p.mimeType }); continue; }
-    if ((p.body.size || 0) > 1_000_000) { skipped.push({ filename: p.filename, reason: 'oversize', size: p.body.size }); continue; }
-    // Retry once on 429 (Gmail rate-limit) — the original silent skip caused
-    // ~20/34 attachments to vanish in a burst fetch of recent SMS manifests.
-    let lastErr = null;
-    let fetched = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const res = await fetch(`${GMAIL_BASE}/users/me/messages/${messageId}/attachments/${p.body.attachmentId}`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (res.ok) { fetched = await res.json(); break; }
-        lastErr = `HTTP ${res.status}`;
-        if (res.status === 429 || res.status >= 500) {
-          await new Promise(r => setTimeout(r, 300 + attempt * 500));
-          continue;
-        }
-        break;  // non-retryable status
-      } catch (e) {
-        lastErr = e.message || String(e);
-        await new Promise(r => setTimeout(r, 300 + attempt * 500));
-      }
+    if (p.filename && p.body?.attachmentId) {
+      refs.push({
+        filename: p.filename,
+        mimeType: p.mimeType || '',
+        size: p.body.size || 0,
+        attachmentId: p.body.attachmentId,
+      });
     }
-    if (!fetched) { skipped.push({ filename: p.filename, reason: 'fetch failed', error: lastErr }); continue; }
-    out.push({ filename: p.filename, mimeType: p.mimeType || 'text/csv', text: decodeBase64Url(fetched.data || '') });
-  }
-  return { attachments: out, attachmentsSkipped: skipped };
-}
-
-function decodeBase64Url(data) {
-  const b64 = data.replace(/-/g, '+').replace(/_/g, '/');
-  try {
-    const bin = atob(b64 + '==='.slice((b64.length + 3) % 4));
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return new TextDecoder('utf-8').decode(bytes);
-  } catch { return ''; }
+    if (p.parts) p.parts.forEach(walk);
+  })(payload);
+  return refs;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

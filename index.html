@@ -51,8 +51,13 @@ body.theme-dark {
 body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-serif; min-height: 100vh; }
 
 /* ── App shell: dark navy sidebar + light/themed main ───────────────────── */
-.app-shell { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; transition: grid-template-columns 0.18s ease; }
-.app-shell.sidebar-collapsed { grid-template-columns: 64px 1fr; }
+/* Sidebar is position: fixed so horizontal page scroll (caused by wide
+   tables) never pushes it out of the viewport. Main content gets a
+   padding-left equal to the sidebar width. */
+.app-shell { padding-left: 260px; min-height: 100vh; transition: padding-left 0.18s ease; }
+.app-shell.sidebar-collapsed { padding-left: 64px; }
+.sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 260px; z-index: 50; overflow-y: auto; transition: width 0.18s ease; }
+.sidebar-collapsed .sidebar { width: 64px; }
 /* Collapsed-state: hide every label, keep the icon */
 .sidebar-collapsed .sidebar-parent-brand .vt-text,
 .sidebar-collapsed .sidebar-brand-text,
@@ -74,7 +79,8 @@ body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-seri
 .sidebar-toggle:hover { background: rgba(255,255,255,0.06); color: #c9d3e2; border-color: rgba(255,255,255,0.2); }
 .sidebar-collapsed .sidebar-toggle { margin: 0 auto; transform: rotate(180deg); }
 
-/* Sidebar is intentionally dark in BOTH themes — independent palette */
+/* Sidebar is intentionally dark in BOTH themes — independent palette.
+   Position (fixed/top/left/width) is set in the .app-shell block above. */
 .sidebar {
   background: #1a2332;
   color: #c9d3e2;
@@ -82,7 +88,6 @@ body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-seri
   display: flex;
   flex-direction: column;
   border-right: 1px solid rgba(255,255,255,0.06);
-  position: sticky; top: 0; height: 100vh; overflow-y: auto;
 }
 .sidebar-parent-brand { padding: 0 1.25rem 0.75rem; display: flex; align-items: center; gap: 0.55rem; }
 .sidebar-parent-brand .vt-mark { width: 26px; height: 26px; border-radius: 6px; background: #1e7f56; display: inline-flex; align-items: center; justify-content: center; font-family: 'DM Serif Display', serif; font-style: italic; font-size: 0.85rem; color: #fff; font-weight: 700; flex: 0 0 26px; }
@@ -159,16 +164,18 @@ body.theme-dark .card { box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
 /* Hide legacy top supplier-tabs (now in sidebar) */
 .supplier-tabs { display: none !important; }
 
-/* Responsive: collapse sidebar on narrow screens */
+/* Responsive: on narrow screens drop the fixed-sidebar layout and put it
+   inline above the content as a wrapping row, the way it used to be. */
 @media (max-width: 880px) {
-  .app-shell { grid-template-columns: 1fr; }
-  .sidebar { position: relative; height: auto; flex-direction: row; flex-wrap: wrap; padding: 0.7rem; }
+  .app-shell, .app-shell.sidebar-collapsed { padding-left: 0; }
+  .sidebar, .sidebar-collapsed .sidebar { position: relative; top: auto; left: auto; bottom: auto; width: 100%; height: auto; flex-direction: row; flex-wrap: wrap; padding: 0.7rem; }
   .sidebar-brand { width: 100%; border-bottom: none; padding: 0 0.5rem 0.7rem; margin-bottom: 0.5rem; }
   .sidebar-section { padding: 0; flex: 1 1 auto; }
   .sidebar-section-title { display: none; }
   .nav-item { padding: 0.5rem 0.65rem; font-size: 0.78rem; }
   .sidebar-footer { width: 100%; margin-top: 0.5rem; }
   .main { padding: 1rem 1rem 2rem; }
+  .sidebar-toggle { display: none; }
 }
 
 textarea { width: 100%; min-height: 200px; background: var(--surface2); color: var(--text); border: 1px dashed var(--border2); border-radius: 10px; padding: 0.9rem 1rem; font-family: 'DM Mono', monospace; font-size: 0.82rem; line-height: 1.55; resize: vertical; transition: border-color 0.15s; }
@@ -2707,28 +2714,34 @@ async function inboxFetch() {
     return;
   }
 
-  // Parse every message body with the current supplier's parser; merge results.
-  // Also stash any CSV attachments (Sam's loads) so we can auto-attach them
-  // after sequence assignment — saves the user from picking the right file.
+  // Parse every message body with the current supplier's parser. For Sam's
+  // we ALSO need each manifest's CSV attachment, but the messages endpoint
+  // only returns attachment REFS (not bytes) — fetching all 34+ attachments
+  // inline blew Workers' 50-subrequest cap. We do that here, chunked, after
+  // parsing so we still respect the cap on the worker side.
   setStatus($('inbox-status'), 'info', `Got ${msgs.length} message(s) for ${human} — parsing with ${sup.label}…`);
   const allFound = [];
   const csvByManifest = {};
-  const csvSourceByManifest = {};  // which attachment filename each load got matched to (for diagnostics)
+  const csvSourceByManifest = {};
+  const csvFetchFailures = {};  // loadId → error msg, surfaced in diagnostic
   const parseLog = [];
+  // First pass: parse bodies + decide which attachment ref to pull per load.
+  const pulls = [];  // { loadId, messageId, ref }
   for (const m of msgs) {
     const blob = `${m.subject}\n\n${m.body || m.snippet}`;
     const found = parseEmail(blob, activeSupplier);
-    const attachInfo = (m.attachments || []).map(a => ({ filename: a.filename, mimeType: a.mimeType, bytes: (a.text || '').length }));
-    const attachSkipped = m.attachmentsSkipped || [];
-    const matches = {};  // per-load: which attachment did it pick?
-    if (activeSupplier === 'SMS' && Array.isArray(m.attachments) && m.attachments.length) {
+    const refs = m.attachmentRefs || [];
+    const csvRefs = refs.filter(r => /\.csv$/i.test(r.filename || ''));
+    const attachInfo = refs.map(r => ({ filename: r.filename, mimeType: r.mimeType, bytes: r.size || 0 }));
+    const matches = {};
+    if (activeSupplier === 'SMS' && csvRefs.length) {
       for (const l of found) {
-        const exact = m.attachments.find(a => a.filename && a.filename.includes(l.loadId));
-        const match = exact || m.attachments[0];
-        matches[l.loadId] = { picked: match?.filename || null, exact: !!exact, fallback: !exact };
-        if (match) {
-          csvByManifest[l.loadId] = match.text;
-          csvSourceByManifest[l.loadId] = match.filename;
+        const exact = csvRefs.find(r => r.filename && r.filename.includes(l.loadId));
+        const ref = exact || csvRefs[0];
+        matches[l.loadId] = { picked: ref?.filename || null, exact: !!exact, fallback: !exact };
+        if (ref) {
+          pulls.push({ loadId: l.loadId, messageId: m.id, ref });
+          csvSourceByManifest[l.loadId] = ref.filename;
         }
       }
     }
@@ -2739,12 +2752,34 @@ async function inboxFetch() {
       bodyLen: (m.body || '').length,
       snippetLen: (m.snippet || '').length,
       attachments: attachInfo,
-      attachmentsSkipped: attachSkipped,
       parsedCount: found.length,
       parsedManifests: found.map(l => l.loadId),
       csvMatches: matches,
     });
     allFound.push(...found);
+  }
+  // Second pass: download each CSV via the dedicated attachment endpoint,
+  // chunked so we don't hammer Gmail with 30+ parallel requests.
+  if (pulls.length) {
+    setStatus($('inbox-status'), 'info', `Fetching ${pulls.length} manifest CSV(s)…`);
+    const CHUNK = 6;
+    for (let i = 0; i < pulls.length; i += CHUNK) {
+      const slice = pulls.slice(i, i + CHUNK);
+      await Promise.all(slice.map(async ({ loadId, messageId, ref }) => {
+        try {
+          const u = `/api/gmail/attachment?messageId=${encodeURIComponent(messageId)}&attachmentId=${encodeURIComponent(ref.attachmentId)}&filename=${encodeURIComponent(ref.filename)}`;
+          const r = await fetch(u, { cache: 'no-store' });
+          const jj = await r.json().catch(() => null);
+          if (!r.ok || !jj?.ok) {
+            csvFetchFailures[loadId] = jj?.error || `HTTP ${r.status}`;
+            return;
+          }
+          csvByManifest[loadId] = jj.text || '';
+        } catch (e) {
+          csvFetchFailures[loadId] = e.message || String(e);
+        }
+      }));
+    }
   }
   console.log('[Posku] inbox parse results:', parseLog);
   if (!allFound.length) {
@@ -2760,7 +2795,12 @@ async function inboxFetch() {
     // Auto-attach each manifest CSV (now that SKUs are assigned).
     for (const l of allFound) {
       const csv = csvByManifest[l.loadId];
-      if (!csv || !l.sku) { l._autoAttachReason = !csv ? 'no CSV matched' : 'no SKU assigned'; continue; }
+      if (!csv || !l.sku) {
+        l._autoAttachReason = !csv
+          ? (csvFetchFailures[l.loadId] ? `CSV fetch failed: ${csvFetchFailures[l.loadId]}` : 'no CSV matched')
+          : 'no SKU assigned';
+        continue;
+      }
       try {
         const result = transformSamsManifest(csv, l.sku, l.locCode || '');
         if (result.rows.length) {
