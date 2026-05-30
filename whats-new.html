@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=3.0, user-scalable=yes">
+<title>What's New · Posku</title>
+<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgo=">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1320;
+    --surface: #161c2c;
+    --surface2: #1d2538;
+    --border: #2a334a;
+    --border2: #344063;
+    --text: #e7ecf3;
+    --text2: #b1bbcf;
+    --text3: #7b89a3;
+    --text4: #4f5b75;
+    --green: #4ade80;
+    --green-dim: rgba(74,222,128,0.15);
+    --amber: #fbbf24;
+    --red: #f87171;
+    --accent: #818cf8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; line-height: 1.55; padding: 0; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+  .back { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--text3); text-decoration: none; font-size: 0.85rem; margin-bottom: 2rem; transition: color 0.12s; }
+  .back:hover { color: var(--text); }
+  h1 { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 2.4rem; letter-spacing: -0.03em; margin: 0 0 0.4rem; }
+  h1 em { font-style: normal; background: linear-gradient(135deg, #4ade80, #818cf8); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lede { color: var(--text3); font-size: 1.05rem; margin: 0 0 3rem; max-width: 60ch; }
+  .week { margin-bottom: 3rem; position: relative; padding-left: 2rem; border-left: 2px solid var(--border); }
+  .week::before { content: ''; position: absolute; left: -7px; top: 0.2rem; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--bg); }
+  .week.current::before { background: var(--green); box-shadow: 0 0 0 4px var(--bg), 0 0 12px var(--green); }
+  .week-date { font-family: 'DM Mono', monospace; font-size: 0.7rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text4); margin-bottom: 0.4rem; }
+  .week-title { font-size: 1.35rem; font-weight: 600; letter-spacing: -0.015em; margin: 0 0 1.1rem; color: var(--text); }
+  .week-summary { color: var(--text2); margin: 0 0 1.4rem; font-size: 0.95rem; }
+  .item { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 0.7rem; transition: border-color 0.12s, transform 0.08s; }
+  .item:hover { border-color: var(--border2); }
+  .tag { display: inline-block; font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.18rem 0.5rem; border-radius: 4px; margin-bottom: 0.5rem; }
+  .tag.feature { background: rgba(74,222,128,0.12); color: var(--green); }
+  .tag.fix { background: rgba(248,113,113,0.12); color: var(--red); }
+  .tag.ui { background: rgba(129,140,248,0.15); color: var(--accent); }
+  .tag.infra { background: rgba(251,191,36,0.12); color: var(--amber); }
+  .item h3 { font-size: 0.98rem; font-weight: 600; margin: 0 0 0.35rem; color: var(--text); }
+  .item p { margin: 0; color: var(--text2); font-size: 0.88rem; line-height: 1.55; }
+  hr { border: none; border-top: 1px dashed var(--border); margin: 2.5rem 0; }
+  .legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.75rem; color: var(--text3); margin-bottom: 3rem; padding: 1rem 1.2rem; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+  .legend strong { color: var(--text); display: block; margin-bottom: 0.5rem; font-size: 0.85rem; }
+  .legend > div { display: flex; flex-direction: column; gap: 0.3rem; min-width: 140px; }
+  .legend .tag { margin: 0; }
+  .footer { color: var(--text4); font-size: 0.8rem; text-align: center; margin-top: 4rem; padding-top: 2rem; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="back" href="index.html">← Back to Posku</a>
+
+  <h1>What's <em>new</em></h1>
+  <p class="lede">
+    A plain-language history of how Posku has grown since launch on May 21, 2026.
+    Click any item to see what changed. Newest weeks at the bottom — the timeline
+    reads top-to-bottom like a project diary.
+  </p>
+
+  <div class="legend">
+    <div><strong>Tags</strong>
+      <span class="tag feature">feature</span>
+      <span class="tag fix">fix</span>
+      <span class="tag ui">ui</span>
+      <span class="tag infra">infra</span>
+    </div>
+    <div><strong>Legend</strong>
+      <span style="color:var(--text2);">feature — something new you can do</span>
+      <span style="color:var(--text2);">fix — something broken got fixed</span>
+      <span style="color:var(--text2);">ui — look and feel</span>
+      <span style="color:var(--text2);">infra — under-the-hood plumbing</span>
+    </div>
+  </div>
+
+  <!-- ── WEEK 1 ─────────────────────────────────────────────────────────── -->
+  <div class="week">
+    <div class="week-date">May 21 – 22, 2026 · Week 1</div>
+    <h2 class="week-title">The first version</h2>
+    <p class="week-summary">
+      Posku started as a single-page tool: paste an email, see loads, push SKUs
+      to the ERP. The first commits set up the dark theme, the drag-and-drop
+      surface, and a configurable ERP target.
+    </p>
+    <div class="item"><span class="tag feature">feature</span><h3>Single capture surface</h3><p>Replaced an earlier builder UI with one big paste / drag-and-drop area. You can paste an email body or drop a file (.eml, .txt) and it goes from there.</p></div>
+    <div class="item"><span class="tag ui">ui</span><h3>Light + dark themes</h3><p>Dark theme bumped for contrast, and a light off-white theme added for users who want it.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Configurable ERP target</h3><p>You can point pushes at different ERP environments instead of hard-coding one.</p></div>
+  </div>
+
+  <!-- ── WEEK 2 ─────────────────────────────────────────────────────────── -->
+  <div class="week">
+    <div class="week-date">May 25, 2026 · Week 2</div>
+    <h2 class="week-title">Wayfair parser + diagnostics</h2>
+    <p class="week-summary">
+      The real Wayfair flow landed: parse emails, preview SKUs, push them.
+      Outlook .msg support, supplier-aware architecture (so other suppliers
+      could be added later), and the first diagnostic page for debugging
+      bad pushes.
+    </p>
+    <div class="item"><span class="tag feature">feature</span><h3>Wayfair email → SKU push</h3><p>Phase 1 of the real flow: parse Wayfair load emails, preview the generated SKU, push to the ERP. FOB state, packing, condition, and manifest traits all start landing on the product.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Outlook .msg files</h3><p>Native .msg parser reads the full subject + body from Outlook files. .eml decoder added too, plus better detection of binary file payloads.</p></div>
+    <div class="item"><span class="tag infra">infra</span><h3>Supplier-aware architecture</h3><p>Reorganized internally as a registry pattern so each supplier is its own isolated bundle of rules. This is what later made Sam's, Harbor Freight, and Amazon possible as tabs.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Diagnostic page</h3><p>Full debug page for ERP push issues. Has gone through many shapes since — the current version shows the last push, what the server saved, and a known-good reference SKU for diffing.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Check IDs button</h3><p>Calls the ERP's dropdowns endpoint and validates that the trait IDs we send actually exist on that environment.</p></div>
+    <div class="item"><span class="tag fix">fix</span><h3>Push errors show inline</h3><p>Failed or duplicate loads now show their error under the row instead of vanishing silently.</p></div>
+  </div>
+
+  <!-- ── WEEK 3 ─────────────────────────────────────────────────────────── -->
+  <div class="week">
+    <div class="week-date">May 26, 2026 · Week 3</div>
+    <h2 class="week-title">Edit row, PO drafts, rules editor</h2>
+    <p class="week-summary">
+      More visibility per load: an expanded edit row that shows every field
+      being pushed, an always-visible chip strip beneath each row, and a
+      browser-local rules editor so power users can tweak Wayfair defaults
+      without redeploying.
+    </p>
+    <div class="item"><span class="tag feature">feature</span><h3>Full payload review per load</h3><p>The edit row expanded to show every field that would be pushed. Below each load row, a compact chip strip shows the same info inline.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Wayfair rules editor</h3><p>Tweak Wayfair-side defaults (supplier ID, store, condition mappings, etc.) directly in the browser. Saved locally so each user can override safely.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Purchase Order drafts</h3><p>After a SKU is pushed, you can draft a matching PO and push it in the same flow. Every "need PO" field from the official spec is supported.</p></div>
+  </div>
+
+  <!-- ── WEEK 4 ─────────────────────────────────────────────────────────── -->
+  <div class="week">
+    <div class="week-date">May 27, 2026 · Week 4</div>
+    <h2 class="week-title">Cloudflare + Sam's Club + Gmail inbox</h2>
+    <p class="week-summary">
+      Posku grew teeth this week. Moved to Cloudflare Pages so the API key
+      lives server-side instead of in browsers. Added the Sam's Club
+      supplier with auto-assigned SEQ numbers fetched from the ERP. And the
+      first version of Gmail inbox fetching — no more pasting emails by hand.
+    </p>
+    <div class="item"><span class="tag infra">infra</span><h3>Cloudflare Pages proxy</h3><p>The browser no longer sees the ERP API key. All /api calls go through a Cloudflare Pages Function that injects the key server-side. Same-origin, so no CORS headaches.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>TEST vs LIVE switch</h3><p>Toggle in the sidebar lets you point the app at the test ERP (viatrading.biz) or the live one (ops.viatrading.com). Test SKUs get a "-test" suffix automatically.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Sam's Club supplier</h3><p>Sam's joins Wayfair as a fully wired supplier. Tabs in the sidebar let you switch between them.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Auto-assigned Sam's SEQ</h3><p>When a Sam's email is parsed, the app fetches the current max SKU per club from the ERP and assigns the next sequence number. No more typing them in.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Gmail inbox fetcher</h3><p>Instead of copy-pasting emails, point the app at a Gmail label and date range — it pulls every matching message, runs the parsers, and pre-fills the loads table.</p></div>
+    <div class="item"><span class="tag infra">infra</span><h3>Rules in Cloudflare KV</h3><p>Per-supplier rules moved out of each browser's localStorage and into Cloudflare KV — a single shared source of truth across all users.</p></div>
+    <div class="item"><span class="tag ui">ui</span><h3>Dark mode default</h3><p>Dark navy interface ships as the default look.</p></div>
+  </div>
+
+  <!-- ── WEEK 5 ─────────────────────────────────────────────────────────── -->
+  <div class="week">
+    <div class="week-date">May 28, 2026 · Week 5</div>
+    <h2 class="week-title">Manifests, Drive, Sheets, sidebar redesign</h2>
+    <p class="week-summary">
+      The "Load Center" workflow showed up this week — Sam's CSV manifests
+      auto-attach to their loads from inbox fetches, then bulk-append to a
+      Google Sheet. Wayfair gained a Drive-based manifest browser. And the
+      whole app got a UI redesign: dark navy sidebar, brand-colored titles
+      per supplier, the Vicki Intelligence badge in the footer.
+    </p>
+    <div class="item"><span class="tag feature">feature</span><h3>Sam's manifest CSV → Load Center sheet</h3><p>The CSV attached to each Sam's email gets parsed, the items get transformed into Load Center rows, and one click appends them to the shared Sheet. Per-load button or bulk send-all.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Wayfair "Fetch manifests from Drive"</h3><p>New panel that searches Google Drive for Wayfair manifest spreadsheets by upload date and derives a SKU per filename.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Reset sheet headers</h3><p>Button that rewrites the Load Center sheet's header row — fixes the recurring "columns got out of sync" issue.</p></div>
+    <div class="item"><span class="tag ui">ui</span><h3>Sidebar + app-shell redesign</h3><p>Dark navy sidebar, cleaner main area, brand color tinting the page title per supplier (Wayfair purple, Sam's blue), favicon + Via Trading mark up top, Vicki Intelligence credit at the bottom.</p></div>
+    <div class="item"><span class="tag fix">fix</span><h3>Inbox date semantics</h3><p>The Gmail before:date filter is exclusive — the picker now shows inclusive labels and uses the right boundary so "today through today" actually returns today.</p></div>
+  </div>
+
+  <!-- ── WEEK 6 (CURRENT) ────────────────────────────────────────────────── -->
+  <div class="week current">
+    <div class="week-date">May 29 – 30, 2026 · Week 6 (this week)</div>
+    <h2 class="week-title">Push reliability, deeper diagnostics, UX polish</h2>
+    <p class="week-summary">
+      A huge debug push. We learned that the ERP was silently dropping
+      several fields because we were sending the wrong key names — and we
+      fixed every one of them. Drive fetches got smarter, the sidebar got a
+      collapse toggle and zoom buttons, and the diagnostic page can now
+      reveal exactly why an inbox fetch missed an attachment.
+    </p>
+
+    <div class="item"><span class="tag fix">fix</span><h3>Sam's push: 6 silently-dropped fields fixed</h3><p>The ERP was accepting our pushes with HTTP 201 but quietly ignoring several keys because they were named wrong. Corrected: <code>store_id → store</code>, <code>qty → unit_qty</code>, <code>price_per_unit → unit_price</code>, <code>packing</code> now takes the real trait id, <code>productType</code> matches the dropdowns id, and <code>56</code> (Load Center) moved out of <code>categories</code> into the new <code>groups</code> array. PRODUCTS_API.md in the repo root captures all of this for future-us.</p></div>
+
+    <div class="item"><span class="tag fix">fix</span><h3>Gmail inbox: 50-subrequest cap dropping attachments</h3><p>When fetching ~30 emails, Cloudflare Workers' hard 50-subrequest cap was silently killing about 20 of the CSV downloads. Split the attachment fetch into a separate endpoint and now each request stays well under the cap. All manifests come through.</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Drive manifests: "In loads?" + "In ERP?" columns</h3><p>Each Drive-fetched manifest now shows whether its SKU is already in the detected-loads table (so you can tell if email + Drive view the same load) and whether the SKU already exists in the ERP database (so duplicates don't get pushed).</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Type your own SKU for unrecognized rows</h3><p>For Drive manifest filenames the parser couldn't decode, you can now type a SKU in line. It's validated against the ERP — only SKUs that already exist are accepted, so you can't accidentally create a typo product.</p></div>
+
+    <div class="item"><span class="tag fix">fix</span><h3>Drive fetch by upload date</h3><p>The picker is labelled "Upload date" but was actually filtering on Drive's modified-time. Fixed to use createdTime so a freshly uploaded file shows up where you'd expect it.</p></div>
+
+    <div class="item"><span class="tag fix">fix</span><h3>"PerrisSmallParcel" no longer Unknown Location</h3><p>Filenames like "Liquidation Load 50653 PerrisSmallParcel.xlsx" used to flag as unknown because the location parser only did exact matches. Now strips warehouse-type suffixes (SmallParcel, LargeParcel, SP, LP, DC) and falls back to a prefix match — so the warehouse variants all map to the right city code.</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Drive fetch: empty-result reasons</h3><p>When "no manifests found" comes back empty, the message now tells you WHY: did Drive see no files at all (access issue), did it see files but the filter dropped them (filename mismatch), or did it see the right files but none matched a known tree (parser blind spot).</p></div>
+
+    <div class="item"><span class="tag fix">fix</span><h3>Sam's manifest: skip Tax / Linked-Fees pseudo-rows</h3><p>Some Sam's CSVs include a "Taxes and Linked Fees" line item that isn't real inventory. It's now filtered out of the sheet output, the load totals, and the SKU push.</p></div>
+
+    <div class="item"><span class="tag ui">ui</span><h3>Collapsible sidebar + button press feedback</h3><p>Tiny toggle in the sidebar top-left shrinks the menu to a 64-pixel icon strip. Every button now visibly responds to taps with a press animation and a brief ring flash — no more "did that click register?" moments on async actions.</p></div>
+
+    <div class="item"><span class="tag fix">fix</span><h3>Sidebar stays put on horizontal scroll</h3><p>When tables got wide enough to scroll horizontally, the whole sidebar used to scroll off-screen with the content. It's now position-fixed to the left edge.</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>One-tap zoom controls</h3><p>Three buttons in the sidebar — −, percentage, + — zoom the whole page in 10 steps from 60% to 200%. Persists across reloads. Ctrl/Cmd + and Cmd + 0 also work.</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Hide Push for duplicates; louder duplicate badge</h3><p>If a load's SKU already exists in the ERP, the row now shows a red "✗ duplicate in ERP" chip and no Push button. You can still Edit or remove it.</p></div>
+
+    <div class="item"><span class="tag ui">ui</span><h3>Modernized card headings + collapsible paste card</h3><p>Card titles switched to Inter with a left-side gradient accent bar. The "Paste or drop email" card is now collapsible and starts collapsed each session, since most workflows use Inbox or Drive fetch instead.</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Diagnostic page: deeper signals</h3><p>The diagnostic now shows the last push request/response, a follow-up GET of the saved product, a known-good reference SKU for diffing, the ERP dropdown lists, AND the last inbox-fetch summary (which loads got their CSV auto-attached and why the others didn't).</p></div>
+
+  </div>
+
+  <div class="footer">
+    Posku is built with vanilla JavaScript + Cloudflare Pages. Field mappings live in <code>PRODUCTS_API.md</code>. Source on GitHub at <code>alain-cyber/posku</code>.
+  </div>
+
+</div>
+</body>
+</html>
