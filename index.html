@@ -1467,9 +1467,11 @@ function transformSamsManifest(csvText, sku, clubCode) {
     // Closing "Total" row ends a section
     if (a === 'Total') { inItems = false; continue; }
     if (!inItems) continue;
-    // Skip the "Taxes and Linked Fees" pseudo-row (no real category / retail = NA)
+    // Skip Taxes / Linked Fees pseudo-rows. Sam's manifests inject these
+    // into the items list with category "NA" — they're not real inventory
+    // and must be excluded from sheet output, totals, and pricing.
     const desc = unwrapCell(r[1] || '');
-    if (/^Taxes and Linked Fees/i.test(desc)) continue;
+    if (/^\s*tax(es)?\b/i.test(desc) || /\blinked\s+fees?\b/i.test(desc)) continue;
 
     const subcat   = unwrapCell(r[5]);            // "Category description"
     const qty      = intToNum(r[6]) || 0;
