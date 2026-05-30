@@ -991,6 +991,11 @@ function applySamsRulesOverride(s) {
       if (Number.isFinite(n)) sms[k] = n;
     }
   });
+  // Migration: packingTrait used to be 203 (the live trait id for LTL) which
+  // doesn't exist in the test env's products_traits table, so writes were
+  // silently rejected. The correct test id from /api/products/dropdowns is 96.
+  // Replace any persisted 203 with 96 so the new default actually applies.
+  if (sms.packingTrait === 203) sms.packingTrait = 96;
   // Boolean fields
   if (typeof s.restrictPriceChange === 'boolean') sms.restrictPriceChange = s.restrictPriceChange;
   if (typeof s.taxable === 'boolean')             sms.taxable             = s.taxable;
@@ -1643,13 +1648,10 @@ function buildPayload(load) {
     lang_id:         1,
     slug:            finalSku.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
 
-    // Per dev: the API takes the packing NAME as input ($Packing) and the
-    // server-side code resolves it to the trait id via SQL:
-    //   SELECT pt.id FROM products_traits pt JOIN products_traits_type ptt
-    //     ON ptt.id = pt.type_id AND ptt.name = 'packing'
-    //     WHERE pt.name = '{$Packing}'
-    // So `packing` must be 'LTL' / 'Load' / 'Pallet' etc, not a numeric id.
-    packing:         sup.packingName || null,
+    // `packing` is inserted directly into INTEGER column product_trait_id
+    // on the create path (verified by SQL error 1366 when we tried the name).
+    // Server expects the trait id from /api/products/dropdowns.
+    packing:         sup.packingTrait,
     condition:       load.condTrait,
     manifested:      load.manifestTrait,
 
