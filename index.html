@@ -2719,6 +2719,7 @@ async function inboxFetch() {
     const blob = `${m.subject}\n\n${m.body || m.snippet}`;
     const found = parseEmail(blob, activeSupplier);
     const attachInfo = (m.attachments || []).map(a => ({ filename: a.filename, mimeType: a.mimeType, bytes: (a.text || '').length }));
+    const attachSkipped = m.attachmentsSkipped || [];
     const matches = {};  // per-load: which attachment did it pick?
     if (activeSupplier === 'SMS' && Array.isArray(m.attachments) && m.attachments.length) {
       for (const l of found) {
@@ -2738,6 +2739,7 @@ async function inboxFetch() {
       bodyLen: (m.body || '').length,
       snippetLen: (m.snippet || '').length,
       attachments: attachInfo,
+      attachmentsSkipped: attachSkipped,
       parsedCount: found.length,
       parsedManifests: found.map(l => l.loadId),
       csvMatches: matches,

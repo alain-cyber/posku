@@ -76,7 +76,7 @@ export async function onRequest(context) {
     if (!res.ok) return { id, error: `HTTP ${res.status}` };
     const m = await res.json();
     const headers = Object.fromEntries((m.payload?.headers || []).map(h => [h.name.toLowerCase(), h.value]));
-    const attachments = await fetchTextAttachments(m, id, accessToken);
+    const { attachments, attachmentsSkipped } = await fetchTextAttachments(m, id, accessToken);
     return {
       id,
       threadId: m.threadId,
@@ -85,7 +85,8 @@ export async function onRequest(context) {
       date:     headers.date || '',
       snippet:  m.snippet || '',
       body:     extractBody(m.payload),
-      attachments,  // [{ filename, mimeType, text }]
+      attachments,           // [{ filename, mimeType, text }]
+      attachmentsSkipped,    // [{ filename, reason, ... }] — empty if everything was fetched
     };
   }));
 
@@ -94,6 +95,8 @@ export async function onRequest(context) {
 
 // Walk the payload, find CSV/text attachments, download each, and return the
 // decoded text. Skips PDFs/images and anything > 1 MB to keep responses sane.
+// Surfaces per-attachment fetch failures (rate limiting, 4xx, etc.) under
+// `_skipped` so we can debug "why didn't this email's CSV come through".
 async function fetchTextAttachments(message, messageId, accessToken) {
   const parts = [];
   (function walk(p) {
@@ -103,20 +106,36 @@ async function fetchTextAttachments(message, messageId, accessToken) {
   })(message.payload);
 
   const out = [];
+  const skipped = [];
   for (const p of parts) {
     const isCsv = /\.csv$/i.test(p.filename) || (p.mimeType || '').includes('csv');
-    if (!isCsv) continue;
-    if ((p.body.size || 0) > 1_000_000) continue;
-    try {
-      const res = await fetch(`${GMAIL_BASE}/users/me/messages/${messageId}/attachments/${p.body.attachmentId}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!res.ok) continue;
-      const j = await res.json();
-      out.push({ filename: p.filename, mimeType: p.mimeType || 'text/csv', text: decodeBase64Url(j.data || '') });
-    } catch {}
+    if (!isCsv) { skipped.push({ filename: p.filename, reason: 'not csv', mimeType: p.mimeType }); continue; }
+    if ((p.body.size || 0) > 1_000_000) { skipped.push({ filename: p.filename, reason: 'oversize', size: p.body.size }); continue; }
+    // Retry once on 429 (Gmail rate-limit) — the original silent skip caused
+    // ~20/34 attachments to vanish in a burst fetch of recent SMS manifests.
+    let lastErr = null;
+    let fetched = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch(`${GMAIL_BASE}/users/me/messages/${messageId}/attachments/${p.body.attachmentId}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (res.ok) { fetched = await res.json(); break; }
+        lastErr = `HTTP ${res.status}`;
+        if (res.status === 429 || res.status >= 500) {
+          await new Promise(r => setTimeout(r, 300 + attempt * 500));
+          continue;
+        }
+        break;  // non-retryable status
+      } catch (e) {
+        lastErr = e.message || String(e);
+        await new Promise(r => setTimeout(r, 300 + attempt * 500));
+      }
+    }
+    if (!fetched) { skipped.push({ filename: p.filename, reason: 'fetch failed', error: lastErr }); continue; }
+    out.push({ filename: p.filename, mimeType: p.mimeType || 'text/csv', text: decodeBase64Url(fetched.data || '') });
   }
-  return out;
+  return { attachments: out, attachmentsSkipped: skipped };
 }
 
 function decodeBase64Url(data) {

@@ -102,6 +102,11 @@ async function run() {
         const atts = (p.attachments || []).map(a => `${a.filename}(${a.bytes || 0}b)`).join(', ') || '(none)';
         lines.push(`  · "${(p.subject || '').slice(0, 70)}"`);
         lines.push(`      from=${p.from || '—'}  body=${p.bodyLen}b  attachments=[${atts}]`);
+        if ((p.attachmentsSkipped || []).length) {
+          for (const s of p.attachmentsSkipped) {
+            lines.push(`      ⚠ skipped "${s.filename}" — ${s.reason}${s.error ? ` (${s.error})` : ''}${s.size ? ` size=${s.size}` : ''}`);
+          }
+        }
         lines.push(`      parsed loads: ${(p.parsedManifests || []).join(', ') || '(0)'}`);
         for (const [loadId, m] of Object.entries(p.csvMatches || {})) {
           lines.push(`        load ${loadId} → picked "${m.picked || '(none)'}" ${m.exact ? '(exact match)' : m.fallback ? '(FALLBACK to attachments[0])' : ''}`);
