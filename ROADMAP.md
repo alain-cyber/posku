@@ -1,35 +1,44 @@
 # Posku Roadmap
 
-## Current state (POC)
-- Static `index.html` running locally
-- User pastes/drops Wayfair load emails → parser generates SKUs
-- Manual "Push to ERP" via viatrading API from the browser
-- CORS bypass via Chrome `--disable-web-security` for testing
-- Dedicated API user `posku_api` (id 179) for audit trail
-- Branch: `claude/charming-newton-Z1q4t`
+> **For new sessions**: read [`HANDOVER.md`](HANDOVER.md) first for the current state.
+> This file is the historical roadmap + remaining wishlist.
 
-## Next phases
+## Current state (Live)
 
-### Phase 1 — Cloudflare hosting (in progress)
-- ✅ `functions/api/[[path]].js` Pages Function proxies `/api/*` → `viatrading.biz`, injects `VIA_API_KEY` secret
-- ✅ `index.html` + `diagnostic.html` auto-detect local-file vs hosted and swap API client accordingly
-- ⏳ Dashboard steps (one-time): connect repo, set `VIA_API_KEY` env var, enable Cloudflare Access — see `CLOUDFLARE_SETUP.md`
-- 🔜 Cloudflare Access (Zero Trust) — Google OAuth, viatrading group allowlist
+Hosted on Cloudflare Pages with full server-side proxy, KV-backed shared rules,
+Gmail/Drive/Sheets/BigQuery integrations, and the three-stage push pipeline
+end-to-end:
 
-### Phase 2 — Gmail auto-intake
-- User applies a Gmail label (e.g. `posku-intake`) to Wayfair load emails
-- Worker (cron-triggered or Gmail Pub/Sub push) pulls labeled emails
-- Auto-parses each → generates SKU candidates
-- Confident parses → queue for one-click confirm
-- Ambiguous parses → flag for manual fix
-- After processing → relabel to `posku-processed` (so we don't re-process)
+- **SKU push** — Wayfair + Sam's Club. Parses inbox emails or pasted text → generates SKUs → `POST /api/products`.
+- **PO push** — bulk-select pushed SKUs → drafts → `POST /api/purchase-orders`.
+- **Invoice push** — bulk-select pushed SKUs → per-customer drafts → `POST /api/orders`. Customer picker via BigQuery typeahead.
 
-### Phase 3 — Purchase Order generation
-- After SKU is pushed to ERP, prompt user to generate a Purchase Order for that SKU
-- Likely another viatrading API endpoint — capture the curl when ready
-- Pre-fill PO with what we already know: SKU, supplier, FOB, pallet count
+Per-load progress visible as a 3-stage strip: **SKU · PO · INV**. TEST/LIVE
+master toggle routes every API call to viatrading.biz or ops.viatrading.com.
 
-## Wayfair markup table (from Alain 2026-05-28)
+## In flight / blocked
+
+| Item | Status | Notes |
+|---|---|---|
+| BigQuery IAM grants for customer search | ⏳ pending user | `roles/bigquery.jobUser` + `roles/bigquery.dataViewer` on the SA — see CLOUDFLARE_SETUP.md step 8 |
+| ERP invoice response shape (which field is the new invoice id) | ⏳ pending user | Posku sniffs `newOrderId / newId / id / order_id` until locked |
+| `payments[]` semantics for unpaid invoices | ⏳ pending ERP team | Always `[]` in v1 |
+| Customer search API endpoint | ⏳ pending ERP team | Using BigQuery `customers_flat` as a temp bridge |
+| "Presold" data signal on loads | ⏳ pending user direction | Would add a "presold" chip + gate the Invoice button |
+| App rename | ⏳ pending user pick | Shortlist in HANDOVER.md; user has not chosen yet |
+
+## Future ideas (no work scheduled)
+
+- Auto-cron the Gmail intake (today it's user-triggered via the Fetch button)
+- Harbor Freight + Amazon suppliers (sidebar slots already exist, marked "soon")
+- Per-rep dashboards (the Vicki Intelligence panel does this server-side already)
+- One-click "reprice all" using a fresh markup table import
+
+---
+
+## Historical reference
+
+### Wayfair markup table (from Alain 2026-05-28)
 
 Per-location × per-type. LQ is the only universally-applied 11.5%; everything else
 varies. Salvage is a **flat $3,000 per load** (not a percentage).
@@ -49,26 +58,10 @@ varies. Salvage is a **flat $3,000 per load** (not a percentage).
 | Houston, TX | `HTX` (TBC) | — | 10.5% | — | — | — | 12.5% | |
 | West Palm Beach, FL | `WPB` (TBC) | — | 10.5% | — | — | — | 12.5% | |
 
-**To do tomorrow when the CSVs arrive:**
-- Add `HTX` + `WPB` to `SUPPLIERS.WYF.fobIds` / `fobNames` / `locations` (confirm codes with user)
-- Add `Perigold` (proposed code `PG`) to `SUPPLIERS.WYF.types` with detection patterns
-- Salvage parser: emit one row at $3,000, no line items
-- Build the actual line-item parser for LQ / A / QC / HDO / Perigold using the markup table above
+### Notes carried from older sessions
 
-## Training items (carried from session 2026-05-28)
-- **Sam's manifest → product fields**: when manifest is attached at SKU-push, populate
-  `qty`, `retail_price`, `retail_price_per_unit`, `price_per_unit` using
-  `qty = sum(Qty)`, `retail_price = sum(Appx. EXT Retail)`,
-  `retail_price_per_unit = retail / qty`, `price_per_unit = sum(Your EXT) / qty`.
-  User will train on exact field names + math next session.
-- **Wayfair manifest → product fields**: at Drive-fetch time, also push `pallets_qty`,
-  `qty`, `retail_price`, `retail_price_per_unit`, `price_per_unit`, plus probably
-  `price_per_pallet` and a couple others. Confirm full set with user.
-- **HDO/Perigold SKU naming** — confirmed for now to keep the load ID as-is in the
-  SKU (e.g. `WYFCIHDO8127`, `WYFHTXPG8133`). Re-confirm with user before going live.
 - **SKU↔manifest match confidence** — must be 100% before writing to ERP. If the
   derived SKU isn't found in the ERP, flag for manual review; never auto-write
-  uncertain data.
-- **Wayfair fetch date filter** — both "SKU created on" and "manifest uploaded on"
-  options will be exposed. Default to "uploaded today" since that's the trigger
-  most days.
+  uncertain data. (Tracked via the Drive manifests "In ERP?" column.)
+- **HDO/Perigold SKU naming** — confirmed: keep the load ID as-is in the SKU
+  (e.g. `WYFCIHDO8127`, `WYFHTXPG8133`). Re-confirm before going live.

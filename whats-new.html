@@ -207,8 +207,35 @@
 
   </div>
 
+  <!-- ── WEEK 7 (CURRENT) ────────────────────────────────────────────────── -->
+  <div class="week current">
+    <div class="week-date">May 30, 2026 · Week 7 (this week)</div>
+    <h2 class="week-title">Customer invoices end-to-end</h2>
+    <p class="week-summary">
+      The big feature: Posku can now bill customers for presold loads. After a
+      SKU is pushed, you select one or more loads, the app pre-fills a customer
+      from a rule or lets you type-ahead one from the warehouse, and the
+      invoice goes to the ERP via the same env-aware proxy. Plus a stack of
+      smaller polish items.
+    </p>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Invoice flow — drafts, customer typeahead, push</h3><p>Selected pushed SKUs become draft invoices, grouped automatically by customer. Each draft is fully editable — header dropdowns, line qty/price, shipping cost, tax rate, notes — and pushes to <code>POST /api/orders</code> via the existing env-aware proxy. Successful pushes trigger the gamification HUD with a "+N invoiced" floater.</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>"Unique invoice" per load + auto-grouping</h3><p>Each pushed load has a per-row checkbox (default checked). Checked → that load gets its own invoice. Unchecked → it clusters with other un-unique loads going to the same customer. The header shows the predicted draft count live as you toggle, so you know exactly how many cards you'll get before clicking Generate.</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Customer typeahead (BigQuery)</h3><p>Type 2+ characters of an email or name → results dropdown with email, name, company, customer id. Matches ranked by exact email > prefix > contains > name > company. Picking auto-fills the billing + shipping address blocks. Recent picks are cached as one-tap chips. Temporary bridge over BigQuery <code>customers_flat</code> until the ERP team exposes a REST endpoint.</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Default invoice customer in the rules editor</h3><p>Sam's rules editor gained a "Default invoice customer per location" table. Wayfair's gained "per location + type". Fill in a row, save → next time you generate an invoice draft from a matching load, the customer field is pre-filled.</p></div>
+
+    <div class="item"><span class="tag ui">ui</span><h3>SKU · PO · INV tri-chip status strip</h3><p>Successfully pushed loads now show a three-segment status strip — <code>[ SKU ✓ | PO ✓ | INV — ]</code> — so a glance tells you exactly how far each load has progressed through the pipeline. Icons: ✓ done · … in flight · ✗ failed · — not started.</p></div>
+
+    <div class="item"><span class="tag ui">ui</span><h3>All three workflow cards collapsible</h3><p>Detected loads, PO drafts, and Invoice drafts each have a chevron in their header — click to collapse or expand independently. The action buttons in each header stay clickable; only the title triggers the toggle.</p></div>
+
+    <div class="item"><span class="tag fix">fix</span><h3>Customer typeahead surfaces real errors</h3><p>The picker used to swallow every failure and show "no matches" no matter what. Now a failed lookup shows the actual reason inline — auth, IAM, network, whatever — so it takes seconds to tell "no customers matched" apart from "needs IAM grant" apart from "Pages function not deployed yet".</p></div>
+  </div>
+
   <div class="footer">
-    Posku is built with vanilla JavaScript + Cloudflare Pages. Field mappings live in <code>PRODUCTS_API.md</code>. Source on GitHub at <code>alain-cyber/posku</code>.
+    Posku is built with vanilla JavaScript + Cloudflare Pages. Field mappings live in <code>PRODUCTS_API.md</code> and <code>ORDERS_API.md</code>. Source on GitHub at <code>alain-cyber/posku</code>.
   </div>
 
 </div>

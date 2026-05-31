@@ -124,6 +124,47 @@ that's then exported to Excel and imported into the Load Center.
 To verify: from the app, attach a Sam's manifest CSV to a SMS load → click
 **Send to Sheet**. Watch the sheet for the rows to appear.
 
+### 8. BigQuery access for the customer typeahead
+
+The invoice draft's customer picker reads `data-warehouse-494801.alain_via_erp.customers_flat`
+for typeahead + billing/shipping address pre-fill. The same service account from steps 6 + 7
+is used (`GMAIL_SA_*` env vars) but **without** Workspace impersonation — BigQuery uses the
+SA acting as itself, so the IAM grants happen in GCP, not in Workspace admin.
+
+Grant two roles to the SA in the GCP IAM:
+
+```bash
+SA="posku-gmail-reader@data-warehouse-494801.iam.gserviceaccount.com"  # GMAIL_SA_EMAIL
+
+gcloud projects add-iam-policy-binding data-warehouse-494801 \
+  --member="serviceAccount:${SA}" \
+  --role="roles/bigquery.jobUser"
+
+bq add-iam-policy-binding \
+  --member="serviceAccount:${SA}" \
+  --role="roles/bigquery.dataViewer" \
+  data-warehouse-494801:alain_via_erp
+```
+
+Or via Console:
+
+1. **IAM page** → https://console.cloud.google.com/iam-admin/iam?project=data-warehouse-494801
+   - Grant access → New principal = the SA email → Role = **BigQuery Job User**.
+2. **BigQuery dataset** → https://console.cloud.google.com/bigquery?project=data-warehouse-494801
+   - Open `alain_via_erp` → Sharing → Permissions → Add principal = the SA email
+   - Role = **BigQuery Data Viewer**.
+
+No redeploy needed — Pages re-mints the access token on every request and picks up the new
+IAM grants immediately.
+
+To verify: open Posku, push a SKU, generate an invoice draft, start typing in the customer
+field. Matches should appear within ~300 ms. If the dropdown says `lookup failed — Access
+Denied`, the IAM grant didn't take (or you granted to the wrong SA).
+
+This whole step is temporary: the ERP team is expected to expose a proper `/api/customers`
+search endpoint at some point, after which Posku will swap to that and the BigQuery IAM
+grants become irrelevant.
+
 ## How the code is wired
 
 | Concern | Local file mode (`file://`) | Cloudflare Pages mode |
