@@ -757,29 +757,39 @@ textarea::placeholder { color: var(--text4); }
     </div>
 
     <!-- PO drafts section -->
-    <div class="card" id="po-section" style="display:none;">
+    <div class="card collapsible" id="po-section" style="display:none;">
       <div class="loads-header">
-        <div class="loads-title">PO drafts <span class="hint" style="margin-left:0.5rem;">edit fields, then push individually or all at once</span></div>
+        <div class="loads-title" data-card-toggle style="cursor:pointer;display:flex;align-items:center;gap:0.5rem;">
+          <span class="card-toggle" aria-label="Toggle PO drafts">▾</span>
+          PO drafts <span class="hint" style="margin-left:0.5rem;">edit fields, then push individually or all at once</span>
+        </div>
         <div class="btn-row" style="margin-top:0;">
           <button class="btn" id="push-all-pos-btn">Push all draft POs</button>
           <button class="btn ghost" id="clear-pos-btn">Clear drafts</button>
         </div>
       </div>
-      <div id="po-list"></div>
-      <div id="po-status" class="status" style="margin-top:1rem;"></div>
+      <div class="card-body">
+        <div id="po-list"></div>
+        <div id="po-status" class="status" style="margin-top:1rem;"></div>
+      </div>
     </div>
 
     <!-- Invoice drafts section -->
-    <div class="card" id="inv-section" style="display:none;">
+    <div class="card collapsible" id="inv-section" style="display:none;">
       <div class="loads-header">
-        <div class="loads-title">Invoice drafts <span class="hint" style="margin-left:0.5rem;">one customer per draft — edit and push individually or all at once</span></div>
+        <div class="loads-title" data-card-toggle style="cursor:pointer;display:flex;align-items:center;gap:0.5rem;">
+          <span class="card-toggle" aria-label="Toggle invoice drafts">▾</span>
+          Invoice drafts <span class="hint" style="margin-left:0.5rem;">one customer per draft — edit and push individually or all at once</span>
+        </div>
         <div class="btn-row" style="margin-top:0;">
           <button class="btn" id="push-all-invs-btn">Push all invoices</button>
           <button class="btn ghost" id="clear-invs-btn">Clear drafts</button>
         </div>
       </div>
-      <div id="inv-list"></div>
-      <div id="inv-status" class="status" style="margin-top:1rem;"></div>
+      <div class="card-body">
+        <div id="inv-list"></div>
+        <div id="inv-status" class="status" style="margin-top:1rem;"></div>
+      </div>
     </div>
   </div>
 </main>
