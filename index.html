@@ -2719,18 +2719,20 @@ function updatePoActionRow() {
   row.style.display = 'flex';
   $('select-count').textContent = selCount
     ? `${selCount} of ${pushedCount} pushed SKUs selected`
-    : `Select pushed SKUs to generate POs (${pushedCount} available)`;
+    : `Select pushed SKUs to generate POs / invoices (${pushedCount} available)`;
   $('generate-po-btn').disabled = selCount === 0;
   // sync select-all
   $('select-all').checked = pushedCount > 0 && selCount === pushedCount;
 
   // Update invoice button: show predicted draft count for current selection.
+  // Stays VISIBLE but disabled when nothing's selected (mirrors the PO button)
+  // so the invoice option never vanishes once there are pushed loads.
   const invBtn = $('generate-inv-btn');
   if (invBtn) {
     const previewCount = previewInvoiceGroups().length;
     $('inv-count').textContent = previewCount;
     invBtn.disabled = selCount === 0;
-    invBtn.style.display = selCount === 0 ? 'none' : '';
+    invBtn.style.display = '';
     const refreshBtn = $('refresh-inv-btn');
     if (refreshBtn) refreshBtn.style.display = selCount === 0 ? 'none' : '';
   }
@@ -3898,8 +3900,9 @@ function generatePoDrafts() {
   const existing = new Set(poDrafts.map(p => p.loadId + '|' + p.sku));
   const added = selected.filter(l => !existing.has(l.loadId + '|' + l.sku));
   added.forEach(l => poDrafts.push(createDraftFromLoad(l)));
-  // unselect after adding
-  selected.forEach(l => l.selected = false);
+  // Keep the selection so the same loads flow straight into invoice drafts —
+  // the invoice button reads the current selection too. (Dedup of PO drafts is
+  // handled by the `existing` set above, so we don't need to deselect here.)
   $('po-section').style.display = '';
   renderLoads();
   renderPoDrafts();
