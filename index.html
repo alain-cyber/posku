@@ -4769,14 +4769,20 @@ document.querySelectorAll('[data-supplier]').forEach(tab => {
     if (tab.disabled) return;
     const next = tab.dataset.supplier;
     if (next === activeSupplier) return;
-    // Clear loads when switching suppliers to avoid cross-supplier confusion
-    if (loads.length) {
-      if (!confirm('Switch to ' + (SUPPLIERS[next]?.label || next) + '? This will clear the current loads list.')) {
+    // Clear loads + any open drafts when switching suppliers so SMS drafts
+    // never bleed into the Wayfair view (and vice-versa).
+    const hasState = loads.length || poDrafts.length || invoiceDrafts.length;
+    if (hasState) {
+      if (!confirm('Switch to ' + (SUPPLIERS[next]?.label || next) + '? This will clear the current loads and any draft POs / invoices.')) {
         return;  // user canceled — keep current tab + loads
       }
       loads = [];
       $('loads-section').style.display = 'none';
       clearStatus($('push-status'));
+      poDrafts = [];
+      $('po-section').style.display = 'none';
+      invoiceDrafts = [];
+      $('inv-section').style.display = 'none';
     }
     activeSupplier = next;
     applySupplierUI();
