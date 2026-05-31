@@ -91,18 +91,6 @@ body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-seri
 .sidebar-collapsed .hud-lbl { display: none; }
 .sidebar-collapsed .hud-num { font-size: 0.85rem; }
 
-/* Per-stage breakdown strip under the sum HUD */
-.hud-stages { margin: -0.6rem 0.7rem 1rem; padding: 0.45rem 0.4rem; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.3rem; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; }
-.hud-stage { display: flex; flex-direction: column; align-items: center; min-width: 0; cursor: default; }
-.hud-snum { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 0.85rem; line-height: 1; color: #c9d3e2; transition: transform 0.2s, color 0.2s; }
-.hud-slbl { font-family: 'DM Mono', monospace; font-size: 0.46rem; letter-spacing: 0.08em; text-transform: uppercase; color: #5d6a82; margin-top: 0.22rem; }
-.hud-stage[data-stage="sku"]      .hud-snum { color: #4ade80; }
-.hud-stage[data-stage="manifest"] .hud-snum { color: #22d3ee; }
-.hud-stage[data-stage="po"]       .hud-snum { color: #818cf8; }
-.hud-stage[data-stage="invoice"]  .hud-snum { color: #fbbf24; }
-.hud-snum.pop { animation: hud-pop 0.5s cubic-bezier(.34,1.56,.64,1); }
-.sidebar-collapsed .hud-stages { grid-template-columns: 1fr 1fr; gap: 0.25rem; margin: -0.4rem 0.3rem 0.8rem; padding: 0.3rem 0.2rem; }
-
 /* Floating "+N" text spawned at the push site */
 .push-float { position: fixed; pointer-events: none; font-family: 'Inter', sans-serif; font-weight: 700; font-size: 1.1rem; color: #4ade80; text-shadow: 0 2px 8px rgba(0,0,0,0.4); z-index: 9999; animation: push-float-up 1s cubic-bezier(.25,.8,.5,1) forwards; }
 @keyframes push-float-up {
@@ -533,9 +521,8 @@ textarea::placeholder { color: var(--text4); }
       </div>
     </div>
 
-    <!-- Push HUD — top strip is the SUM across all stages; the row below
-         breaks it out per pipeline stage (SKU · manifest · PO · invoice). -->
-    <div class="push-hud" id="push-hud" title="Total pushes today · current streak · all-time (all stages)">
+    <!-- Push HUD — gamified counters: today, streak, total. -->
+    <div class="push-hud" id="push-hud" title="Pushes today · current streak · all-time">
       <div class="hud-stat hud-today">
         <span class="hud-num" id="hud-today">0</span>
         <span class="hud-lbl">today</span>
@@ -548,14 +535,6 @@ textarea::placeholder { color: var(--text4); }
         <span class="hud-num" id="hud-total">0</span>
         <span class="hud-lbl">all-time</span>
       </div>
-    </div>
-    <!-- Per-stage breakdown. Big number = that stage's all-time count; today
-         is in the tooltip. Each bumps independently when its stage is pushed. -->
-    <div class="hud-stages" id="hud-stages">
-      <div class="hud-stage" data-stage="sku"      title="SKU pushes"><span class="hud-snum" id="hud-sku">0</span><span class="hud-slbl">SKU</span></div>
-      <div class="hud-stage" data-stage="manifest" title="Manifest sends"><span class="hud-snum" id="hud-manifest">0</span><span class="hud-slbl">MAN</span></div>
-      <div class="hud-stage" data-stage="po"       title="Purchase orders"><span class="hud-snum" id="hud-po">0</span><span class="hud-slbl">PO</span></div>
-      <div class="hud-stage" data-stage="invoice"  title="Invoices"><span class="hud-snum" id="hud-invoice">0</span><span class="hud-slbl">INV</span></div>
     </div>
 
     <div class="sidebar-section">
@@ -707,6 +686,29 @@ textarea::placeholder { color: var(--text4); }
     <div id="mfetch-results" style="margin-top:0.6rem;"></div>
   </div>
 
+  <!-- Input card — collapsible, defaults to closed so it doesn't dominate
+       the layout when the user is mostly using inbox-fetch or drive-fetch. -->
+  <div class="card input-card collapsible collapsed" id="drop-card">
+    <div class="card-header-row" data-card-toggle>
+      <div>
+        <div class="card-title">Paste or drop email</div>
+        <div class="card-sub" id="input-card-sub">One or multiple Wayfair load emails at once</div>
+      </div>
+      <span class="card-toggle">▾</span>
+    </div>
+    <div class="card-body">
+      <textarea id="email-input" placeholder="Paste email body here, or drag and drop a .eml / .txt file onto this card…"></textarea>
+      <div class="hint">Tip: paste the email body, or drop a <strong>.eml</strong>, <strong>.txt</strong>, or Outlook <strong>.msg</strong> file.</div>
+      <div class="btn-row">
+        <button class="btn" id="parse-btn">Parse loads</button>
+        <button class="btn ghost" id="clear-input-btn">Clear</button>
+        <input type="file" id="file-input" multiple accept=".eml,.txt,.msg" style="display:none">
+        <button class="btn ghost" id="pick-file-btn">Pick file</button>
+      </div>
+      <div id="parse-status" class="status"></div>
+    </div>
+  </div>
+
   <!-- Loads section -->
   <div id="loads-section" style="display:none;">
     <div class="card collapsible" id="loads-card">
@@ -745,18 +747,12 @@ textarea::placeholder { color: var(--text4); }
           </table>
         </div>
         <div id="push-status" class="status" style="margin-top:1rem;"></div>
-      </div>
-    </div>
-
-    <!-- Stage actions — generate PO / invoice drafts. Kept OUTSIDE the loads
-         card body so they stay reachable even when the loads table is
-         collapsed (otherwise these buttons vanish with the table). -->
-    <div class="card" id="stage-actions-card" style="display:none;">
-      <div class="btn-row" id="po-action-row" style="margin-top:0;">
-        <button class="btn" id="generate-po-btn">Generate PO drafts from selected</button>
-        <button class="btn ghost" id="generate-inv-btn">Generate <span id="inv-count">0</span> invoice draft(s)</button>
-        <button class="btn ghost" id="refresh-inv-btn" title="Recompute the invoice grouping after toggling unique-invoice flags">↻ Refresh grouping</button>
-        <span class="hint" id="select-count" style="margin-left:0.5rem;"></span>
+        <div class="btn-row" id="po-action-row" style="margin-top:1rem;display:none;">
+          <button class="btn" id="generate-po-btn">Generate PO drafts from selected</button>
+          <button class="btn ghost" id="generate-inv-btn">Generate <span id="inv-count">0</span> invoice draft(s)</button>
+          <button class="btn ghost" id="refresh-inv-btn" title="Recompute the invoice grouping after toggling unique-invoice flags">↻ Refresh grouping</button>
+          <span class="hint" id="select-count" style="margin-left:0.5rem;"></span>
+        </div>
       </div>
     </div>
 
@@ -794,30 +790,6 @@ textarea::placeholder { color: var(--text4); }
         <div id="inv-list"></div>
         <div id="inv-status" class="status" style="margin-top:1rem;"></div>
       </div>
-    </div>
-  </div>
-
-  <!-- Input card — moved to the bottom (per request): manual paste/drop is the
-       fallback path now that inbox-fetch + drive-fetch are the main intake.
-       Collapsible, defaults closed so it doesn't dominate the layout. -->
-  <div class="card input-card collapsible collapsed" id="drop-card">
-    <div class="card-header-row" data-card-toggle>
-      <div>
-        <div class="card-title">Paste or drop email</div>
-        <div class="card-sub" id="input-card-sub">One or multiple Wayfair load emails at once</div>
-      </div>
-      <span class="card-toggle">▾</span>
-    </div>
-    <div class="card-body">
-      <textarea id="email-input" placeholder="Paste email body here, or drag and drop a .eml / .txt file onto this card…"></textarea>
-      <div class="hint">Tip: paste the email body, or drop a <strong>.eml</strong>, <strong>.txt</strong>, or Outlook <strong>.msg</strong> file.</div>
-      <div class="btn-row">
-        <button class="btn" id="parse-btn">Parse loads</button>
-        <button class="btn ghost" id="clear-input-btn">Clear</button>
-        <input type="file" id="file-input" multiple accept=".eml,.txt,.msg" style="display:none">
-        <button class="btn ghost" id="pick-file-btn">Pick file</button>
-      </div>
-      <div id="parse-status" class="status"></div>
     </div>
   </div>
 </main>
@@ -2019,16 +1991,6 @@ function buildPayload(load) {
 // particle burst from the click site plus a floating "+1" and bumps the
 // counters. Streak milestones (5, 10, 25, 50, 100) trigger a centered toast.
 const STATS_KEY = 'posku.stats.v1';
-
-// Pipeline stages we gamify. Each tracks its own today/all-time counts; the
-// top HUD strip shows the SUM across all of them. Order = pipeline order.
-const STAGES = {
-  sku:      { label: 'SKU' },
-  manifest: { label: 'MAN' },
-  po:       { label: 'PO'  },
-  invoice:  { label: 'INV' },
-};
-
 const MILESTONES = {
   streak: {
     5:   { title: '🎯 5 in a row',          sub: 'Keep the chain alive' },
@@ -2057,32 +2019,11 @@ function saveStats(s) { try { localStorage.setItem(STATS_KEY, JSON.stringify(s))
 
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 
-function blankStages() {
-  const o = {};
-  for (const k of Object.keys(STAGES)) o[k] = { today: 0, allTime: 0 };
-  return o;
-}
-function sumToday(s)   { return Object.keys(STAGES).reduce((n, k) => n + (s.stages?.[k]?.today   || 0), 0); }
-function sumAllTime(s) { return Object.keys(STAGES).reduce((n, k) => n + (s.stages?.[k]?.allTime || 0), 0); }
-
 function getStats() {
-  const raw = loadStats();
-  let s;
-  if (raw.stages) {
-    s = raw;
-  } else {
-    // Migrate v1 (flat pushedToday/pushedAllTime) → per-stage shape. The old
-    // unified counter only ever counted SKU/mixed pushes, so fold it into SKU.
-    s = { lastPushDate: raw.lastPushDate, currentStreak: raw.currentStreak || 0, bestStreak: raw.bestStreak || 0, stages: blankStages() };
-    s.stages.sku.today   = raw.pushedToday   || 0;
-    s.stages.sku.allTime = raw.pushedAllTime || 0;
-  }
-  // Ensure every known stage exists (forward-compatible if we add stages).
-  for (const k of Object.keys(STAGES)) s.stages[k] = s.stages[k] || { today: 0, allTime: 0 };
-  // Daily reset of the per-stage "today" counts.
-  if (s.lastPushDate !== todayStr()) {
-    for (const k of Object.keys(STAGES)) s.stages[k].today = 0;
-  }
+  const s = loadStats();
+  if (s.lastPushDate !== todayStr()) s.pushedToday = 0;
+  s.pushedToday   = s.pushedToday   || 0;
+  s.pushedAllTime = s.pushedAllTime || 0;
   s.currentStreak = s.currentStreak || 0;
   s.bestStreak    = s.bestStreak    || 0;
   return s;
@@ -2090,38 +2031,30 @@ function getStats() {
 
 function renderHud() {
   const s = getStats();
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-  set('hud-today', sumToday(s));   // SUM across all stages
-  set('hud-total', sumAllTime(s));
+  const today = document.getElementById('hud-today');
+  const total = document.getElementById('hud-total');
   const streak = document.getElementById('hud-streak');
   const streakWrap = document.getElementById('hud-streak-wrap');
+  if (today) today.textContent = s.pushedToday;
+  if (total) total.textContent = s.pushedAllTime;
   if (streak && streakWrap) {
     streak.textContent = s.currentStreak;
     streakWrap.style.display = s.currentStreak >= 2 ? '' : 'none';
   }
-  // Per-stage breakdown: show all-time, with today in the tooltip.
-  for (const k of Object.keys(STAGES)) {
-    const el = document.getElementById('hud-' + k);
-    if (!el) continue;
-    el.textContent = s.stages[k].allTime;
-    el.parentElement?.setAttribute('title', `${STAGES[k].label}: ${s.stages[k].today} today · ${s.stages[k].allTime} all-time`);
-  }
 }
 
-// Bump counters on a successful push of the given stage ('sku' | 'manifest' |
-// 'po' | 'invoice'). Returns the new stats so the caller can key effects off
-// the deltas. Streak is shared across all stages.
-function recordPushSuccess(stage = 'sku') {
+// Bump counters on a successful push. Returns the new stats so the caller can
+// fire visual effects keyed off the deltas.
+function recordPushSuccess() {
   const s = getStats();
-  if (!s.stages[stage]) s.stages[stage] = { today: 0, allTime: 0 };
-  s.stages[stage].today   += 1;
-  s.stages[stage].allTime += 1;
+  s.pushedToday   += 1;
+  s.pushedAllTime += 1;
   s.currentStreak += 1;
   if (s.currentStreak > s.bestStreak) s.bestStreak = s.currentStreak;
   s.lastPushDate = todayStr();
   saveStats(s);
   renderHud();
-  bounceHudNums(stage);
+  bounceHudNums();
   return s;
 }
 
@@ -2133,10 +2066,8 @@ function recordPushFailure() {
   renderHud();
 }
 
-function bounceHudNums(stage) {
-  const ids = ['hud-today', 'hud-total', 'hud-streak'];
-  if (stage) ids.push('hud-' + stage);  // also pop that stage's number
-  ids.forEach(id => {
+function bounceHudNums() {
+  ['hud-today', 'hud-total', 'hud-streak'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.classList.remove('pop');
@@ -2216,20 +2147,10 @@ function celebratePush(originEl, count, statsBefore) {
     }
     return null;
   };
-  // today/total milestones key off the SUM across all stages.
   const ms = crossed(MILESTONES.streak, statsBefore.currentStreak, s.currentStreak)
-          || crossed(MILESTONES.today,  sumToday(statsBefore),   sumToday(s))
-          || crossed(MILESTONES.total,  sumAllTime(statsBefore), sumAllTime(s));
+          || crossed(MILESTONES.today,  statsBefore.pushedToday,   s.pushedToday)
+          || crossed(MILESTONES.total,  statsBefore.pushedAllTime, s.pushedAllTime);
   if (ms) showMilestone(ms.info.title, ms.info.sub);
-}
-
-// Convenience for a single-item push (one draft / one manifest / one PO /
-// one invoice): snapshot stats, record one success for `stage`, and fire the
-// celebration from originEl. Same gamification the SKU push uses, count = 1.
-function gamifyOnePush(originEl, stage = 'sku') {
-  const before = getStats();
-  recordPushSuccess(stage);
-  celebratePush(originEl, 1, before);
 }
 
 // Compact inbox-fetch diagnostic, surfaced on /diagnostic so I can debug
@@ -2392,12 +2313,10 @@ function attachSamsManifestHandlers() {
         if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
         load.manifestSentTo = j.updatedRange || j.tab || 'Sheet';
         load.manifestExpanded = false;
-        gamifyOnePush(b, 'manifest');
         renderLoads();
       } catch (err) {
         b.disabled = false; b.textContent = 'Send to Sheet';
         load.manifestError = `Send failed: ${err.message}`;
-        recordPushFailure();
         renderLoads();
       }
     };
@@ -2713,26 +2632,22 @@ function updatePoActionRow() {
   const pushedCount = loads.filter(l => l.status === 'done').length;
   const selCount = loads.filter(l => l.status === 'done' && l.selected).length;
   const row = $('po-action-row');
-  const card = $('stage-actions-card');
-  if (pushedCount === 0) { if (card) card.style.display = 'none'; return; }
-  if (card) card.style.display = '';
+  if (pushedCount === 0) { row.style.display = 'none'; return; }
   row.style.display = 'flex';
   $('select-count').textContent = selCount
     ? `${selCount} of ${pushedCount} pushed SKUs selected`
-    : `Select pushed SKUs to generate POs / invoices (${pushedCount} available)`;
+    : `Select pushed SKUs to generate POs (${pushedCount} available)`;
   $('generate-po-btn').disabled = selCount === 0;
   // sync select-all
   $('select-all').checked = pushedCount > 0 && selCount === pushedCount;
 
   // Update invoice button: show predicted draft count for current selection.
-  // Stays VISIBLE but disabled when nothing's selected (mirrors the PO button)
-  // so the invoice option never vanishes once there are pushed loads.
   const invBtn = $('generate-inv-btn');
   if (invBtn) {
     const previewCount = previewInvoiceGroups().length;
     $('inv-count').textContent = previewCount;
     invBtn.disabled = selCount === 0;
-    invBtn.style.display = '';
+    invBtn.style.display = selCount === 0 ? 'none' : '';
     const refreshBtn = $('refresh-inv-btn');
     if (refreshBtn) refreshBtn.style.display = selCount === 0 ? 'none' : '';
   }
@@ -2881,7 +2796,7 @@ async function doPush(indices) {
       load.productId = result.erpId;
       load.erpResult = `ERP id: ${result.erpId ?? 'n/a'}`;
       okCount++;
-      recordPushSuccess('sku');
+      recordPushSuccess();
     } else if (result.skipped) {
       load.status = 'dup';
       load.erpResult = result.error;
@@ -3788,7 +3703,6 @@ $('send-all-manifests-btn').onclick = async () => {
   if (!pending.length) { setStatus($('push-status'), 'warn', 'No manifests pending — all already sent.'); return; }
   const btn = $('send-all-manifests-btn');
   btn.disabled = true; btn.textContent = `Sending ${pending.length} manifest(s)…`;
-  const statsBefore = getStats();
   let okCount = 0, failCount = 0;
   for (const { l } of pending) {
     const values = l.manifestRows.map(r => LC_COLUMNS.map(col => {
@@ -3808,15 +3722,12 @@ $('send-all-manifests-btn').onclick = async () => {
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
       l.manifestSentTo = j.updatedRange || j.tab || 'Sheet';
       okCount++;
-      recordPushSuccess('manifest');
     } catch (err) {
       l.manifestError = `Send failed: ${err.message}`;
       failCount++;
-      recordPushFailure();
     }
   }
   btn.disabled = false; btn.textContent = 'Send all manifests to Sheet';
-  if (okCount > 0) celebratePush(btn, okCount, statsBefore);
   setStatus($('push-status'),
     failCount ? 'err' : 'ok',
     `Sent ${okCount} manifest(s) to Sheet${failCount ? `, ${failCount} failed` : ''}.`);
@@ -3900,9 +3811,8 @@ function generatePoDrafts() {
   const existing = new Set(poDrafts.map(p => p.loadId + '|' + p.sku));
   const added = selected.filter(l => !existing.has(l.loadId + '|' + l.sku));
   added.forEach(l => poDrafts.push(createDraftFromLoad(l)));
-  // Keep the selection so the same loads flow straight into invoice drafts —
-  // the invoice button reads the current selection too. (Dedup of PO drafts is
-  // handled by the `existing` set above, so we don't need to deselect here.)
+  // unselect after adding
+  selected.forEach(l => l.selected = false);
   $('po-section').style.display = '';
   renderLoads();
   renderPoDrafts();
@@ -4047,7 +3957,7 @@ function attachPoHandlers() {
   });
   $('po-list').querySelectorAll('[data-po-push]').forEach(b => {
     b.onclick = async () => {
-      await pushSinglePo(+b.dataset['poPush'], { originEl: b });
+      await pushSinglePo(+b.dataset['poPush']);
     };
   });
   $('po-list').querySelectorAll('[data-po-remove]').forEach(b => {
@@ -4124,13 +4034,9 @@ function buildPoPayload(d) {
   return { data };
 }
 
-// opts.gamify: fire the celebration here (default true, for single pushes).
-// Bulk push-all sets gamify:false and aggregates into one burst. Returns
-// { ok } so the bulk caller can count successes.
-async function pushSinglePo(idx, opts = {}) {
-  const { gamify = true, originEl = null } = opts;
+async function pushSinglePo(idx) {
   const d = poDrafts[idx];
-  if (!d || d.status === 'done') return { ok: false };
+  if (!d || d.status === 'done') return;
   d.status = 'pushing';
   d.result = null;
   renderPoDrafts();
@@ -4144,29 +4050,19 @@ async function pushSinglePo(idx, opts = {}) {
     d.status = 'done';
     d.poId = poId;
     d.result = `Pushed · PO id: ${poId ?? 'n/a'}`;
-    if (gamify) gamifyOnePush(originEl || document.querySelector(`[data-po-push="${idx}"]`), 'po');
-    else recordPushSuccess('po');
   } else {
     d.status = 'failed';
     d.result = r.data?.message || r.data?.error || r.error || `HTTP ${r.status}`;
-    recordPushFailure();
   }
   renderPoDrafts();
   renderLoads();  // refresh the tri-chip strip so the PO stage flips
-  return { ok: r.ok };
 }
 
 $('generate-po-btn').onclick = generatePoDrafts;
-$('push-all-pos-btn').onclick = async (e) => {
-  const statsBefore = getStats();
-  let okCount = 0;
+$('push-all-pos-btn').onclick = async () => {
   for (let i = 0; i < poDrafts.length; i++) {
-    if (poDrafts[i].status !== 'done') {
-      const res = await pushSinglePo(i, { gamify: false });
-      if (res && res.ok) okCount++;
-    }
+    if (poDrafts[i].status !== 'done') await pushSinglePo(i);
   }
-  if (okCount > 0) celebratePush(e.currentTarget, okCount, statsBefore);
 };
 $('clear-pos-btn').onclick = () => {
   if (!poDrafts.length || confirm('Clear all PO drafts?')) {
@@ -5314,7 +5210,7 @@ function attachInvoiceHandlers() {
   });
   // Push / remove buttons
   document.querySelectorAll('[data-inv-push]').forEach(b => {
-    b.onclick = () => pushSingleInvoice(+b.dataset.invPush, { originEl: b });
+    b.onclick = () => pushSingleInvoice(+b.dataset.invPush);
   });
   document.querySelectorAll('[data-inv-remove]').forEach(b => {
     b.onclick = () => {
@@ -5364,21 +5260,18 @@ function buildInvoicePayload(d) {
 
 // ── Push (uses the existing env-aware proxy via erpRequest) ──────────────────
 
-// opts.gamify: fire the celebration here (default true). Bulk push-all sets
-// gamify:false and aggregates into one burst. Returns { ok } for the caller.
-async function pushSingleInvoice(idx, opts = {}) {
-  const { gamify = true, originEl = null } = opts;
+async function pushSingleInvoice(idx) {
   const d = invoiceDrafts[idx];
-  if (!d || d.status === 'done') return { ok: false };
-  if (!d.customer) { d.result = 'Pick a customer first.'; renderInvoiceDrafts(); return { ok: false }; }
+  if (!d || d.status === 'done') return;
+  if (!d.customer) { d.result = 'Pick a customer first.'; renderInvoiceDrafts(); return; }
   // Bail if any item is missing a price
   const missing = d.items.filter(it => !it.price);
-  if (missing.length) { d.result = `${missing.length} line item(s) missing a price.`; renderInvoiceDrafts(); return { ok: false }; }
+  if (missing.length) { d.result = `${missing.length} line item(s) missing a price.`; renderInvoiceDrafts(); return; }
 
   d.status = 'pushing'; d.result = null; renderInvoiceDrafts();
   let payload;
   try { payload = buildInvoicePayload(d); }
-  catch (e) { d.status = 'failed'; d.result = e.message; renderInvoiceDrafts(); return { ok: false }; }
+  catch (e) { d.status = 'failed'; d.result = e.message; renderInvoiceDrafts(); return; }
   console.log('[Posku] POST /api/orders payload:', JSON.stringify(payload, null, 2));
   const r = await erpRequest('POST', '/api/orders', payload);
   console.log('[Posku] POST /api/orders response:', JSON.stringify(r, null, 2));
@@ -5393,31 +5286,36 @@ async function pushSingleInvoice(idx, opts = {}) {
       const l = loads[it.loadIdx];
       if (l) { l.invoiced = true; l.invoiceId = invId; }
     });
-    if (gamify) gamifyOnePush(originEl || document.querySelector(`[data-inv-push="${idx}"]`), 'invoice');
-    else recordPushSuccess('invoice');
+    bumpInvoiceHud(d.items.length, document.querySelector(`[data-inv-push="${idx}"]`));
   } else {
     d.status = 'failed';
     d.result = r.data?.message || r.data?.error || r.error || `HTTP ${r.status}`;
-    recordPushFailure();
   }
   renderInvoiceDrafts();
   renderLoads();  // refresh the tri-chip strip so the INV stage flips
-  return { ok: r.ok };
 }
 
 async function pushAllInvoices() {
   const pending = invoiceDrafts.map((_, i) => i).filter(i => invoiceDrafts[i].status !== 'done' && invoiceDrafts[i].customer);
   if (!pending.length) { setStatus($('inv-status'), 'warn', 'No drafts ready to push (each needs a customer).'); return; }
-  const statsBefore = getStats();
-  let okCount = 0;
-  for (const i of pending) {
-    const res = await pushSingleInvoice(i, { gamify: false });
-    if (res && res.ok) okCount++;
-  }
-  if (okCount > 0) celebratePush($('push-all-invs-btn'), okCount, statsBefore);
+  for (const i of pending) await pushSingleInvoice(i);
   const ok = invoiceDrafts.filter(d => d.status === 'done').length;
   const fail = invoiceDrafts.filter(d => d.status === 'failed').length;
   setStatus($('inv-status'), fail ? 'err' : 'ok', `${ok} pushed${fail ? ` · ${fail} failed` : ''}.`);
+}
+
+// ── HUD: gamify invoice pushes the same way SKU pushes are gamified ──────────
+
+function bumpInvoiceHud(lineCount, originEl) {
+  const s = getStats();
+  s.invoicedToday   = (s.invoicedToday   || 0) + lineCount;
+  s.invoicedAllTime = (s.invoicedAllTime || 0) + lineCount;
+  s.lastInvoiceDate = todayStr();
+  saveStats(s);
+  // Reuse the existing particle burst + +N floater on the push button.
+  const origin = getEffectOrigin(originEl);
+  spawnParticles(origin.x, origin.y);
+  spawnFloater(origin.x, origin.y - 8, lineCount > 1 ? `+${lineCount} invoiced` : 'invoiced ✓');
 }
 
 // ── Wire the top buttons + bulk actions ──────────────────────────────────────
