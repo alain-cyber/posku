@@ -4050,9 +4050,14 @@ async function pushSinglePo(idx) {
     d.status = 'done';
     d.poId = poId;
     d.result = `Pushed · PO id: ${poId ?? 'n/a'}`;
+    // Gamify: same HUD / streak / particle burst the SKU push uses.
+    const sb = getStats();
+    recordPushSuccess();
+    celebratePush(document.querySelector(`[data-po-push="${idx}"]`), 1, sb);
   } else {
     d.status = 'failed';
     d.result = r.data?.message || r.data?.error || r.error || `HTTP ${r.status}`;
+    recordPushFailure();
   }
   renderPoDrafts();
   renderLoads();  // refresh the tri-chip strip so the PO stage flips
