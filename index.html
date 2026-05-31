@@ -686,29 +686,6 @@ textarea::placeholder { color: var(--text4); }
     <div id="mfetch-results" style="margin-top:0.6rem;"></div>
   </div>
 
-  <!-- Input card — collapsible, defaults to closed so it doesn't dominate
-       the layout when the user is mostly using inbox-fetch or drive-fetch. -->
-  <div class="card input-card collapsible collapsed" id="drop-card">
-    <div class="card-header-row" data-card-toggle>
-      <div>
-        <div class="card-title">Paste or drop email</div>
-        <div class="card-sub" id="input-card-sub">One or multiple Wayfair load emails at once</div>
-      </div>
-      <span class="card-toggle">▾</span>
-    </div>
-    <div class="card-body">
-      <textarea id="email-input" placeholder="Paste email body here, or drag and drop a .eml / .txt file onto this card…"></textarea>
-      <div class="hint">Tip: paste the email body, or drop a <strong>.eml</strong>, <strong>.txt</strong>, or Outlook <strong>.msg</strong> file.</div>
-      <div class="btn-row">
-        <button class="btn" id="parse-btn">Parse loads</button>
-        <button class="btn ghost" id="clear-input-btn">Clear</button>
-        <input type="file" id="file-input" multiple accept=".eml,.txt,.msg" style="display:none">
-        <button class="btn ghost" id="pick-file-btn">Pick file</button>
-      </div>
-      <div id="parse-status" class="status"></div>
-    </div>
-  </div>
-
   <!-- Loads section -->
   <div id="loads-section" style="display:none;">
     <div class="card collapsible" id="loads-card">
@@ -747,12 +724,18 @@ textarea::placeholder { color: var(--text4); }
           </table>
         </div>
         <div id="push-status" class="status" style="margin-top:1rem;"></div>
-        <div class="btn-row" id="po-action-row" style="margin-top:1rem;display:none;">
-          <button class="btn" id="generate-po-btn">Generate PO drafts from selected</button>
-          <button class="btn ghost" id="generate-inv-btn">Generate <span id="inv-count">0</span> invoice draft(s)</button>
-          <button class="btn ghost" id="refresh-inv-btn" title="Recompute the invoice grouping after toggling unique-invoice flags">↻ Refresh grouping</button>
-          <span class="hint" id="select-count" style="margin-left:0.5rem;"></span>
-        </div>
+      </div>
+    </div>
+
+    <!-- Stage actions — generate PO / invoice drafts. Kept OUTSIDE the loads
+         card body so they stay reachable even when the loads table is
+         collapsed (otherwise these buttons vanish with the table). -->
+    <div class="card" id="stage-actions-card" style="display:none;">
+      <div class="btn-row" id="po-action-row" style="margin-top:0;">
+        <button class="btn" id="generate-po-btn">Generate PO drafts from selected</button>
+        <button class="btn ghost" id="generate-inv-btn">Generate <span id="inv-count">0</span> invoice draft(s)</button>
+        <button class="btn ghost" id="refresh-inv-btn" title="Recompute the invoice grouping after toggling unique-invoice flags">↻ Refresh grouping</button>
+        <span class="hint" id="select-count" style="margin-left:0.5rem;"></span>
       </div>
     </div>
 
@@ -790,6 +773,30 @@ textarea::placeholder { color: var(--text4); }
         <div id="inv-list"></div>
         <div id="inv-status" class="status" style="margin-top:1rem;"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- Input card — moved to the bottom (per request): manual paste/drop is the
+       fallback path now that inbox-fetch + drive-fetch are the main intake.
+       Collapsible, defaults closed so it doesn't dominate the layout. -->
+  <div class="card input-card collapsible collapsed" id="drop-card">
+    <div class="card-header-row" data-card-toggle>
+      <div>
+        <div class="card-title">Paste or drop email</div>
+        <div class="card-sub" id="input-card-sub">One or multiple Wayfair load emails at once</div>
+      </div>
+      <span class="card-toggle">▾</span>
+    </div>
+    <div class="card-body">
+      <textarea id="email-input" placeholder="Paste email body here, or drag and drop a .eml / .txt file onto this card…"></textarea>
+      <div class="hint">Tip: paste the email body, or drop a <strong>.eml</strong>, <strong>.txt</strong>, or Outlook <strong>.msg</strong> file.</div>
+      <div class="btn-row">
+        <button class="btn" id="parse-btn">Parse loads</button>
+        <button class="btn ghost" id="clear-input-btn">Clear</button>
+        <input type="file" id="file-input" multiple accept=".eml,.txt,.msg" style="display:none">
+        <button class="btn ghost" id="pick-file-btn">Pick file</button>
+      </div>
+      <div id="parse-status" class="status"></div>
     </div>
   </div>
 </main>
@@ -2153,6 +2160,15 @@ function celebratePush(originEl, count, statsBefore) {
   if (ms) showMilestone(ms.info.title, ms.info.sub);
 }
 
+// Convenience for a single-item push (one draft / one manifest / one PO /
+// one invoice): snapshot stats, record one success, and fire the celebration
+// from originEl. Same gamification the SKU push uses, just for count = 1.
+function gamifyOnePush(originEl) {
+  const before = getStats();
+  recordPushSuccess();
+  celebratePush(originEl, 1, before);
+}
+
 // Compact inbox-fetch diagnostic, surfaced on /diagnostic so I can debug
 // auto-attach issues without asking the user to open DevTools.
 function stashInboxDiag(payload) {
@@ -2313,10 +2329,12 @@ function attachSamsManifestHandlers() {
         if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
         load.manifestSentTo = j.updatedRange || j.tab || 'Sheet';
         load.manifestExpanded = false;
+        gamifyOnePush(b);
         renderLoads();
       } catch (err) {
         b.disabled = false; b.textContent = 'Send to Sheet';
         load.manifestError = `Send failed: ${err.message}`;
+        recordPushFailure();
         renderLoads();
       }
     };
@@ -2632,7 +2650,9 @@ function updatePoActionRow() {
   const pushedCount = loads.filter(l => l.status === 'done').length;
   const selCount = loads.filter(l => l.status === 'done' && l.selected).length;
   const row = $('po-action-row');
-  if (pushedCount === 0) { row.style.display = 'none'; return; }
+  const card = $('stage-actions-card');
+  if (pushedCount === 0) { if (card) card.style.display = 'none'; return; }
+  if (card) card.style.display = '';
   row.style.display = 'flex';
   $('select-count').textContent = selCount
     ? `${selCount} of ${pushedCount} pushed SKUs selected`
@@ -3703,6 +3723,7 @@ $('send-all-manifests-btn').onclick = async () => {
   if (!pending.length) { setStatus($('push-status'), 'warn', 'No manifests pending — all already sent.'); return; }
   const btn = $('send-all-manifests-btn');
   btn.disabled = true; btn.textContent = `Sending ${pending.length} manifest(s)…`;
+  const statsBefore = getStats();
   let okCount = 0, failCount = 0;
   for (const { l } of pending) {
     const values = l.manifestRows.map(r => LC_COLUMNS.map(col => {
@@ -3722,12 +3743,15 @@ $('send-all-manifests-btn').onclick = async () => {
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
       l.manifestSentTo = j.updatedRange || j.tab || 'Sheet';
       okCount++;
+      recordPushSuccess();
     } catch (err) {
       l.manifestError = `Send failed: ${err.message}`;
       failCount++;
+      recordPushFailure();
     }
   }
   btn.disabled = false; btn.textContent = 'Send all manifests to Sheet';
+  if (okCount > 0) celebratePush(btn, okCount, statsBefore);
   setStatus($('push-status'),
     failCount ? 'err' : 'ok',
     `Sent ${okCount} manifest(s) to Sheet${failCount ? `, ${failCount} failed` : ''}.`);
@@ -3957,7 +3981,7 @@ function attachPoHandlers() {
   });
   $('po-list').querySelectorAll('[data-po-push]').forEach(b => {
     b.onclick = async () => {
-      await pushSinglePo(+b.dataset['poPush']);
+      await pushSinglePo(+b.dataset['poPush'], { originEl: b });
     };
   });
   $('po-list').querySelectorAll('[data-po-remove]').forEach(b => {
@@ -4034,9 +4058,13 @@ function buildPoPayload(d) {
   return { data };
 }
 
-async function pushSinglePo(idx) {
+// opts.gamify: fire the celebration here (default true, for single pushes).
+// Bulk push-all sets gamify:false and aggregates into one burst. Returns
+// { ok } so the bulk caller can count successes.
+async function pushSinglePo(idx, opts = {}) {
+  const { gamify = true, originEl = null } = opts;
   const d = poDrafts[idx];
-  if (!d || d.status === 'done') return;
+  if (!d || d.status === 'done') return { ok: false };
   d.status = 'pushing';
   d.result = null;
   renderPoDrafts();
@@ -4050,19 +4078,29 @@ async function pushSinglePo(idx) {
     d.status = 'done';
     d.poId = poId;
     d.result = `Pushed · PO id: ${poId ?? 'n/a'}`;
+    if (gamify) gamifyOnePush(originEl || document.querySelector(`[data-po-push="${idx}"]`));
+    else recordPushSuccess();
   } else {
     d.status = 'failed';
     d.result = r.data?.message || r.data?.error || r.error || `HTTP ${r.status}`;
+    recordPushFailure();
   }
   renderPoDrafts();
   renderLoads();  // refresh the tri-chip strip so the PO stage flips
+  return { ok: r.ok };
 }
 
 $('generate-po-btn').onclick = generatePoDrafts;
-$('push-all-pos-btn').onclick = async () => {
+$('push-all-pos-btn').onclick = async (e) => {
+  const statsBefore = getStats();
+  let okCount = 0;
   for (let i = 0; i < poDrafts.length; i++) {
-    if (poDrafts[i].status !== 'done') await pushSinglePo(i);
+    if (poDrafts[i].status !== 'done') {
+      const res = await pushSinglePo(i, { gamify: false });
+      if (res && res.ok) okCount++;
+    }
   }
+  if (okCount > 0) celebratePush(e.currentTarget, okCount, statsBefore);
 };
 $('clear-pos-btn').onclick = () => {
   if (!poDrafts.length || confirm('Clear all PO drafts?')) {
@@ -5210,7 +5248,7 @@ function attachInvoiceHandlers() {
   });
   // Push / remove buttons
   document.querySelectorAll('[data-inv-push]').forEach(b => {
-    b.onclick = () => pushSingleInvoice(+b.dataset.invPush);
+    b.onclick = () => pushSingleInvoice(+b.dataset.invPush, { originEl: b });
   });
   document.querySelectorAll('[data-inv-remove]').forEach(b => {
     b.onclick = () => {
@@ -5260,18 +5298,21 @@ function buildInvoicePayload(d) {
 
 // ── Push (uses the existing env-aware proxy via erpRequest) ──────────────────
 
-async function pushSingleInvoice(idx) {
+// opts.gamify: fire the celebration here (default true). Bulk push-all sets
+// gamify:false and aggregates into one burst. Returns { ok } for the caller.
+async function pushSingleInvoice(idx, opts = {}) {
+  const { gamify = true, originEl = null } = opts;
   const d = invoiceDrafts[idx];
-  if (!d || d.status === 'done') return;
-  if (!d.customer) { d.result = 'Pick a customer first.'; renderInvoiceDrafts(); return; }
+  if (!d || d.status === 'done') return { ok: false };
+  if (!d.customer) { d.result = 'Pick a customer first.'; renderInvoiceDrafts(); return { ok: false }; }
   // Bail if any item is missing a price
   const missing = d.items.filter(it => !it.price);
-  if (missing.length) { d.result = `${missing.length} line item(s) missing a price.`; renderInvoiceDrafts(); return; }
+  if (missing.length) { d.result = `${missing.length} line item(s) missing a price.`; renderInvoiceDrafts(); return { ok: false }; }
 
   d.status = 'pushing'; d.result = null; renderInvoiceDrafts();
   let payload;
   try { payload = buildInvoicePayload(d); }
-  catch (e) { d.status = 'failed'; d.result = e.message; renderInvoiceDrafts(); return; }
+  catch (e) { d.status = 'failed'; d.result = e.message; renderInvoiceDrafts(); return { ok: false }; }
   console.log('[Posku] POST /api/orders payload:', JSON.stringify(payload, null, 2));
   const r = await erpRequest('POST', '/api/orders', payload);
   console.log('[Posku] POST /api/orders response:', JSON.stringify(r, null, 2));
@@ -5286,36 +5327,31 @@ async function pushSingleInvoice(idx) {
       const l = loads[it.loadIdx];
       if (l) { l.invoiced = true; l.invoiceId = invId; }
     });
-    bumpInvoiceHud(d.items.length, document.querySelector(`[data-inv-push="${idx}"]`));
+    if (gamify) gamifyOnePush(originEl || document.querySelector(`[data-inv-push="${idx}"]`));
+    else recordPushSuccess();
   } else {
     d.status = 'failed';
     d.result = r.data?.message || r.data?.error || r.error || `HTTP ${r.status}`;
+    recordPushFailure();
   }
   renderInvoiceDrafts();
   renderLoads();  // refresh the tri-chip strip so the INV stage flips
+  return { ok: r.ok };
 }
 
 async function pushAllInvoices() {
   const pending = invoiceDrafts.map((_, i) => i).filter(i => invoiceDrafts[i].status !== 'done' && invoiceDrafts[i].customer);
   if (!pending.length) { setStatus($('inv-status'), 'warn', 'No drafts ready to push (each needs a customer).'); return; }
-  for (const i of pending) await pushSingleInvoice(i);
+  const statsBefore = getStats();
+  let okCount = 0;
+  for (const i of pending) {
+    const res = await pushSingleInvoice(i, { gamify: false });
+    if (res && res.ok) okCount++;
+  }
+  if (okCount > 0) celebratePush($('push-all-invs-btn'), okCount, statsBefore);
   const ok = invoiceDrafts.filter(d => d.status === 'done').length;
   const fail = invoiceDrafts.filter(d => d.status === 'failed').length;
   setStatus($('inv-status'), fail ? 'err' : 'ok', `${ok} pushed${fail ? ` · ${fail} failed` : ''}.`);
-}
-
-// ── HUD: gamify invoice pushes the same way SKU pushes are gamified ──────────
-
-function bumpInvoiceHud(lineCount, originEl) {
-  const s = getStats();
-  s.invoicedToday   = (s.invoicedToday   || 0) + lineCount;
-  s.invoicedAllTime = (s.invoicedAllTime || 0) + lineCount;
-  s.lastInvoiceDate = todayStr();
-  saveStats(s);
-  // Reuse the existing particle burst + +N floater on the push button.
-  const origin = getEffectOrigin(originEl);
-  spawnParticles(origin.x, origin.y);
-  spawnFloater(origin.x, origin.y - 8, lineCount > 1 ? `+${lineCount} invoiced` : 'invoiced ✓');
 }
 
 // ── Wire the top buttons + bulk actions ──────────────────────────────────────
