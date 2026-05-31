@@ -254,8 +254,10 @@ body.theme-dark .card { box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
 .card.collapsible .card-header-row:hover { background: rgba(255,255,255,0.02); }
 body.theme-light .card.collapsible .card-header-row:hover { background: rgba(0,0,0,0.025); }
 .card.collapsible .card-header-row .card-title { margin-bottom: 0; }
-.card.collapsible .card-header-row .card-toggle { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--text3); padding: 0.15rem 0.5rem; border: 1px solid var(--border2); border-radius: 5px; align-self: center; transition: transform 0.2s, border-color 0.12s, color 0.12s; flex: 0 0 auto; }
-.card.collapsible.collapsed .card-header-row .card-toggle { transform: rotate(-90deg); }
+.card.collapsible .card-toggle { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--text3); padding: 0.15rem 0.5rem; border: 1px solid var(--border2); border-radius: 5px; align-self: center; transition: transform 0.2s, border-color 0.12s, color 0.12s; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; }
+.card.collapsible.collapsed .card-toggle { transform: rotate(-90deg); }
+.card.collapsible .card-header-row:hover .card-toggle,
+.card.collapsible [data-card-toggle]:hover .card-toggle { color: var(--text); border-color: var(--text3); }
 .card.collapsible.collapsed .card-header-row { margin-bottom: 0; }
 .card.collapsible.collapsed .card-sub,
 .card.collapsible.collapsed .card-body { display: none; }
@@ -709,9 +711,10 @@ textarea::placeholder { color: var(--text4); }
 
   <!-- Loads section -->
   <div id="loads-section" style="display:none;">
-    <div class="card">
+    <div class="card collapsible" id="loads-card">
       <div class="loads-header">
-        <div class="loads-title">
+        <div class="loads-title" data-card-toggle style="cursor:pointer;display:flex;align-items:center;gap:0.5rem;">
+          <span class="card-toggle" aria-label="Toggle detected loads">▾</span>
           Detected loads
           <span id="summary-chips"></span>
         </div>
@@ -722,32 +725,34 @@ textarea::placeholder { color: var(--text4); }
         </div>
       </div>
 
-      <div class="table-wrap">
-        <table class="table">
-          <thead>
-            <tr>
-              <th class="select-col"><input type="checkbox" id="select-all"></th>
-              <th>Load ID</th>
-              <th>Location</th>
-              <th>Type</th>
-              <th>Generated SKU</th>
-              <th>Product name</th>
-              <th>FOB state</th>
-              <th>Condition</th>
-              <th>Manifest</th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="loads-body"></tbody>
-        </table>
-      </div>
-      <div id="push-status" class="status" style="margin-top:1rem;"></div>
-      <div class="btn-row" id="po-action-row" style="margin-top:1rem;display:none;">
-        <button class="btn" id="generate-po-btn">Generate PO drafts from selected</button>
-        <button class="btn ghost" id="generate-inv-btn">Generate <span id="inv-count">0</span> invoice draft(s)</button>
-        <button class="btn ghost" id="refresh-inv-btn" title="Recompute the invoice grouping after toggling unique-invoice flags">↻ Refresh grouping</button>
-        <span class="hint" id="select-count" style="margin-left:0.5rem;"></span>
+      <div class="card-body">
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th class="select-col"><input type="checkbox" id="select-all"></th>
+                <th>Load ID</th>
+                <th>Location</th>
+                <th>Type</th>
+                <th>Generated SKU</th>
+                <th>Product name</th>
+                <th>FOB state</th>
+                <th>Condition</th>
+                <th>Manifest</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="loads-body"></tbody>
+          </table>
+        </div>
+        <div id="push-status" class="status" style="margin-top:1rem;"></div>
+        <div class="btn-row" id="po-action-row" style="margin-top:1rem;display:none;">
+          <button class="btn" id="generate-po-btn">Generate PO drafts from selected</button>
+          <button class="btn ghost" id="generate-inv-btn">Generate <span id="inv-count">0</span> invoice draft(s)</button>
+          <button class="btn ghost" id="refresh-inv-btn" title="Recompute the invoice grouping after toggling unique-invoice flags">↻ Refresh grouping</button>
+          <span class="hint" id="select-count" style="margin-left:0.5rem;"></span>
+        </div>
       </div>
     </div>
 
