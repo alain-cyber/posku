@@ -88,17 +88,20 @@ Read these in commit order if you need to understand the invoice flow.
 
 ### Blocked on the user
 
-1. **BigQuery IAM grants** — the invoice customer search needs
-   `roles/bigquery.jobUser` on `data-warehouse-494801` + `roles/bigquery.dataViewer`
-   on the `alain_via_erp` dataset, granted to the same SA Posku already uses
-   for Gmail/Drive (`GMAIL_SA_EMAIL`). User confirmed they'd do this — until
-   they do, the customer picker shows `lookup failed — Access Denied: ...
-   bigquery.jobs.create permission`. See CLOUDFLARE_SETUP.md step 8 for the
-   exact gcloud / Console steps.
-
-2. **App rename** — user asked for name ideas, I gave a shortlist (Manifold,
+1. **App rename** — user asked for name ideas, I gave a shortlist (Manifold,
    Hangar, Lodemark, Stacker, Forge, Pallette, Quayd, Skubot). They have not
    picked. Currently called **Posku**.
+
+### Done since last session
+
+- **BigQuery IAM grants** granted by user at end of session — `BigQuery Job
+  User` on the project + `BigQuery Data Viewer` on `alain_via_erp` dataset,
+  both on `posku-gmail-reader@data-warehouse-494801.iam.gserviceaccount.com`.
+  Customer typeahead should be working as of session close; user was about to
+  test it when we wrapped. **First thing to ask next session**: "Did the
+  customer search work after the IAM grants?" If yes, great. If still
+  failing, paste the exact `lookup failed — ...` text and we debug from
+  there.
 
 ### Blocked on the ERP team
 
