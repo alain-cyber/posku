@@ -4833,19 +4833,31 @@ function rememberCustomer(c) {
 
 // ── Customer search (BigQuery via /api/customers/search) ─────────────────────
 
-const _custSearchCache = new Map();   // q → array (1-min TTL)
+const _custSearchCache = new Map();   // q → { results, error } (1-min TTL)
 async function searchCustomers(q) {
   q = (q || '').trim().toLowerCase();
-  if (q.length < 2) return [];
+  if (q.length < 2) return { results: [], error: null };
   const hit = _custSearchCache.get(q);
-  if (hit && (Date.now() - hit.at < 60_000)) return hit.results;
+  if (hit && (Date.now() - hit.at < 60_000)) return hit;
   try {
     const r = await fetch(`/api/customers/search?q=${encodeURIComponent(q)}&max=12`, { cache: 'no-store' });
-    const j = await r.json();
-    if (!r.ok || !j.ok) return [];
-    _custSearchCache.set(q, { at: Date.now(), results: j.customers || [] });
-    return j.customers || [];
-  } catch { return []; }
+    let j = null;
+    try { j = await r.json(); } catch {}
+    let out;
+    if (!r.ok) {
+      const detail = j?.error || `HTTP ${r.status}`;
+      out = { results: [], error: detail };
+    } else if (!j?.ok) {
+      out = { results: [], error: j?.error || 'response missing ok flag' };
+    } else {
+      out = { results: j.customers || [], error: null };
+    }
+    out.at = Date.now();
+    _custSearchCache.set(q, out);
+    return out;
+  } catch (e) {
+    return { results: [], error: `network: ${e.message}`, at: Date.now() };
+  }
 }
 
 // ── Resolve a load's default customer via rules (Tier 2 — for later) ─────────
@@ -4930,8 +4942,8 @@ function generateInvoiceDrafts() {
   // We resolve via search to get the full customer record (with addresses).
   invoiceDrafts.forEach(async (d) => {
     if (!d.ruleEmail) return;
-    const matches = await searchCustomers(d.ruleEmail);
-    const exact = matches.find(c => (c.email || '').toLowerCase() === d.ruleEmail.toLowerCase());
+    const { results } = await searchCustomers(d.ruleEmail);
+    const exact = results.find(c => (c.email || '').toLowerCase() === d.ruleEmail.toLowerCase());
     if (exact) { d.customer = exact; renderInvoiceDrafts(); }
   });
 
@@ -5140,7 +5152,15 @@ function attachInvoiceHandlers() {
       timer = setTimeout(async () => {
         resultsEl.innerHTML = `<div class="cust-empty">searching…</div>`;
         resultsEl.classList.add('show');
-        const matches = await searchCustomers(q);
+        const { results: matches, error } = await searchCustomers(q);
+        if (error) {
+          // Surface the actual failure so we can tell IAM/auth from "no rows".
+          // Common causes: SA missing roles/bigquery.dataViewer or
+          // roles/bigquery.jobUser; missing GMAIL_SA_EMAIL/PRIVATE_KEY env;
+          // /api/customers/search Pages Function not deployed yet.
+          resultsEl.innerHTML = `<div class="cust-empty" style="color:var(--red);">lookup failed — ${esc(error)}</div>`;
+          return;
+        }
         if (!matches.length) {
           resultsEl.innerHTML = `<div class="cust-empty">no matches</div>`;
           return;
@@ -5171,7 +5191,7 @@ function attachInvoiceHandlers() {
     chip.onclick = async () => {
       const idx = +chip.dataset.invCustRecent;
       const email = chip.dataset.customerEmail;
-      const matches = await searchCustomers(email);
+      const { results: matches } = await searchCustomers(email);
       const c = matches.find(m => m.email.toLowerCase() === email.toLowerCase());
       if (c) {
         invoiceDrafts[idx].customer = c;
