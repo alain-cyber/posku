@@ -1,8 +1,12 @@
 # Cloudflare Pages setup — Posku
 
-Hosts `index.html` + `diagnostic.html` on `posku.pages.dev`, with `/functions/api/[[path]].js`
+Hosts `index.html` + `diagnostic.html` on `posku-c2t.pages.dev`, with `/functions/api/[[path]].js`
 proxying ERP calls to `https://viatrading.biz` and injecting the API key from a
 server-side secret. Cloudflare Access (Zero Trust) gates the URL behind Google OAuth.
+
+> **Domain note:** the bare `posku.pages.dev` is a *different, unrelated* Cloudflare
+> project (an Indonesian POS marketing site) — the "posku" name was already taken,
+> so this app's auto-assigned subdomain is **`posku-c2t.pages.dev`**. Always use that.
 
 ## Dashboard checklist (Alain — one-time setup)
 
@@ -14,7 +18,7 @@ server-side secret. Cloudflare Access (Zero Trust) gates the URL behind Google O
    - **Build command**: *(empty)*
    - **Build output directory**: `/`
    - **Production branch**: `main`
-4. Save & deploy. First build takes ~30 s. URL: **`https://posku.pages.dev`**.
+4. Save & deploy. First build takes ~30 s. URL: **`https://posku-c2t.pages.dev`**.
 
 ### 2. Add the API key as a server-side secret
 
@@ -31,14 +35,14 @@ server-side secret. Cloudflare Access (Zero Trust) gates the URL behind Google O
 2. Application:
    - **Name**: `Posku`
    - **Session duration**: 24 h (or your team's standard)
-   - **Application domain**: `posku.pages.dev`
+   - **Application domain**: `posku-c2t.pages.dev`
 3. Identity providers: enable **Google** (configure once under **Zero Trust → Settings → Authentication** if not already — point Cloudflare at your Google Workspace).
 4. Policies → **Add policy**:
    - **Name**: `Viatrading group`
    - **Action**: `Allow`
    - **Include** rule type: **Google Groups** → select the group from the dropdown.
      - If Groups isn't surfacing, fall back to **Emails** and paste the addresses.
-5. Save. Visit `https://posku.pages.dev` in an incognito window — Google login challenge should appear.
+5. Save. Visit `https://posku-c2t.pages.dev` in an incognito window — Google login challenge should appear.
 
 ### 4. (Optional) Custom domain later
 
@@ -58,7 +62,7 @@ KV isn't bound yet, so the order doesn't matter — but until you do this, saves
    - **KV namespace**: select `posku-rules`
 3. Save and **Retry deployment**.
 
-To verify: visit `https://posku.pages.dev/api/rules` directly. You should see
+To verify: visit `https://posku-c2t.pages.dev/api/rules` directly. You should see
 `{"ok":true,"rules":{}}`. If you see an error mentioning KV not bound, the binding name
 is wrong.
 
