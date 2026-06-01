@@ -816,7 +816,8 @@ const SUPPLIERS = {
     psku:        'LOAD-WYF',
     ptCode:      'LOAD-WYF',
     statusId:    2,
-    packingTrait: 88,   // Load (verified via /api/products/dropdowns) — kept for back-compat / config UI
+    packingTrait: 88,   // Load id on TEST (/api/products/dropdowns) — kept for back-compat / config UI
+    packingTraitLive: 198, // Load id on LIVE (airbyte_sync.products_traits type 1)
     packingName:  'Load',  // name sent to the API; server resolves to trait id via SQL lookup
     gmailLabel:  'posku',  // override in rules if a different label is used
     gmailToFilter: 'wayfair@viatrading.com',  // only fetch emails sent to this recipient
@@ -913,7 +914,8 @@ const SUPPLIERS = {
     psku:        'LOAD-SMSST',
     ptCode:      'LOAD-SAMS',
     statusId:    2,
-    packingTrait: 96,        // LTL id (from /api/products/dropdowns) — kept for back-compat
+    packingTrait: 96,        // LTL id on TEST (/api/products/dropdowns) — kept for back-compat
+    packingTraitLive: 203,   // LTL id on LIVE (airbyte_sync.products_traits type 1)
     packingName:  'LTL',     // name — Vicki reports packing as a label-typed field; try this
                              // alongside the id since neither id 203 (airbyte) nor 96 (dropdowns)
                              // has been sticking on the create endpoint.
@@ -988,8 +990,9 @@ const SUPPLIERS = {
     manifestedGroupIds:    [],
 
     // Per-supplier constants pinned on every push.
-    //   productType 263 = "Program - Manifested" (from /api/products/dropdowns)
-    productType:          263,
+    //   productType (type trait): TEST 263 / LIVE 455 = "Program - Manifested"
+    productType:          263,    // TEST id (/api/products/dropdowns)
+    productTypeLive:      455,    // LIVE id (airbyte_sync.products_traits type 6)
     restrictPriceChange:  true,
     taxable:              true,
     peachtreeQty:         1,
@@ -1898,6 +1901,11 @@ function buildLoadTotals(load) {
 
 function buildPayload(load) {
   const sup = SUPPLIERS[load.supplierKey] || SUPPLIERS.WYF;
+  // TEST and LIVE are separate ERP databases with separate trait id spaces.
+  // packing + productType differ between them (condition/categories happen to
+  // match). On LIVE, use the *Live override id; on TEST, the base id.
+  const isLive = loadEnv() === 'live';
+  const packingTrait = isLive && sup.packingTraitLive != null ? sup.packingTraitLive : sup.packingTrait;
 
   // Per the products API edit-form schema, `categories` and `groups` are
   // SEPARATE arrays. 56 ("Load Center") is a group, not a category — putting
@@ -1938,8 +1946,8 @@ function buildPayload(load) {
 
     // `packing` is inserted directly into INTEGER column product_trait_id
     // on the create path (verified by SQL error 1366 when we tried the name).
-    // Server expects the trait id from /api/products/dropdowns.
-    packing:         sup.packingTrait,
+    // Server expects the trait id from /api/products/dropdowns (env-specific).
+    packing:         packingTrait,
     condition:       load.condTrait,
     manifested:      load.manifestTrait,
 
@@ -1978,7 +1986,10 @@ function buildPayload(load) {
   }
   // Per-supplier pinned constants (set on every push regardless of manifest).
   if (sup.peachtreeQty != null)       data.peachtree_qty         = sup.peachtreeQty;
-  if (sup.productType != null)        data.productType           = String(sup.productType);
+  if (sup.productType != null) {
+    const pt = isLive && sup.productTypeLive != null ? sup.productTypeLive : sup.productType;
+    data.productType = String(pt);
+  }
   if (sup.restrictPriceChange != null) data.restrict_price_change = sup.restrictPriceChange;
   if (sup.taxable != null)            data.taxable               = sup.taxable;
 
