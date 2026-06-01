@@ -147,7 +147,66 @@ existing wizard the ERP team referenced does the same.
 All three dropdowns are editable per-invoice in the draft panel — the defaults
 above are just what pre-fills.
 
-## Customer source (BigQuery)
+## Customer source — MIGRATION PLANNED: BigQuery → native ERP endpoints
+
+> **Status (2026-06-01):** The ERP team published an official Orders API
+> reference pack (Drive folder `orders_api`, owner armin@viatrading.com:
+> `ORDERS_API.md`, `ORDERS_INTEGRATION_FAQ.md`, `samples/`). It exposes
+> **native customer endpoints** that should replace the BigQuery bridge below.
+> Captured here; **not yet implemented** — see "Migration plan" + prerequisites.
+
+### Native flow (from the ERP team's integration FAQ) — TWO calls
+
+The native path is a search call **plus** a detail call. Search does **not**
+return addresses ("Search results do not include full addresses; always GET by
+id.").
+
+1. **Typeahead search** — returns the customer + `id` (→ `data.user_id`), no address:
+   ```http
+   GET /api/customers?is_customer=2,3&context=order_search&limit=10&full_name=Jane
+   GET /api/customers?is_customer=2,3&context=order_search&limit=10&email=jane@example.com
+   GET /api/customers?is_customer=2,3&context=order_search&limit=10&phone=5551234567
+   ```
+   Result `data[]` fields: `id`, `first_name`, `last_name`, `email`,
+   `phone_number`, `company_name`. Needs privilege `VIEW_CUSTOMERS` /
+   `VIEW_OWN_CUSTOMERS` (may scope to sales rep).
+
+2. **Address fetch on pick** — `GET /api/customers/{id}` → use `data[0]`:
+   | Field | Use for order prefill |
+   |---|---|
+   | `billingAddressDetails[0]` | → `data.billing_address` |
+   | `defaultAddressDetails[0]`  | → default `data.shipping_address` |
+   | `shippingAddressDetails[]`  | all shipping addresses (pick one / default) |
+
+   Address objects already use IMS keys (`companyName`, `addressMore`,
+   `countryCode`, `stateName`, `state`, `phoneNumber`, `phoneId`, `commercial`,
+   `liftgate`) — i.e. **the exact shape `POST /api/orders` wants, no transform**.
+
+### Why migrate (not just "temp")
+
+Audited `customers_flat` on 2026-06-01: of **854,186** active customers,
+**~356,000 (42%) have no billing address** (≈36% missing city, ≈44% state,
+≈36% zip). The BigQuery snapshot is stale/incomplete; `GET /api/customers/{id}`
+reads the live customer record (source of truth), so addresses are current.
+
+### Migration plan (when scheduled)
+
+- **Prerequisite — verify endpoints first.** Confirm `GET /api/customers?...`
+  and `GET /api/customers/{id}` actually return the documented shapes on
+  `viatrading.biz` (test) before wiring UI. Check: search result field names
+  (`phone_number` vs `phone`), and that `billingAddressDetails[0]` /
+  `defaultAddressDetails[0]` exist and are populated.
+- Replace `functions/api/customers/search.js` (BigQuery) with a thin proxy to
+  `GET /api/customers?...` via the env-aware key injection.
+- Add a second proxy hop / call for `GET /api/customers/{id}` on customer pick;
+  map `billingAddressDetails[0]`/`defaultAddressDetails[0]` into the draft's
+  `billing_address`/`shipping_address`. Frontend already stores
+  `{customer_id, email, name, billing_address, shipping_address}` on the draft,
+  so the draft/payload code shouldn't need to change — only the data source.
+- Privileges: the LIVE/TEST API keys need `VIEW_CUSTOMERS` (+ `CREATE_ORDERS`,
+  `VIEW_PRODUCTS` for lookups).
+
+### Current (legacy) BigQuery bridge — still in place until migration
 
 Posku's `/api/customers/search?q=...` Pages Function queries
 `data-warehouse-494801.alain_via_erp.customers_flat`. Match ranking:
@@ -208,16 +267,38 @@ shows the predicted draft count live as the user toggles.
 
 ## Open items
 
-1. **Response shape on success** — the field name carrying the new invoice id.
-   Posku currently sniffs `newOrderId / newId / id / order_id` and falls back
-   to "(check response)". To be locked once ERP team confirms.
-2. **`payments[]` semantics for unpaid invoices** — `[]` vs omitted vs
-   pending-method record. Currently always `[]`; ERP-side behavior unknown.
-3. **`/api/customers` REST endpoint** — when available, swap the BigQuery
-   bridge for a thin pass-through.
-4. **"Presold" data signal** — whether there's a flag/tag/sheet column
+1. **Response shape on success** — ✅ **RESOLVED** by the ERP FAQ. Create
+   returns **`{ "id": 12345 }`** (internal PK `orders.id`, used for
+   `PUT /api/orders/{id}`). The customer-facing **`order_id`** (e.g. `1159186`)
+   is **not** in the POST body — fetch it with `GET /api/orders/{id}` and read
+   `order_id` for the "Invoice #… pushed" display. *(Code still sniffs
+   `newOrderId/newId/id/order_id`; switch to `id` + a GET on implement.)*
+2. **`payments[]` semantics for unpaid invoices** — ✅ **RESOLVED**: `[]` (or
+   omitting `payments`) is recommended. Set `payment_method_id` on the **order
+   header** for how they'll pay / terms; leave `payments` empty until money is
+   recorded (later `PUT` with `payments[]`). Posku already sends `[]`.
+3. **`/api/customers` REST endpoint** — ✅ **AVAILABLE** (see "Customer source"
+   migration plan above). Two-call native flow ready to wire; verify-first.
+4. **Hardcoded enums** — the FAQ says `order_type_id`, `payment_method_id`,
+   `shipping_method_id` are **not** fixed in code; load from
+   `GET /api/lookups?table=orders_types` / `orders_payment_methods` /
+   `shipping_methods` (rows `{id, name}`, optional `status_id`/`limit`/`page`).
+   Posku hardcodes them today (see "Hardcoded enums" above) — fine for now,
+   but live lookups would keep them in sync per-environment.
+5. **Line-item default price** — IMS order entry defaults `items[].price` (and
+   `original_price`) from the product's **`price`** field, via
+   `GET /api/products/get-skus?search=SKU&skuSearch=true&limit=5&skipCounts=1`.
+   Not `unit_price`/`load_price`. Context for auto-filling invoice line prices.
+6. **"Presold" data signal** — whether there's a flag/tag/sheet column
    marking which loads have a customer waiting. Would let Posku surface a
    "presold" chip on the load row and gate the Invoice button on it.
+
+### Source of these answers
+
+Drive folder **`orders_api`** (owner armin@viatrading.com, 2026-06-01):
+`ORDERS_API.md`, `ORDERS_INTEGRATION_FAQ.md`, `samples/create-order*.json`,
+`samples/curl-create-order.sh`. The FAQ is the integration source of truth;
+this file mirrors the parts Posku depends on.
 
 ## Where the code lives
 

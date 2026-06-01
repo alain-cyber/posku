@@ -114,9 +114,18 @@ Read these in commit order if you need to understand the invoice flow.
    `[]` vs omitted vs a pending-method record. Posku always sends `[]` for
    now.
 
-5. **Proper customers REST endpoint** — currently bridged via BigQuery
-   `customers_flat`. When the ERP team exposes `/api/customers`, swap the
-   Pages Function for a thin pass-through (frontend code unchanged).
+5. **Proper customers REST endpoint** — ✅ **NOW AVAILABLE** (ERP team published
+   the `orders_api` Drive pack, 2026-06-01). Native flow is **two calls**:
+   `GET /api/customers?is_customer=2,3&context=order_search&...` (search, no
+   addresses) then `GET /api/customers/{id}` → `data[0]` for addresses
+   (`billingAddressDetails[0]` / `defaultAddressDetails[0]`, already in the
+   `POST /api/orders` shape). **Migration not yet done** — see ORDERS_API.md
+   "Customer source" for the full plan. Worth it: ~42% of `customers_flat`
+   rows have **no** billing address; the live endpoint is the source of truth.
+   **Prereq before wiring: verify the two endpoints' real response shapes on
+   `viatrading.biz` first.** Also captured in that pack: success response is
+   `{id}` (GET order_id for display), enums via `/api/lookups`, line price from
+   `get-skus` `price`. User decision this session: **document only for now.**
 
 ### Deferred / "advise later" (user)
 
