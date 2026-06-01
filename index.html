@@ -422,6 +422,9 @@ textarea::placeholder { color: var(--text4); }
 .cust-picker .cust-results .cust-item .ci-meta  { font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text3); margin-top: 0.15rem; }
 .cust-picker .cust-results .cust-empty { padding: 0.6rem 0.7rem; font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--text3); }
 .cust-picker .cust-chosen { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.7rem; background: var(--green-dim); border: 1px solid rgba(30,127,86,0.35); border-radius: 5px; }
+.cust-picker .cust-shipto { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
+.cust-picker .cust-shipto label { font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text3); white-space: nowrap; }
+.cust-picker .cust-shipto select { flex: 1; background: var(--surface); border: 1px solid var(--border2); border-radius: 6px; padding: 0.35rem 0.5rem; font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--text); }
 .cust-picker .cust-chosen .cc-email { font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--green); }
 .cust-picker .cust-chosen .cc-clear { margin-left: auto; cursor: pointer; color: var(--text3); font-size: 0.85rem; padding: 0 0.3rem; }
 
@@ -4898,25 +4901,23 @@ function rememberCustomer(c) {
 // shipping_address }. Requires the SA to have BigQuery jobUser + dataViewer
 // (CLOUDFLARE_SETUP.md step 8).
 
-// Best-effort address backfill for a picked customer that somehow lacks one
-// (BigQuery rows include billing_address, so this is normally a no-op). Tries
-// the native detail endpoint; harmless if that's still privilege-blocked.
+// On pick, load the customer's distinct shipping addresses from the BigQuery
+// mirror (/api/customers/addresses) so we can offer a "ship to" picker when
+// there's more than one. Billing already comes from the search row. Falls back
+// to billing-as-shipping if the lookup returns nothing.
 async function enrichCustomerAddresses(c) {
-  if (!c || !c.customer_id || c.billing_address) return c;
-  const r = await erpRequest('GET', `/api/customers/${encodeURIComponent(c.customer_id)}`);
-  if (!r.ok || !r.data) return c;
-  const body = r.data;
-  const rec = Array.isArray(body.data) ? body.data[0]
-            : Array.isArray(body) ? body[0]
-            : (body.data || body);
-  if (!rec || typeof rec !== 'object') return c;
-  const first = (key) => Array.isArray(rec[key]) ? (rec[key][0] || null)
-                       : (rec[key] && typeof rec[key] === 'object' ? rec[key] : null);
-  const billing  = first('billingAddressDetails');
-  const shipping = first('defaultAddressDetails') || first('shippingAddressDetails') || billing;
-  c.billing_address  = billing  || null;
-  c.shipping_address = shipping || billing || null;
-  if (!c.company) c.company = rec.company_name || rec.companyName || '';
+  if (!c || !c.customer_id || c._shipLoaded) return c;
+  c._shipLoaded = true;
+  try {
+    const r = await fetch(`/api/customers/addresses?id=${encodeURIComponent(c.customer_id)}`, { cache: 'no-store' });
+    const j = await r.json().catch(() => null);
+    const ships = (r.ok && j?.ok && Array.isArray(j.shipping)) ? j.shipping : [];
+    if (ships.length) {
+      c.shipping_addresses = ships;
+      c.shipping_address    = ships[0];   // default to first; user can switch
+    }
+  } catch { /* keep the search-derived shipping_address */ }
+  if (!c.shipping_address) c.shipping_address = c.billing_address || null;
   return c;
 }
 
@@ -5175,6 +5176,15 @@ function renderInvoiceDrafts() {
 
 // ── Customer picker mini-component (rendered inside each draft) ──────────────
 
+// Compact one-line label for a shipping-address <option> (fallback when the
+// server didn't supply _label).
+function shipLabel(a) {
+  if (!a) return '';
+  if (a._label) return a._label;
+  const line = [a.address, a.city, [a.state || a.stateName, a.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  return [a.companyName, line].filter(Boolean).join(' — ');
+}
+
 function renderCustomerPicker(d, idx) {
   if (d.customer) {
     return `
@@ -5188,6 +5198,14 @@ function renderCustomerPicker(d, idx) {
           </div>
           <span class="cc-clear" data-inv-clear-customer="${idx}" title="Clear and pick again">×</span>
         </div>
+        ${(d.customer.shipping_addresses?.length > 1) ? `
+          <div class="cust-shipto">
+            <label>Ship to</label>
+            <select data-inv-shipto="${idx}">
+              ${d.customer.shipping_addresses.map((a, i) =>
+                `<option value="${i}" ${a === d.customer.shipping_address ? 'selected' : ''}>${esc(a._label || shipLabel(a))}</option>`).join('')}
+            </select>
+          </div>` : ''}
         ${d.customer.billing_address ? '' : `<div class="cust-empty" style="color:var(--amber,#d6a23a);">no address on file — order will post with the customer's ERP default addresses</div>`}
       </div>`;
   }
@@ -5293,6 +5311,16 @@ function attachInvoiceHandlers() {
         rememberCustomer(c);
         renderInvoiceDrafts();
       }
+    };
+  });
+  // Ship-to selector (shown when a customer has >1 distinct shipping address)
+  document.querySelectorAll('[data-inv-shipto]').forEach(sel => {
+    sel.onchange = () => {
+      const idx = +sel.dataset.invShipto;
+      const d = invoiceDrafts[idx];
+      const ships = d?.customer?.shipping_addresses;
+      if (!ships) return;
+      d.customer.shipping_address = ships[+sel.value] || d.customer.shipping_address;
     };
   });
   // Clear customer
