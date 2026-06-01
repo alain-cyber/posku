@@ -31,6 +31,12 @@ export async function onRequest(context) {
   const hdr = { 'api-key': apiKey, 'Accept': 'application/json' };
   const out = { envUsed: envName, origin: target.origin, query: q };
 
+  // 0) Control probe — does this key work AT ALL on a non-customer endpoint?
+  // Distinguishes "key invalid/blocked" (control also fails) from
+  // "key valid but lacks VIEW_CUSTOMERS" (control passes, customers 403s).
+  out.control_lookups = await probe(
+    `${target.origin}/api/lookups?table=orders_types&limit=1`, hdr, () => ({}));
+
   // 1) Search (typeahead) — should NOT include full addresses.
   const searchUrl = `${target.origin}/api/customers?is_customer=2,3&context=order_search&limit=5&full_name=${encodeURIComponent(q)}`;
   out.search = await probe(searchUrl, hdr, (data) => {
@@ -96,6 +102,11 @@ async function probe(url, headers, summarize) {
     let data;
     try { data = JSON.parse(text); } catch { res.parseError = true; res.raw = text.slice(0, 300); return res; }
     res.topLevelKeys = data && !Array.isArray(data) ? Object.keys(data) : `array(${Array.isArray(data) ? data.length : 0})`;
+    // On any non-2xx, surface the upstream message so we can read the reason
+    // (e.g. missing-privilege vs invalid-key).
+    if (!r.ok && data && !Array.isArray(data)) {
+      res.errorBody = data.error ?? data.message ?? data;
+    }
     res.parsed = summarize(data);
   } catch (e) {
     res.error = e.message;
