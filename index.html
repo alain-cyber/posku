@@ -421,11 +421,6 @@ textarea::placeholder { color: var(--text4); }
 .cust-picker .cust-results .cust-item .ci-email { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--text); }
 .cust-picker .cust-results .cust-item .ci-meta  { font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--text3); margin-top: 0.15rem; }
 .cust-picker .cust-results .cust-empty { padding: 0.6rem 0.7rem; font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--text3); }
-.cust-picker .cust-manual { display: flex; gap: 0.4rem; margin-top: 0.45rem; }
-.cust-picker .cust-manual .cust-id-input { flex: 1; }
-.cust-picker .cust-manual .cust-id-go { padding: 0 0.7rem; font-family: 'DM Mono', monospace; font-size: 0.7rem; cursor: pointer; background: var(--surface2); color: var(--text); border: 1px solid var(--border2); border-radius: 6px; white-space: nowrap; }
-.cust-picker .cust-manual .cust-id-go:hover { background: var(--surface); }
-.cust-picker .cust-manual .cust-id-go:disabled { opacity: 0.5; cursor: default; }
 .cust-picker .cust-chosen { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.7rem; background: var(--green-dim); border: 1px solid rgba(30,127,86,0.35); border-radius: 5px; }
 .cust-picker .cust-chosen .cc-email { font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--green); }
 .cust-picker .cust-chosen .cc-clear { margin-left: auto; cursor: pointer; color: var(--text3); font-size: 0.85rem; padding: 0 0.3rem; }
@@ -4848,45 +4843,20 @@ function rememberCustomer(c) {
   try { localStorage.setItem(RECENT_CUSTOMERS_KEY, JSON.stringify(recent)); } catch {}
 }
 
-// ── Customer search (native ERP /api/customers, via the env-aware proxy) ─────
+// ── Customer search (BigQuery mirror via /api/customers/search) ──────────────
 //
-// Replaces the old BigQuery bridge. Two-call pattern matching the IMS add-order
-// UI (see ORDERS_INTEGRATION_FAQ §6–7):
-//   1. searchCustomers(q)        → GET /api/customers?...   (typeahead; NO addresses)
-//   2. enrichCustomerAddresses() → GET /api/customers/{id}  (on PICK; addresses)
-//
-// Field mapping is intentionally defensive (accepts name variants) because the
-// live response shape isn't fully verified yet — the staging key still needs
-// the VIEW_CUSTOMERS privilege. normalizeErpCustomer() is the single place to
-// tighten once the diag (/api/_diag/customers) returns 200 with real shapes.
+// The native ERP /api/customers search is gated behind the VIEW_CUSTOMERS
+// privilege (still pending on the key), so the typeahead reads the BigQuery
+// customer mirror instead — name/email lookup with billing address inline, no
+// per-pick detail call needed. The bridge (functions/api/customers/search.js)
+// queries alain_via_erp.customers_flat and returns rows already shaped to the
+// UI contract: { customer_id, email, name, company, phone, billing_address,
+// shipping_address }. Requires the SA to have BigQuery jobUser + dataViewer
+// (CLOUDFLARE_SETUP.md step 8).
 
-// Map an ERP customer record (search row or detail data[0]) to the UI contract
-// the invoice flow expects: { customer_id, email, name, company, phone, ... }.
-function normalizeErpCustomer(rec) {
-  if (!rec || typeof rec !== 'object') return null;
-  const pick = (...keys) => {
-    for (const k of keys) if (rec[k] != null && rec[k] !== '') return rec[k];
-    return '';
-  };
-  const first = pick('first_name', 'firstName', 'firstname');
-  const last  = pick('last_name', 'lastName', 'lastname');
-  const full  = pick('full_name', 'fullName', 'name', 'customer_full_name')
-             || `${first} ${last}`.trim();
-  const id = Number(pick('id', 'customer_id', 'user_id'));
-  return {
-    customer_id:      Number.isFinite(id) ? id : null,
-    email:            pick('email', 'primary_email', 'email_address'),
-    name:             full,
-    company:          pick('company_name', 'companyName', 'company'),
-    phone:            pick('phone_number', 'phone', 'phoneNumber'),
-    billing_address:  null,   // filled by enrichCustomerAddresses() on pick
-    shipping_address: null,
-  };
-}
-
-// Pull the customer's default addresses (separate call — search results don't
-// include them). Mutates and returns the same customer object. On any failure
-// it leaves addresses null; the push path warns if they're still missing.
+// Best-effort address backfill for a picked customer that somehow lacks one
+// (BigQuery rows include billing_address, so this is normally a no-op). Tries
+// the native detail endpoint; harmless if that's still privilege-blocked.
 async function enrichCustomerAddresses(c) {
   if (!c || !c.customer_id || c.billing_address) return c;
   const r = await erpRequest('GET', `/api/customers/${encodeURIComponent(c.customer_id)}`);
@@ -4900,8 +4870,6 @@ async function enrichCustomerAddresses(c) {
                        : (rec[key] && typeof rec[key] === 'object' ? rec[key] : null);
   const billing  = first('billingAddressDetails');
   const shipping = first('defaultAddressDetails') || first('shippingAddressDetails') || billing;
-  // The ERP address objects are already in the IMS order-payload shape
-  // (companyName, addressMore, countryCode, stateName, …) — pass through as-is.
   c.billing_address  = billing  || null;
   c.shipping_address = shipping || billing || null;
   if (!c.company) c.company = rec.company_name || rec.companyName || '';
@@ -4915,19 +4883,16 @@ async function searchCustomers(q) {
   const cacheKey = q.toLowerCase();
   const hit = _custSearchCache.get(cacheKey);
   if (hit && (Date.now() - hit.at < 60_000)) return hit;
-  // Pick the query field the way the IMS typeahead does: e-mail box vs name box.
-  const param = q.includes('@') ? 'email' : 'full_name';
-  const qs = `is_customer=2,3&context=order_search&limit=12&${param}=${encodeURIComponent(q)}`;
-  const r = await erpRequest('GET', `/api/customers?${qs}`);
   let out;
-  if (!r.ok) {
-    const detail = r.data?.error || r.data?.message || r.error || `HTTP ${r.status || '?'}`;
-    out = { results: [], error: detail };
-  } else {
-    const rows = Array.isArray(r.data?.data) ? r.data.data
-               : Array.isArray(r.data) ? r.data
-               : (r.data?.data ? [r.data.data] : []);
-    out = { results: rows.map(normalizeErpCustomer).filter(c => c && c.customer_id), error: null };
+  try {
+    const r = await fetch(`/api/customers/search?q=${encodeURIComponent(q)}&max=12`, { cache: 'no-store' });
+    let j = null;
+    try { j = await r.json(); } catch {}
+    if (!r.ok)       out = { results: [], error: j?.error || `HTTP ${r.status}` };
+    else if (!j?.ok) out = { results: [], error: j?.error || 'response missing ok flag' };
+    else             out = { results: j.customers || [], error: null };
+  } catch (e) {
+    out = { results: [], error: `network: ${e.message}` };
   }
   out.at = Date.now();
   _custSearchCache.set(cacheKey, out);
@@ -5185,10 +5150,6 @@ function renderCustomerPicker(d, idx) {
       <input type="text" class="cust-input" data-inv-cust-input="${idx}" placeholder="Type email or name — at least 2 chars" autocomplete="off">
       ${recent.length ? `<div class="cust-recent">${recent.map(r => `<span class="recent-chip" data-inv-cust-recent="${idx}" data-customer-id="${r.customer_id}" data-customer-email="${esc(r.email)}">${esc(r.email)}</span>`).join('')}</div>` : ''}
       <div class="cust-results" data-inv-cust-results="${idx}"></div>
-      <div class="cust-manual">
-        <input type="text" inputmode="numeric" class="cust-id-input" data-inv-cust-id="${idx}" placeholder="…or paste a customer ID" autocomplete="off">
-        <button type="button" class="cust-id-go" data-inv-cust-id-go="${idx}">Use ID</button>
-      </div>
     </div>`;
 }
 
@@ -5233,9 +5194,9 @@ function attachInvoiceHandlers() {
         resultsEl.classList.add('show');
         const { results: matches, error } = await searchCustomers(q);
         if (error) {
-          // Surface the ERP's actual message. Most likely cause right now: the
-          // api-key lacks the VIEW_CUSTOMERS privilege ("You do not have the
-          // required privilege(s)…") — grant it on the key in the ERP admin.
+          // Surface the actual failure. Most likely cause right now: the SA
+          // lacks BigQuery roles (jobUser + dataViewer) — see CLOUDFLARE_SETUP
+          // step 8 — or the search Pages Function isn't deployed yet.
           resultsEl.innerHTML = `<div class="cust-empty" style="color:var(--red);">lookup failed — ${esc(error)}</div>`;
           return;
         }
@@ -5279,23 +5240,6 @@ function attachInvoiceHandlers() {
         rememberCustomer(c);
         renderInvoiceDrafts();
       }
-    };
-  });
-  // Manual customer-ID fallback — works without the VIEW_CUSTOMERS privilege.
-  // Builds a minimal customer from a known id; tries (but doesn't require) the
-  // address detail fetch. The order posts user_id even if addresses stay null.
-  document.querySelectorAll('[data-inv-cust-id-go]').forEach(b => {
-    b.onclick = async () => {
-      const idx = +b.dataset.invCustIdGo;
-      const inp = document.querySelector(`[data-inv-cust-id="${idx}"]`);
-      const id = Number((inp?.value || '').replace(/[^0-9]/g, ''));
-      if (!id) { inp?.focus(); return; }
-      b.disabled = true; b.textContent = '…';
-      const c = { customer_id: id, email: '', name: `Customer #${id}`, company: '', phone: '', billing_address: null, shipping_address: null };
-      await enrichCustomerAddresses(c);   // best-effort; harmless if it 403s
-      invoiceDrafts[idx].customer = c;
-      rememberCustomer(c);
-      renderInvoiceDrafts();
     };
   });
   // Clear customer
