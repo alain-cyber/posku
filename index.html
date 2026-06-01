@@ -2341,6 +2341,15 @@ function attachSamsManifestHandlers() {
   });
 }
 
+// Format an email Date header ("Mon, 19 May 2026 14:23:00 -0700") to a compact
+// local timestamp for the load card. Falls back to the raw string if unparseable.
+function fmtEmailDate(raw) {
+  if (!raw) return '';
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return String(raw);
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
 function renderLoads() {
   const body = $('loads-body');
   body.innerHTML = '';
@@ -2387,7 +2396,7 @@ function renderLoads() {
 
     tr.innerHTML = `
       <td class="select-col">${load.status === 'done' ? `<input type="checkbox" data-select="${idx}" ${load.selected ? 'checked' : ''}>` : ''}</td>
-      <td class="mono">${esc(load.loadId)}</td>
+      <td class="mono">${esc(load.loadId)}${load.emailDate ? `<div style="font-size:0.6rem;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px;white-space:nowrap;" title="Email received${load.emailFrom ? ' from ' + esc(load.emailFrom) : ''}">✉ ${esc(fmtEmailDate(load.emailDate))}</div>` : ''}</td>
       <td><span class="mono">${esc(load.locCode || '—')}</span></td>
       <td><span class="mono">${esc(load.typeCode || '—')}</span></td>
       <td>${load.sku ? `<span class="mono-green">${esc(withEnvSuffix(load.sku))}</span>` : `<span class="mono-amber">—</span>`}</td>
@@ -3245,6 +3254,9 @@ async function inboxFetch() {
   for (const m of msgs) {
     const blob = `${m.subject}\n\n${m.body || m.snippet}`;
     const found = parseEmail(blob, activeSupplier);
+    // Stamp each load with the source email's sender + received date so the
+    // card can show when it arrived (pasted-email loads won't have these).
+    found.forEach(l => { l.emailFrom = m.from || ''; l.emailDate = m.date || ''; });
     const refs = m.attachmentRefs || [];
     const csvRefs = refs.filter(r => /\.csv$/i.test(r.filename || ''));
     const attachInfo = refs.map(r => ({ filename: r.filename, mimeType: r.mimeType, bytes: r.size || 0 }));
