@@ -5040,9 +5040,12 @@ function generateInvoiceDrafts() {
 // successful push we don't re-fetch it, so we read it back from there.
 function readSkuPriceFromLoad(l) {
   const totals = buildLoadTotals(l);
-  // First preference: the manifest-derived price-per-unit we sent as `unit_price`.
-  if (totals && totals.price_per_unit != null) return totals.price_per_unit;
+  // The invoice line is qty 1 = the whole load, so the unit price must be the
+  // product's full sell price (`price` = qty × price_per_unit), NOT the
+  // per-unit price. This matches the SKU's `price` in the ERP (FAQ §9:
+  // items[].price ← products.price). Falling back to per-unit only if missing.
   if (totals && totals.price != null)          return totals.price;
+  if (totals && totals.price_per_unit != null) return totals.price_per_unit;
   return null;
 }
 
@@ -5200,29 +5203,35 @@ function renderCustomerPicker(d, idx) {
 // ── Attach handlers after every render ───────────────────────────────────────
 
 function attachInvoiceHandlers() {
-  // Header inputs / selects
+  // Header inputs / selects. Store the value on every input, but only re-render
+  // (which rebuilds the inputs) on `change` — otherwise editing a numeric field
+  // like Shipping cost / Tax rate loses focus after each keystroke and feels
+  // uneditable. Totals refresh on blur / Enter.
   document.querySelectorAll('[data-inv-h]').forEach(el => {
-    el.onchange = el.oninput = () => {
+    const apply = (rerender) => {
       const idx = +el.dataset.invH;
       const k = el.dataset.k;
-      const v = el.value;
       const d = invoiceDrafts[idx];
       if (!d) return;
-      d[k] = ['order_type_id','payment_method_id','shipping_method_id'].includes(k) ? Number(v) : v;
-      // Re-render only if a total-affecting field changed — otherwise leave alone
-      if (['shipping_cost','tax_rate'].includes(k)) renderInvoiceDrafts();
+      d[k] = ['order_type_id','payment_method_id','shipping_method_id'].includes(k) ? Number(el.value) : el.value;
+      if (rerender) renderInvoiceDrafts();
     };
+    el.oninput  = () => apply(false);
+    el.onchange = () => apply(true);
   });
-  // Line-item inputs
+  // Line-item inputs (qty / unit price). Same pattern: store on input, refresh
+  // line totals on change so the field stays editable while typing.
   document.querySelectorAll('[data-inv-i]').forEach(el => {
-    el.onchange = el.oninput = () => {
+    const apply = (rerender) => {
       const [idx, j] = el.dataset.invI.split('_').map(Number);
       const k = el.dataset.k;
       const d = invoiceDrafts[idx];
       if (!d?.items[j]) return;
       d.items[j][k] = el.value;
-      renderInvoiceDrafts();
+      if (rerender) renderInvoiceDrafts();
     };
+    el.oninput  = () => apply(false);
+    el.onchange = () => apply(true);
   });
   // Customer search input — debounced
   document.querySelectorAll('[data-inv-cust-input]').forEach(input => {
@@ -5332,7 +5341,10 @@ function buildInvoicePayload(d) {
       product_id:     it.product_id,
       sku:            it.sku,
       qty:            String(it.qty),
-      original_price: it.original_price || (Number(it.price) || 0).toFixed(2),
+      // original_price must follow the (possibly edited) unit price — otherwise
+      // the ERP shows the stale originally-calculated price on the line while
+      // the subtotal reflects the edit. Both track it.price.
+      original_price: (Number(it.price) || 0).toFixed(2),
       discount:       it.discount || '0',
       discount_type:  it.discount_type || 1,
       price:          (Number(it.price) || 0).toFixed(2),
