@@ -37,6 +37,25 @@ export async function onRequest(context) {
   out.control_lookups = await probe(
     `${target.origin}/api/lookups?table=orders_types&limit=1`, hdr, () => ({}));
 
+  // 0b) Identity / privilege probe — helps the dev confirm the grant landed on
+  // THIS key (vs a different key or the LIVE one). Tries common "whoami"
+  // routes; reports status + top-level keys + any privilege-looking field.
+  // Read-only; unknown routes just 404, which is fine.
+  const idRoutes = ['me', 'user', 'users/me', 'account', 'profile', 'api-keys', 'privileges', 'permissions'];
+  out.identity = {};
+  for (const r of idRoutes) {
+    const res = await probe(`${target.origin}/api/${r}`, hdr, (data) => {
+      const obj = (data && data.data) || data || {};
+      const flat = JSON.stringify(obj);
+      // surface anything that smells like a privilege/role list
+      const priv = /privile|permiss|role|scope/i.test(flat) ? obj : undefined;
+      return { keys: obj && typeof obj === 'object' ? Object.keys(obj) : null, privilegeIsh: priv };
+    });
+    // only keep routes that actually responded with something useful
+    if (res.status && res.status !== 404) out.identity[r] = res;
+  }
+  if (!Object.keys(out.identity).length) out.identity = 'no whoami-style route responded (all 404/none)';
+
   // 1) Search (typeahead) — should NOT include full addresses.
   const searchUrl = `${target.origin}/api/customers?is_customer=2,3&context=order_search&limit=5&full_name=${encodeURIComponent(q)}`;
   out.search = await probe(searchUrl, hdr, (data) => {
