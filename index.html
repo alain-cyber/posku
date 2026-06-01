@@ -1105,6 +1105,23 @@ const PO_DEFAULTS = {
   },
 };
 
+// Sam's Club PO defaults. Inherits WYF's option lists (shipping methods /
+// companies / statuses) but fixes the Sam's-specific data that was wrongly
+// inherited from Wayfair: supplier id, and the billing address (which showed
+// "Wayfair Inc., Boston" on Sam's POs). Billing now defaults to blank per
+// request; facility is the ERP `facility` text column, derived from the
+// confirmed club → city map (UPPERCASE city, matching how the ERP stores it).
+PO_DEFAULTS.SMS = {
+  ...PO_DEFAULTS.WYF,
+  supplier_id:            SUPPLIERS.SMS.erpSupplier,   // 1205 Wal-Mart SAMS CLUB (was Wayfair's 770)
+  billing_address:        '',                          // blank default for Sam's (was Wayfair's address)
+  shipping_address_byLoc: {},                          // Sam's → Via Trading DC; fill per club when known
+  facilityByLoc: Object.fromEntries(
+    Object.entries(SUPPLIERS.SMS.clubCities || {})
+      .map(([code, city]) => [code, String(city).split(',')[0].trim().toUpperCase()])
+  ),
+};
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
