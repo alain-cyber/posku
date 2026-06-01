@@ -3796,6 +3796,7 @@ function createDraftFromLoad(load) {
   return {
     id:               'po_' + Date.now() + '_' + Math.random().toString(36).slice(2),
     loadIdx:          loads.indexOf(load),
+    supplierKey:      load.supplierKey,   // pin the draft to its load's supplier
     sku:              load.sku,
     productId:        load.productId || null,
     productName:      load.name,
@@ -4011,7 +4012,10 @@ function attachPoHandlers() {
 }
 
 function buildPoPayload(d) {
-  const def = PO_DEFAULTS[activeSupplier] || PO_DEFAULTS.WYF;
+  // Resolve defaults from the DRAFT's supplier (pinned at creation), not the
+  // active tab — otherwise a Sam's PO pushed while another tab is active would
+  // take Wayfair's supplier_id / user_name. Falls back for older drafts.
+  const def = PO_DEFAULTS[d.supplierKey] || PO_DEFAULTS[activeSupplier] || PO_DEFAULTS.WYF;
   // All header dates default to push date. Order date is still user-editable;
   // due/delivery dates are no longer shown in the UI but the API still gets a
   // value so the request doesn't break.
