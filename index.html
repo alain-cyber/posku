@@ -1842,6 +1842,108 @@ function transformSamsManifest(csvText, sku, clubCode) {
 
 function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
 
+// Excel scientific-notation / trailing-zero UPCs → plain digit string.
+function normalizeUpc(s) {
+  const t = String(s ?? '').trim();
+  if (!t) return '';
+  if (/^\d*\.?\d+e\+?\d+$/i.test(t)) { const n = Number(t); return Number.isFinite(n) ? n.toFixed(0) : t; }
+  return t.replace(/\.0+$/, '');
+}
+// Best-effort fix for UTF-8-read-as-Latin-1 mojibake seen in some WYF manifests.
+function fixMojibake(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/â„¢/g, '™').replace(/â€"/g, '—').replace(/â€“/g, '–')
+    .replace(/â€™/g, '’').replace(/â€˜/g, '‘').replace(/â€œ/g, '“').replace(/â€/g, '”')
+    .replace(/Â(?=[°®™\s])/g, '').trim();
+}
+
+// Transform a Wayfair manifest (the single 25-column schema — see
+// WAYFAIR_MANIFEST_MAPPING.md) into Load Center rows. `text` is the manifest as
+// CSV/TSV text; `sku` is the Posku-assigned load SKU. All load types share this
+// layout — type/location come from the filename, not the columns.
+function transformWayfairManifest(text, sku) {
+  const rows = parseCsv(text);
+  // Locate the header row (xlsx may prepend a sheet-name fragment to cell 0).
+  let h = -1;
+  for (let i = 0; i < Math.min(rows.length, 25); i++) {
+    const joined = (rows[i] || []).map(c => String(c).toLowerCase()).join('|');
+    if (joined.includes('wayfair id') && joined.includes('quantity')) { h = i; break; }
+  }
+  if (h === -1) return { rows: [], palletIds: [], error: 'No Wayfair manifest header found (expected "Wayfair ID" + "Quantity").' };
+  const header = rows[h].map(c => String(c).trim());
+  const col = (name) => {
+    const t = name.toLowerCase();
+    for (let i = 0; i < header.length; i++) {
+      const hd = header[i].toLowerCase();
+      if (hd === t || hd.endsWith(t)) return i;   // endsWith → tolerate sheet-name prefix on col 0
+    }
+    return -1;
+  };
+  const ix = {
+    pallet: col('Pallet ID'), wayfair: col('Wayfair ID'), qty: col('Quantity'),
+    category: col('Product Category'), type: col('Product Type'),
+    maker: col('Product Manufacturer'), name: col('Product Name'),
+    upc: col('Product UPC or EAN'),
+    priceUnit: col('Price Per Product'), totalPrice: col('Total Product Price'),
+    wholesaleUnit: col('Wholesale Price Per Product'),
+  };
+  const cell = (r, i) => (i >= 0 && i < r.length) ? String(r[i]).trim() : '';
+  const out = [];
+  for (let i = h + 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || !r.length) continue;
+    const wfId = cell(r, ix.wayfair);
+    const qty  = intToNum(cell(r, ix.qty)) || 0;
+    if (!wfId && !qty) continue;            // blank / trailing summary row
+    if (!qty) continue;
+    const retailUnit    = moneyToNum(cell(r, ix.priceUnit));
+    const wholesaleUnit = moneyToNum(cell(r, ix.wholesaleUnit));
+    const extTotal      = moneyToNum(cell(r, ix.totalPrice));
+    const desc = [fixMojibake(cell(r, ix.maker)), fixMojibake(cell(r, ix.name))].filter(Boolean).join(' ');
+    out.push({
+      SKU:                 sku,
+      Store:               'WYF',
+      'Pallet ID':         cell(r, ix.pallet),
+      'Item ID':           wfId,
+      UPC:                 normalizeUpc(cell(r, ix.upc)),
+      Description:         desc,
+      'Main Category':     cell(r, ix.category),
+      Subcategory:         cell(r, ix.type),
+      Quantity:            qty,
+      'Appx. EXT Retail':  extTotal != null ? round2(extTotal) : (retailUnit != null ? round2(retailUnit * qty) : null),
+      'Appx. Unit Retail': retailUnit != null ? round2(retailUnit) : null,
+      'Your Price %':      (retailUnit && wholesaleUnit != null) ? (wholesaleUnit / retailUnit) : null,
+      'Your EXT Price':    wholesaleUnit != null ? round2(wholesaleUnit * qty) : null,
+      'Your Unit Price $': wholesaleUnit != null ? round2(wholesaleUnit) : null,
+      '% of Load QTY':     null,
+      '% of Load $$':      null,
+    });
+  }
+  const totQty = out.reduce((s, r) => s + (r.Quantity || 0), 0) || 1;
+  const tot$   = out.reduce((s, r) => s + (r['Your EXT Price'] || 0), 0) || 1;
+  for (const r of out) {
+    r['% of Load QTY'] = (r.Quantity || 0) / totQty;
+    r['% of Load $$']  = (r['Your EXT Price'] || 0) / tot$;
+  }
+  return { rows: out, palletIds: [...new Set(out.map(r => r['Pallet ID']).filter(Boolean))] };
+}
+
+// Fetch a Wayfair manifest from Drive and transform it. CSV is parsed directly;
+// native Google Sheets are exported as CSV server-side. XLSX returns base64 and
+// needs a client xlsx parser (not yet bundled) — surfaced as a clear error.
+async function fetchAndTransformWayfairManifest(fileId, sku) {
+  let res;
+  try { res = await fetch(`/api/drive/file?id=${encodeURIComponent(fileId)}`, { cache: 'no-store' }); }
+  catch (e) { return { rows: [], palletIds: [], error: `Drive fetch failed: ${e.message}` }; }
+  const j = await res.json().catch(() => null);
+  if (!res.ok || !j?.ok) return { rows: [], palletIds: [], error: j?.error || `HTTP ${res.status}` };
+  if (j.format === 'xlsx-base64') {
+    return { rows: [], palletIds: [], error: 'XLSX manifest — client xlsx parsing not yet bundled. Use a CSV export, or convert to Google Sheet.' };
+  }
+  return transformWayfairManifest(j.content || '', sku);
+}
+
 // Tab-separated string of all rows + header — paste straight into Google Sheets.
 function loadCenterAsTsv(rows) {
   const fmtCell = (col, v) => {
