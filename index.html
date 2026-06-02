@@ -1055,7 +1055,7 @@ const PO_DEFAULTS = {
     supplier_id:       770,
     legacy_user_id:    179,
     shipping_method_id: 64,  // Truckload
-    shipping_company_id: 393, // Santa Fe Trucking (most common WYF carrier)
+    shipping_company_id: null, // no proposed carrier by default (was 393 Santa Fe)
     billing_address:   'Wayfair Inc., 4 Copley Place, 7th Floor, Boston, MA 02116',
     shipping_address_byLoc: {
       PR:   'Via Trading, 11471 Penrose St, Sun Valley, CA 91352',
@@ -3868,6 +3868,11 @@ $('clear-loads-btn').onclick = () => {
 // Export all detected loads (every field + derived manifest info) as CSV.
 function downloadLoadsCsv() {
   if (!loads.length) { setStatus($('push-status'), 'warn', 'No loads to export.'); return; }
+  // Respect the active location filter — export only what's shown when filtering.
+  const rows = (loadLocationFilter && loadLocationFilter.size)
+    ? loads.filter(l => loadLocationFilter.has(l.locCode))
+    : loads;
+  if (!rows.length) { setStatus($('push-status'), 'warn', 'No loads match the current filter.'); return; }
   const cols = [
     ['Load ID',             (l) => l.loadId],
     ['Supplier',            (l) => l.supplierKey],
@@ -3899,7 +3904,7 @@ function downloadLoadsCsv() {
     return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   };
   const lines = [cols.map(c => q(c[0])).join(',')];
-  for (const l of loads) {
+  for (const l of rows) {
     const t = (typeof buildLoadTotals === 'function') ? buildLoadTotals(l) : null;
     lines.push(cols.map(c => q(c[1](l, t))).join(','));
   }
@@ -3911,7 +3916,7 @@ function downloadLoadsCsv() {
   a.download = `posku-loads-${loadEnv()}-${todayISO(0)}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  setStatus($('push-status'), 'ok', `Exported ${loads.length} load(s) to CSV.`);
+  setStatus($('push-status'), 'ok', `Exported ${rows.length} load(s) to CSV.`);
 }
 $('download-loads-btn').onclick = downloadLoadsCsv;
 
