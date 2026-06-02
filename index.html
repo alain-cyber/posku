@@ -2430,6 +2430,25 @@ function renderLoadsFilter() {
   });
 }
 
+// Proactively check whether each load's SKU already exists in the ERP (i.e. was
+// already pushed for that email/load). Annotates load._skuExists and re-renders
+// so the card can warn before the user pushes a duplicate. Throttled; results
+// are env-specific (re-run when the TEST/LIVE switch changes).
+async function markExistingSkus() {
+  const env = loadEnv();
+  const pending = loads.filter(l => l.sku && l.status !== 'done' && l._skuCheckedEnv !== env);
+  if (!pending.length) return;
+  const CHUNK = 5;
+  for (let i = 0; i < pending.length; i += CHUNK) {
+    await Promise.all(pending.slice(i, i + CHUNK).map(async l => {
+      try { const r = await checkSKUExists(withEnvSuffix(l.sku)); l._skuExists = (r.exists === true); }
+      catch { l._skuExists = false; }
+      l._skuCheckedEnv = env;
+    }));
+    renderLoads();
+  }
+}
+
 function renderLoads() {
   renderLoadsFilter();
   const filterActive = loadLocationFilter && loadLocationFilter.size > 0;
@@ -2481,7 +2500,7 @@ function renderLoads() {
 
     tr.innerHTML = `
       <td class="select-col">${load.status === 'done' ? `<input type="checkbox" data-select="${idx}" ${load.selected ? 'checked' : ''}>` : ''}</td>
-      <td class="mono">${esc(load.loadId)}${load.emailDate ? `<div style="font-size:0.6rem;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px;white-space:nowrap;" title="Email received${load.emailFrom ? ' from ' + esc(load.emailFrom) : ''}">✉ ${esc(fmtEmailDate(load.emailDate))}</div>` : ''}</td>
+      <td class="mono">${esc(load.loadId)}${load.emailDate ? `<div style="font-size:0.6rem;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px;white-space:nowrap;" title="Email received${load.emailFrom ? ' from ' + esc(load.emailFrom) : ''}">✉ ${esc(fmtEmailDate(load.emailDate))}</div>` : ''}${(load._skuExists && load.status !== 'done' && load.status !== 'dup') ? `<div style="font-size:0.6rem;color:var(--amber,#d6a23a);font-family:'DM Mono',monospace;margin-top:2px;white-space:nowrap;" title="A product with this SKU already exists in the ERP (${esc(loadEnv())}) — it was pushed before">⚠ SKU already pushed</div>` : ''}</td>
       <td><span class="mono">${esc(load.locCode || '—')}</span></td>
       <td><span class="mono">${esc(load.typeCode || '—')}</span></td>
       <td>${load.sku ? `<span class="mono-green">${esc(withEnvSuffix(load.sku))}</span>` : `<span class="mono-amber">—</span>`}</td>
@@ -2945,7 +2964,7 @@ function initSettings() {
       }
       saveEnv(next);
       applyEnvUI();
-      if (loads.length) renderLoads();  // re-render so the SKU suffix updates immediately
+      if (loads.length) { renderLoads(); markExistingSkus(); }  // SKU suffix + re-check existence per env
     };
   });
 }
@@ -3242,6 +3261,7 @@ async function triggerParse() {
   sortLoads();
   $('loads-section').style.display = '';
   renderLoads();
+  markExistingSkus();   // flag loads whose SKU was already pushed to the ERP
 
   const reviewCount = added.filter(l => l.flags.length).length;
   const msg = `Found ${added.length} load(s)` +
@@ -3449,6 +3469,7 @@ async function inboxFetch() {
   sortLoads();
   $('loads-section').style.display = '';
   renderLoads();
+  markExistingSkus();   // flag loads whose SKU was already pushed to the ERP
 
   const dupSkipped = allFound.length - added.length;
   const tail = dupSkipped ? `, ${dupSkipped} already in list` : '';
