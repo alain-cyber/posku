@@ -314,6 +314,12 @@ textarea::placeholder { color: var(--text4); }
 .status.info  { background: var(--blue-dim);  color: var(--blue);  border: 1px solid rgba(31,95,191,0.4); }
 
 /* loads section */
+.loads-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.9rem; }
+.loads-filter .lf-label { font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text3); margin-right: 0.2rem; }
+.loads-filter .lf-chip { font-family: 'DM Mono', monospace; font-size: 0.68rem; padding: 0.25rem 0.6rem; border-radius: 5px; border: 1px solid var(--border2); background: var(--surface); color: var(--text2); cursor: pointer; transition: background 0.12s, border-color 0.12s, color 0.12s; }
+.loads-filter .lf-chip:hover { border-color: var(--text3); color: var(--text); }
+.loads-filter .lf-chip.on { background: var(--green-dim); color: var(--green); border-color: rgba(30,127,86,0.4); }
+.loads-filter .lf-chip .lf-n { opacity: 0.6; font-size: 0.6rem; }
 .loads-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.1rem; }
 .loads-title { font-family: 'DM Serif Display', serif; font-size: 1.3rem; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 
@@ -729,6 +735,7 @@ textarea::placeholder { color: var(--text4); }
       </div>
 
       <div class="card-body">
+        <div id="loads-filter" class="loads-filter"></div>
         <div class="table-wrap">
           <table class="table">
             <thead>
@@ -2389,10 +2396,49 @@ function sortLoads() {
     String(a.loadId || '').localeCompare(String(b.loadId || '')));
 }
 
+// Location filter: a Set of locCodes to SHOW. Empty/null = show all.
+let loadLocationFilter = null;
+
+function renderLoadsFilter() {
+  const el = $('loads-filter');
+  if (!el) return;
+  const locs = [...new Set(loads.map(l => l.locCode).filter(Boolean))].sort();
+  // Only worth showing once there's more than one location in the list.
+  if (locs.length < 2) { el.innerHTML = ''; el.style.display = 'none'; return; }
+  el.style.display = '';
+  const active = loadLocationFilter;
+  const allOn = !active || active.size === 0;
+  el.innerHTML = `<span class="lf-label">Location:</span>` +
+    `<button class="lf-chip ${allOn ? 'on' : ''}" data-loc-filter="__all">All</button>` +
+    locs.map(loc => {
+      const count = loads.filter(l => l.locCode === loc).length;
+      const on = !allOn && active.has(loc);
+      return `<button class="lf-chip ${on ? 'on' : ''}" data-loc-filter="${esc(loc)}">${esc(loc)} <span class="lf-n">${count}</span></button>`;
+    }).join('');
+  el.querySelectorAll('[data-loc-filter]').forEach(b => {
+    b.onclick = () => {
+      const loc = b.dataset.locFilter;
+      if (loc === '__all') { loadLocationFilter = null; }
+      else {
+        if (!loadLocationFilter) loadLocationFilter = new Set();
+        if (loadLocationFilter.has(loc)) loadLocationFilter.delete(loc);
+        else loadLocationFilter.add(loc);
+        if (loadLocationFilter.size === 0) loadLocationFilter = null;
+      }
+      renderLoads();
+    };
+  });
+}
+
 function renderLoads() {
+  renderLoadsFilter();
+  const filterActive = loadLocationFilter && loadLocationFilter.size > 0;
   const body = $('loads-body');
   body.innerHTML = '';
   loads.forEach((load, idx) => {
+    // Location filter — skip rows not in the active set (idx stays the true
+    // array index so all row handlers keep pointing at the right load).
+    if (filterActive && !loadLocationFilter.has(load.locCode)) return;
     // main row
     const tr = document.createElement('tr');
     tr.id = 'row-' + idx;
