@@ -2381,6 +2381,14 @@ function fmtEmailDate(raw) {
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
+// Keep the loads list grouped by location (alphabetical), then by load id —
+// so e.g. all Fullerton SMS loads sit together. Called after loads are added.
+function sortLoads() {
+  loads.sort((a, b) =>
+    (a.locCode || '~').localeCompare(b.locCode || '~') ||
+    String(a.loadId || '').localeCompare(String(b.loadId || '')));
+}
+
 function renderLoads() {
   const body = $('loads-body');
   body.innerHTML = '';
@@ -3185,6 +3193,7 @@ async function triggerParse() {
   const added = found.filter(l => !existing.has(l.loadId + '|' + l.locCode + '|' + l.typeCode));
 
   loads.push(...added);
+  sortLoads();
   $('loads-section').style.display = '';
   renderLoads();
 
@@ -3391,6 +3400,7 @@ async function inboxFetch() {
   const existing = new Set(loads.map(l => l.loadId + '|' + l.locCode + '|' + l.typeCode));
   const added = allFound.filter(l => !existing.has(l.loadId + '|' + l.locCode + '|' + l.typeCode));
   loads.push(...added);
+  sortLoads();
   $('loads-section').style.display = '';
   renderLoads();
 
