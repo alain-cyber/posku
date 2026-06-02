@@ -442,6 +442,13 @@ textarea::placeholder { color: var(--text4); }
 .po-head .po-title .sku-ref { color: var(--text3); font-size: 0.72rem; margin-left: 0.5rem; }
 .po-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem 0.8rem; }
 @media (max-width: 900px) { .po-grid { grid-template-columns: repeat(2, 1fr); } }
+.po-items-table { width: 100%; border-collapse: collapse; font-family: 'DM Mono', monospace; font-size: 0.72rem; }
+.po-items-table th { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border2); color: var(--text3); font-size: 0.58rem; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 400; }
+.po-items-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.po-items-table input { width: 100%; background: var(--surface); border: 1px solid var(--border2); border-radius: 5px; padding: 0.3rem 0.4rem; font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--text); }
+.po-items-table .po-item-load { font-size: 0.56rem; color: var(--text3); margin-top: 2px; }
+.po-item-x { background: transparent; border: 1px solid var(--border2); color: var(--red); border-radius: 5px; width: 22px; height: 22px; cursor: pointer; line-height: 1; padding: 0; }
+.po-item-x:hover { background: rgba(239,106,94,0.12); border-color: var(--red); }
 .po-field { display: flex; flex-direction: column; }
 .po-field.wide { grid-column: span 2; }
 .po-field.full { grid-column: 1 / -1; }
@@ -2477,7 +2484,7 @@ function renderLoads() {
       // SKU done → render the three-stage progress strip.
       const finalSku = withEnvSuffix(load.sku);
       // PO state: PO drafts store the raw (no env suffix) sku; match on that.
-      const po = (typeof poDrafts !== 'undefined' ? poDrafts : []).find(p => p.sku === load.sku);
+      const po = (typeof poDrafts !== 'undefined' ? poDrafts : []).find(p => (p.items || []).some(it => it.sku === load.sku));
       const poState =
         po && po.status === 'done'    ? 'ok'   :
         po && po.status === 'pushing' ? 'busy' :
@@ -2510,7 +2517,7 @@ function renderLoads() {
       <td class="mono">${esc(load.fobName)}</td>
       <td style="font-size:0.78rem;">${esc(load.condName)}</td>
       <td style="font-size:0.78rem;">${esc(load.manifestName)}</td>
-      <td>${statusChip()}${load.status === 'done' ? ` <label class="unique-toggle ${load.uniqueInvoice === false ? '' : 'on'}" title="When on, this SKU gets its own invoice. Off lets it merge with other 'off' SKUs going to the same customer."><input type="checkbox" data-unique-invoice="${idx}" ${load.uniqueInvoice === false ? '' : 'checked'} style="margin:0;"> unique inv</label>` : ''}</td>
+      <td>${statusChip()}${load.status === 'done' ? ` <label class="unique-toggle ${load.uniqueInvoice === false ? '' : 'on'}" title="On: this SKU gets its own PO and its own invoice. Off: it merges with other 'off' SKUs — into one PO per supplier+facility, and one invoice per customer."><input type="checkbox" data-unique-invoice="${idx}" ${load.uniqueInvoice === false ? '' : 'checked'} style="margin:0;"> unique po/inv</label>` : ''}</td>
       <td style="white-space:nowrap;">
         ${load.status !== 'done' && load.status !== 'pushing' && load.status !== 'dup' ? `
           <button class="btn small" data-push="${idx}" ${!load.sku ? 'disabled' : ''}>Push</button>
@@ -3927,21 +3934,35 @@ function todayISO(offsetDays = 0) {
   return d.toISOString().slice(0, 10);
 }
 
-function createDraftFromLoad(load) {
+// Build a PO draft from one or more loads. Multiple loads (non-unique, merged
+// by supplier+facility) become multiple line items on a single PO. Header
+// fields come from the first load's supplier defaults.
+function createDraftFromLoads(loadsArr) {
+  const list = Array.isArray(loadsArr) ? loadsArr : [loadsArr];
+  const load = list[0];
   const def = PO_DEFAULTS[load.supplierKey] || PO_DEFAULTS.WYF;
   const typeLabel = def.typeLabel?.[load.typeCode] || load.typeCode || '';
+  const manifestIds = list.map(l => l.loadId).filter(Boolean);
   return {
     id:               'po_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-    loadIdx:          loads.indexOf(load),
     supplierKey:      load.supplierKey,   // pin the draft to its load's supplier
-    sku:              load.sku,
-    productId:        load.productId || null,
-    productName:      load.name,
-    loadId:           load.loadId,
     typeLabel,
     locCode:          load.locCode,
+    // Line items — one per load.
+    items: list.map(l => ({
+      loadIdx:       loads.indexOf(l),
+      sku:           l.sku,
+      productId:     l.productId || null,
+      productName:   l.name,
+      loadId:        l.loadId,
+      qty:           1,
+      price:         0,
+      // Sam's loads go in as 1 pallet (user-confirmed); Wayfair stays 0.
+      pallets_qty:   l.supplierKey === 'SMS' ? 1 : 0,
+      supplier_sku:  '',
+    })),
     // NEED fields (per Via Trading PO API docs)
-    po_number:        load.sku,  // default = SKU; can be cleared to auto-number
+    po_number:        load.sku,  // default = first SKU; can be cleared to auto-number
     facility:         def.facilityByLoc?.[load.locCode] || '',
     status_id:        2,            // Pending (NEED — send explicitly)
     scheduled_date:   todayISO(7),  // dock arrival
@@ -3959,10 +3980,8 @@ function createDraftFromLoad(load) {
     legacy_id:        '',
     legacy_carrier_id:  '',
     legacy_supplier_id: '',
-    // Already in original contract
-    // Internal note — tag the PO with its load/manifest # so it's identifiable
-    // even though the line's Product Name is the generic product name.
-    note:             load.loadId ? `Load/Manifest #${load.loadId}` : '',
+    // Internal note — tag the PO with its load/manifest #(s) so it's identifiable.
+    note:             manifestIds.length ? `Load/Manifest #(s): ${manifestIds.join(', ')}` : '',
     supplier_invoice_number: '',
     order_date:       todayISO(0),
     due_date:         todayISO(7),
@@ -3972,12 +3991,6 @@ function createDraftFromLoad(load) {
     sub_total:        0,
     billing_address:  def.billing_address,
     shipping_address: def.shipping_address_byLoc?.[load.locCode] || '',
-    item_qty:         1,
-    item_price:       0,
-    // Pallets: Sam's loads always go in as 1 pallet (user-confirmed); Wayfair
-    // stays at 0 so it's filled in from the email/manifest. Override in UI as needed.
-    item_pallets_qty: load.supplierKey === 'SMS' ? 1 : 0,
-    item_supplier_sku: '',
     // UI-only
     status:           'draft',  // local UI status, not API status_id
     result:           null,
@@ -3988,10 +4001,23 @@ function createDraftFromLoad(load) {
 function generatePoDrafts() {
   const selected = loads.filter(l => l.status === 'done' && l.selected);
   if (!selected.length) return;
-  // Skip if a draft already exists for the same load
-  const existing = new Set(poDrafts.map(p => p.loadId + '|' + p.sku));
-  const added = selected.filter(l => !existing.has(l.loadId + '|' + l.sku));
-  added.forEach(l => poDrafts.push(createDraftFromLoad(l)));
+  // Skip loads already on a draft (by load+sku across all draft line items).
+  const inDraft = new Set(poDrafts.flatMap(p => (p.items || []).map(it => it.loadId + '|' + it.sku)));
+  const fresh = selected.filter(l => !inDraft.has(l.loadId + '|' + l.sku));
+  // Grouping mirrors invoices: a load with `unique` ON (default) gets its own
+  // PO; loads with `unique` OFF merge with other off-loads from the same
+  // supplier + facility into one multi-line PO.
+  const groups = [];
+  const merged = new Map();
+  for (const l of fresh) {
+    const isUnique = l.uniqueInvoice !== false;  // shared toggle; default true
+    if (isUnique) { groups.push([l]); continue; }
+    const key = l.supplierKey + '|' + (l.locCode || '');
+    if (!merged.has(key)) merged.set(key, []);
+    merged.get(key).push(l);
+  }
+  for (const g of merged.values()) groups.push(g);
+  groups.forEach(g => poDrafts.push(createDraftFromLoads(g)));
   // unselect after adding
   selected.forEach(l => l.selected = false);
   $('po-section').style.display = '';
@@ -4010,7 +4036,7 @@ function renderPoDrafts() {
       <div class="po-head">
         <div class="po-title">
           DRAFT ${idx + 1}
-          <span class="sku-ref">SKU: ${esc(d.sku)} · product_id: ${esc(d.productId ?? 'n/a')}</span>
+          <span class="sku-ref">${d.items.length} line item(s) · ${esc(d.supplierKey || '')}${d.locCode ? ' · ' + esc(d.locCode) : ''}</span>
         </div>
         <div>${d.status === 'done' ? `<span class="chip green">pushed</span>` :
               d.status === 'failed' ? `<span class="chip red">failed</span>` :
@@ -4078,13 +4104,23 @@ function renderPoDrafts() {
       </div>` : ''}
 
       <div class="po-line">
-        <div class="po-line-title">Line item · ${esc(d.sku)}</div>
-        <div class="po-grid">
-          <div class="po-field"><label>Qty</label><input type="number" min="1" data-po="${idx}" data-k="item_qty" value="${esc(d.item_qty)}"></div>
-          <div class="po-field"><label>Price ($)</label><input type="number" step="0.01" data-po="${idx}" data-k="item_price" value="${esc(d.item_price)}"></div>
-          <div class="po-field"><label>Pallets qty</label><input type="number" min="0" data-po="${idx}" data-k="item_pallets_qty" value="${esc(d.item_pallets_qty)}"></div>
-          <div class="po-field"><label>Supplier SKU</label><input type="text" data-po="${idx}" data-k="item_supplier_sku" value="${esc(d.item_supplier_sku)}" placeholder="optional"></div>
-        </div>
+        <div class="po-line-title">Line items (${d.items.length})</div>
+        <table class="po-items-table">
+          <thead><tr>
+            <th>SKU</th><th>Product name</th><th style="width:70px;">Qty</th><th style="width:90px;">Price ($)</th><th style="width:80px;">Pallets</th><th style="width:120px;">Supplier SKU</th><th style="width:30px;"></th>
+          </tr></thead>
+          <tbody>
+            ${d.items.map((it, j) => `<tr>
+              <td><code>${esc(it.sku)}</code>${it.loadId ? `<div class="po-item-load" title="Load/Manifest #">#${esc(it.loadId)}</div>` : ''}</td>
+              <td><input type="text" data-po-item="${idx}_${j}" data-k="productName" value="${esc(it.productName || '')}"></td>
+              <td><input type="number" min="1" data-po-item="${idx}_${j}" data-k="qty" value="${esc(it.qty)}"></td>
+              <td><input type="number" step="0.01" data-po-item="${idx}_${j}" data-k="price" value="${esc(it.price)}"></td>
+              <td><input type="number" min="0" data-po-item="${idx}_${j}" data-k="pallets_qty" value="${esc(it.pallets_qty)}"></td>
+              <td><input type="text" data-po-item="${idx}_${j}" data-k="supplier_sku" value="${esc(it.supplier_sku || '')}" placeholder="optional"></td>
+              <td>${d.items.length > 1 ? `<button type="button" class="po-item-x" data-po-item-remove="${idx}_${j}" title="Remove this SKU from the PO">×</button>` : ''}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
       </div>
 
       <div class="po-actions">
@@ -4104,7 +4140,7 @@ function renderPoDrafts() {
 
 function attachPoHandlers() {
   const NUMERIC_PO_KEYS = new Set([
-    'sub_total','item_qty','item_price','item_pallets_qty','shipping_company_id',
+    'sub_total','shipping_company_id',
     'status_id','amount','shipping_quote','dock_id','pallets_received',
     'merch_staging_id','legacy_id','legacy_carrier_id','legacy_supplier_id',
   ]);
@@ -4116,6 +4152,27 @@ function attachPoHandlers() {
       if (NUMERIC_PO_KEYS.has(k)) v = (v === '' ? '' : Number(v));
       else if (k === 'tentative_schedule') v = (v === 'true');
       poDrafts[idx][k] = v;
+    };
+  });
+  // Per-line-item inputs (qty / price / pallets / names).
+  $('po-list').querySelectorAll('[data-po-item]').forEach(el => {
+    el.oninput = el.onchange = () => {
+      const [idx, j] = el.dataset.poItem.split('_').map(Number);
+      const it = poDrafts[idx]?.items?.[j];
+      if (!it) return;
+      const k = el.dataset.k;
+      it[k] = ['qty','price','pallets_qty'].includes(k) ? (el.value === '' ? '' : Number(el.value)) : el.value;
+    };
+  });
+  // Remove a single SKU line from a (merged) PO.
+  $('po-list').querySelectorAll('[data-po-item-remove]').forEach(b => {
+    b.onclick = () => {
+      const [idx, j] = b.dataset.poItemRemove.split('_').map(Number);
+      const d = poDrafts[idx];
+      if (!d?.items) return;
+      d.items.splice(j, 1);
+      if (!d.items.length) { poDrafts.splice(idx, 1); if (!poDrafts.length) $('po-section').style.display = 'none'; }
+      renderPoDrafts();
     };
   });
   $('po-list').querySelectorAll('[data-po-toggle-adv]').forEach(b => {
@@ -4160,16 +4217,19 @@ function buildPoPayload(d) {
   // due/delivery dates are no longer shown in the UI but the API still gets a
   // value so the request doesn't break.
   const pushDate = todayISO(0);
-  const item = {
-    sku:           d.sku,
-    product_name:  d.productName,
-    qty:           Number(d.item_qty) || 1,
-    price:         Number(d.item_price) || 0,
-    pallets_qty:   Number(d.item_pallets_qty) || 0,
-    user_id:       def.legacy_user_id,
-  };
-  if (d.productId)         item.product_id    = d.productId;
-  if (d.item_supplier_sku) item.supplier_sku  = d.item_supplier_sku;
+  const items = (d.items || []).map(it => {
+    const item = {
+      sku:          it.sku,
+      product_name: it.productName,
+      qty:          Number(it.qty) || 1,
+      price:        Number(it.price) || 0,
+      pallets_qty:  Number(it.pallets_qty) || 0,
+      user_id:      def.legacy_user_id,
+    };
+    if (it.productId)    item.product_id   = it.productId;
+    if (it.supplier_sku) item.supplier_sku = it.supplier_sku;
+    return item;
+  });
 
   const data = {
     // identity
@@ -4197,7 +4257,7 @@ function buildPoPayload(d) {
     supplier_invoice_number: d.supplier_invoice_number || '',
     billing_address:         d.billing_address,
     shipping_address:        d.shipping_address,
-    items:                   [item],
+    items:                   items,
   };
   // po_number — only send if non-empty (otherwise API auto-numbers = new id)
   if ((d.po_number || '').trim()) data.po_number = d.po_number.trim();
