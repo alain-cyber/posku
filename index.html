@@ -375,6 +375,10 @@ textarea::placeholder { color: var(--text4); }
 .inv-head .inv-title .lbl { color: var(--text3); font-size: 0.72rem; margin-left: 0.5rem; }
 .inv-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem 0.8rem; margin-bottom: 0.9rem; }
 @media (max-width: 900px) { .inv-grid { grid-template-columns: repeat(2, 1fr); } }
+.inv-append { margin-bottom: 0.9rem; padding: 0.6rem 0.7rem; border: 1px dashed var(--border2); border-radius: 6px; }
+.inv-append-toggle { display: flex; align-items: center; gap: 0.5rem; font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--text2); cursor: pointer; }
+.inv-append-body { margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.inv-append-suggestions { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
 .inv-field { display: flex; flex-direction: column; }
 .inv-field.wide { grid-column: span 2; }
 .inv-field.full { grid-column: 1 / -1; }
@@ -5286,6 +5290,28 @@ function renderInvoiceDrafts() {
           ${renderCustomerPicker(d, idx)}
         </div>
 
+        <!-- Append-to-existing-invoice mode -->
+        <div class="inv-append">
+          <label class="inv-append-toggle">
+            <input type="checkbox" data-inv-append="${idx}" ${d.appendMode ? 'checked' : ''}>
+            Append these line item(s) to an existing invoice (instead of creating a new one)
+          </label>
+          ${d.appendMode ? `
+            <div class="inv-append-body">
+              <div class="inv-field">
+                <label>Existing Invoice # (order_id)</label>
+                <input type="text" inputmode="numeric" data-inv-append-id="${idx}" value="${esc(d.appendOrderId || '')}" placeholder="e.g. 1159186">
+              </div>
+              ${d.appendSuggestions === undefined && d.customer ? `<div class="cust-empty" data-inv-append-load="${idx}">finding this customer's open invoices…</div>` : ''}
+              ${Array.isArray(d.appendSuggestions) && d.appendSuggestions.length ? `
+                <div class="inv-append-suggestions">
+                  <div class="lf-label">Suggestions (open invoices for this customer w/ SMS SKUs):</div>
+                  ${d.appendSuggestions.map(s => `<button type="button" class="lf-chip ${String(d.appendOrderId) === String(s.order_id) ? 'on' : ''}" data-inv-append-pick="${idx}" data-oid="${s.order_id}" title="${esc(s.skus)}">#${s.order_id} · ${esc(s.status)}${s.grand_total != null ? ' · $' + s.grand_total : ''}</button>`).join('')}
+                </div>` : (Array.isArray(d.appendSuggestions) ? `<div class="cust-empty">No open SMS invoices found for this customer — type the invoice # manually.</div>` : '')}
+              ${d.appendStatus ? `<div class="cust-empty" style="color:${d.appendStatus.ok ? 'var(--green)' : 'var(--amber,#d6a23a)'};">${esc(d.appendStatus.msg)}</div>` : ''}
+            </div>` : ''}
+        </div>
+
         <!-- Header fields -->
         <div class="inv-grid">
           <div class="inv-field">
@@ -5361,7 +5387,7 @@ function renderInvoiceDrafts() {
         ${d.result ? `<div class="inv-result ${d.status === 'done' ? 'ok' : 'fail'}">${esc(d.result)}</div>` : ''}
 
         <div class="btn-row" style="margin-top:0.9rem;">
-          <button class="btn" data-inv-push="${idx}" ${d.status === 'done' || !d.customer ? 'disabled' : ''}>Push invoice</button>
+          <button class="btn" data-inv-push="${idx}" ${d.status === 'done' || !d.customer || (d.appendMode && !d.appendOrderId) ? 'disabled' : ''}>${d.appendMode ? `Append to invoice${d.appendOrderId ? ' #' + esc(d.appendOrderId) : ''}` : 'Push invoice'}</button>
           <button class="btn danger small" data-inv-remove="${idx}">Discard draft</button>
         </div>
       </div>
@@ -5520,6 +5546,35 @@ function attachInvoiceHandlers() {
       d.customer.shipping_address = ships[+sel.value] || d.customer.shipping_address;
     };
   });
+  // Append-to-existing-invoice controls
+  document.querySelectorAll('[data-inv-append]').forEach(cb => {
+    cb.onchange = () => {
+      const idx = +cb.dataset.invAppend;
+      const d = invoiceDrafts[idx];
+      d.appendMode = cb.checked;
+      d.appendStatus = null;
+      if (d.appendMode && d.customer && d.appendSuggestions === undefined) loadAppendSuggestions(idx);
+      renderInvoiceDrafts();
+    };
+  });
+  document.querySelectorAll('[data-inv-append-id]').forEach(inp => {
+    const idx = +inp.dataset.invAppendId;
+    inp.oninput  = () => { invoiceDrafts[idx].appendOrderId = inp.value.replace(/[^0-9]/g, ''); invoiceDrafts[idx].appendResolved = null; };
+    inp.onchange = () => renderInvoiceDrafts();
+  });
+  document.querySelectorAll('[data-inv-append-pick]').forEach(b => {
+    b.onclick = () => {
+      const idx = +b.dataset.invAppendPick;
+      const d = invoiceDrafts[idx];
+      d.appendOrderId = b.dataset.oid;
+      d.appendResolved = (d.appendSuggestions || []).find(s => String(s.order_id) === String(b.dataset.oid)) || null;
+      renderInvoiceDrafts();
+    };
+  });
+  // Kick off suggestion load if append mode is on but not yet loaded.
+  document.querySelectorAll('[data-inv-append-load]').forEach(el => {
+    loadAppendSuggestions(+el.dataset.invAppendLoad);
+  });
   // Clear customer
   document.querySelectorAll('[data-inv-clear-customer]').forEach(x => {
     x.onclick = () => {
@@ -5583,6 +5638,77 @@ function buildInvoicePayload(d) {
 
 // ── Push (uses the existing env-aware proxy via erpRequest) ──────────────────
 
+// Load the customer's open SMS invoices as append suggestions (BigQuery mirror).
+async function loadAppendSuggestions(idx) {
+  const d = invoiceDrafts[idx];
+  if (!d || !d.customer || !d.appendMode) return;
+  if (d.appendSuggestions !== undefined) return;    // already loading/loaded
+  d.appendSuggestions = null;                       // mark in-flight (not undefined)
+  try {
+    const r = await fetch(`/api/orders/suggest?customer_id=${encodeURIComponent(d.customer.customer_id)}`, { cache: 'no-store' });
+    const j = await r.json().catch(() => null);
+    d.appendSuggestions = (r.ok && j?.ok && Array.isArray(j.suggestions)) ? j.suggestions : [];
+  } catch { d.appendSuggestions = []; }
+  renderInvoiceDrafts();
+}
+
+// Append the draft's line items to an existing order: resolve order_id → id,
+// GET the order's current lines, then PUT them back plus the new line(s) so
+// nothing is deleted. (Verify on staging — PUT item semantics are unconfirmed.)
+async function appendInvoice(d, idx) {
+  const typed = String(d.appendOrderId || '').trim();
+  if (!typed) { d.status = 'failed'; d.result = 'Enter the existing Invoice # to append to.'; renderInvoiceDrafts(); return; }
+  d.status = 'pushing'; d.result = null; renderInvoiceDrafts();
+
+  // 1. Resolve customer-facing order_id → internal id.
+  let resolved = d.appendResolved;
+  if (!resolved || String(resolved.order_id) !== typed) {
+    try {
+      const rr = await fetch(`/api/orders/suggest?order_id=${encodeURIComponent(typed)}`, { cache: 'no-store' }).then(r => r.json());
+      resolved = rr?.resolved || null;
+    } catch { resolved = null; }
+  }
+  if (!resolved?.id) { d.status = 'failed'; d.result = `Couldn't find invoice #${typed} in the mirror — check the number (or it may be too new to have synced).`; renderInvoiceDrafts(); return; }
+
+  // 2. GET the existing order + its line items.
+  const g = await erpRequest('GET', `/api/orders/${resolved.id}?dp=true`);
+  if (!g.ok) { d.status = 'failed'; d.result = `GET order ${resolved.id} failed: ${g.data?.error || g.error || 'HTTP ' + g.status} (needs VIEW_ORDERS).`; renderInvoiceDrafts(); return; }
+  const order = g.data?.data || g.data || {};
+  const existing = Array.isArray(order.items) ? order.items
+                 : Array.isArray(order.line_items) ? order.line_items
+                 : Array.isArray(order.orderItems) ? order.orderItems : [];
+
+  // 3. New line(s) from the draft.
+  const newItems = d.items.map(it => ({
+    product_id:     it.product_id,
+    sku:            it.sku,
+    qty:            String(it.qty),
+    original_price: (Number(it.price) || 0).toFixed(2),
+    price:          (Number(it.price) || 0).toFixed(2),
+    discount:       it.discount || '0',
+    discount_type:  it.discount_type || 1,
+    total:          ((Number(it.price) || 0) * (Number(it.qty) || 0)).toFixed(2),
+  }));
+
+  // 4. PUT existing lines (verbatim, keeping their ids) + the new ones.
+  const payload = { data: { items: [...existing, ...newItems] } };
+  console.log('[Posku] PUT /api/orders append payload:', JSON.stringify(payload, null, 2));
+  const r = await erpRequest('PUT', `/api/orders/${resolved.id}`, payload);
+  console.log('[Posku] PUT /api/orders response:', JSON.stringify(r, null, 2));
+  if (r.ok) {
+    d.status = 'done';
+    d.invoiceId = resolved.order_id;
+    d.result = `Appended ${newItems.length} line(s) to invoice #${resolved.order_id} (order id ${resolved.id}). Verify in the ERP.`;
+    d.items.forEach(it => { const l = loads[it.loadIdx]; if (l) { l.invoiced = true; l.invoiceId = resolved.order_id; } });
+    bumpInvoiceHud(d.items.length, document.querySelector(`[data-inv-push="${idx}"]`));
+  } else {
+    d.status = 'failed';
+    d.result = `Append failed: ${r.data?.message || r.data?.error || r.error || 'HTTP ' + r.status} (needs EDIT_ORDERS).`;
+  }
+  renderInvoiceDrafts();
+  renderLoads();
+}
+
 async function pushSingleInvoice(idx) {
   const d = invoiceDrafts[idx];
   if (!d || d.status === 'done') return;
@@ -5590,6 +5716,9 @@ async function pushSingleInvoice(idx) {
   // Bail if any item is missing a price
   const missing = d.items.filter(it => !it.price);
   if (missing.length) { d.result = `${missing.length} line item(s) missing a price.`; renderInvoiceDrafts(); return; }
+
+  // Append mode → modify an existing order instead of creating a new one.
+  if (d.appendMode) { await appendInvoice(d, idx); return; }
 
   d.status = 'pushing'; d.result = null; renderInvoiceDrafts();
   let payload;
