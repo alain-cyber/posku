@@ -730,6 +730,7 @@ textarea::placeholder { color: var(--text4); }
         <div class="btn-row" style="margin-top:0;">
           <button class="btn" id="push-all-btn">Push all ready to ERP</button>
           <button class="btn ghost" id="send-all-manifests-btn" style="display:none;">Send all manifests to Sheet</button>
+          <button class="btn ghost" id="download-loads-btn" title="Download all detected loads as CSV">Download CSV</button>
           <button class="btn ghost" id="clear-loads-btn">Clear loads</button>
         </div>
       </div>
@@ -3862,6 +3863,56 @@ $('clear-loads-btn').onclick = () => {
     clearStatus($('push-status'));
   }
 };
+
+// Export all detected loads (every field + derived manifest info) as CSV.
+function downloadLoadsCsv() {
+  if (!loads.length) { setStatus($('push-status'), 'warn', 'No loads to export.'); return; }
+  const cols = [
+    ['Load ID',             (l) => l.loadId],
+    ['Supplier',            (l) => l.supplierKey],
+    ['Location',            (l) => l.locCode || ''],
+    ['FOB state',           (l) => l.fobName || ''],
+    ['FOB id',              (l) => l.fobId ?? ''],
+    ['Type',                (l) => l.typeCode || ''],
+    ['Seq',                 (l) => l.seq ?? ''],
+    ['SKU',                 (l) => withEnvSuffix(l.sku) || ''],
+    ['Product name',        (l) => l.name || ''],
+    ['Condition',           (l) => l.condName || ''],
+    ['Condition trait',     (l) => l.condTrait ?? ''],
+    ['Manifest status',     (l) => l.manifestName || ''],
+    ['Manifest trait',      (l) => l.manifestTrait ?? ''],
+    ['Status',              (l) => l.status || ''],
+    ['SKU already in ERP',  (l) => l._skuExists == null ? '' : (l._skuExists ? 'yes' : 'no')],
+    ['Manifest line items', (l) => l.manifestRows?.length || 0],
+    ['Pallets',             (l) => l.manifestPalletIds?.length || 0],
+    ['Manifest units',      (l, t) => t?.qty ?? ''],
+    ['Sell price',          (l, t) => t?.price ?? ''],
+    ['Retail',              (l, t) => t?.retail_price ?? ''],
+    ['Email from',          (l) => l.emailFrom || ''],
+    ['Email received',      (l) => l.emailDate || ''],
+    ['Flags',               (l) => (l.flags || []).join('; ')],
+    ['Environment',         () => loadEnv()],
+  ];
+  const q = (v) => {
+    const s = String(v ?? '');
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [cols.map(c => q(c[0])).join(',')];
+  for (const l of loads) {
+    const t = (typeof buildLoadTotals === 'function') ? buildLoadTotals(l) : null;
+    lines.push(cols.map(c => q(c[1](l, t))).join(','));
+  }
+  const csv = '﻿' + lines.join('\r\n');   // BOM so Excel reads UTF-8
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `posku-loads-${loadEnv()}-${todayISO(0)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setStatus($('push-status'), 'ok', `Exported ${loads.length} load(s) to CSV.`);
+}
+$('download-loads-btn').onclick = downloadLoadsCsv;
 
 // ── PO drafts ────────────────────────────────────────────────────────────────
 function todayISO(offsetDays = 0) {
