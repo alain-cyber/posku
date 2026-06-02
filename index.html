@@ -2907,8 +2907,10 @@ function attachHandlers() {
         if (!load.typeCode) load.flags.push('Type not set');
       }
       load.status = load.flags.length ? 'review' : 'ready';
+      load._skuCheckedEnv = null;   // SKU may have changed — re-check ERP existence
       er.classList.remove('open');
       renderLoads();
+      markExistingSkus();           // refresh the "⚠ SKU already pushed" flag
     };
   });
   $('loads-body').querySelectorAll('[data-remove]').forEach(b => {
