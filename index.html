@@ -3955,7 +3955,9 @@ function createDraftFromLoad(load) {
     legacy_carrier_id:  '',
     legacy_supplier_id: '',
     // Already in original contract
-    note:             '',
+    // Internal note — tag the PO with its load/manifest # so it's identifiable
+    // even though the line's Product Name is the generic product name.
+    note:             load.loadId ? `Load/Manifest #${load.loadId}` : '',
     supplier_invoice_number: '',
     order_date:       todayISO(0),
     due_date:         todayISO(7),
