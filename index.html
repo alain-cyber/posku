@@ -1038,12 +1038,15 @@ const SUPPLIERS = {
     },
 
     // SKU template — Sam's uses {loc} (club code) + {seq}
-    skuTemplate: 'SMS{loc}{seq}',
-    buildSKU(locCode, _typeCode, _loadId, seq) {
-      const tpl = this.skuTemplate || 'SMS{loc}{seq}';
-      return tpl
-        .replace('{loc}',  locCode || '')
-        .replace('{seq}',  seq != null && seq !== '' ? String(seq) : '');
+    skuTemplate: 'SMS{loc}{last5}',
+    buildSKU(locCode, _typeCode, loadId) {
+      // SKU = SMS + club code + last 5 digits of the load/manifest #
+      // (no sequential numbering — no ERP max lookup needed).
+      const last5 = String(loadId ?? '').replace(/\D/g, '').slice(-5);
+      return (this.skuTemplate || 'SMS{loc}{last5}')
+        .replace('{loc}',   locCode || '')
+        .replace('{last5}', last5)
+        .replace('{seq}',   last5);   // back-compat if an old template has {seq}
     },
   },
 
@@ -1596,9 +1599,8 @@ function parseEmail(text, supplierKey) {
   });
 }
 
-// Parse a Sam's Club "liquidation order is ready" email — sync stub that
-// returns loads with seq/sku unfilled. The async assignSamsSequences() step
-// in triggerParse() hits the ERP for the real per-club max and fills them in.
+// Parse a Sam's Club "liquidation order is ready" email. Each manifest # found
+// becomes a load with its SKU computed directly as SMS<club><last 5 of manifest>.
 function parseSamsEmail(text, sup) {
   const ids = new Set();
   const rx = /\b(\d{16})\b/g;
@@ -1615,8 +1617,7 @@ function parseSamsEmail(text, sup) {
       loadId:       manifest,
       locCode:      code,
       typeCode:     'GM',
-      seq:          null,         // filled in by assignSamsSequences()
-      sku:          null,
+      sku:          code ? sup.buildSKU(code, 'GM', manifest) : null,
       name:         'General Merchandise',
       fobId:         code ? sup.fobIds[code]   : null,
       fobName:       code ? sup.fobNames[code] : '—',
@@ -1625,67 +1626,14 @@ function parseSamsEmail(text, sup) {
       manifestTrait: 603,
       manifestName:  'Manifested',
       flags,
-      status:    'review',
+      status:    flags.length ? 'review' : 'ready',
       erpResult: null,
     };
   });
 }
 
-// Look up the current max SEQ for one club code by asking the ERP for every
-// SMS<code>* product, then taking the largest numeric tail. Falls back to
-// sup.lastKnownMaxSeq if the API returns nothing usable.
-async function fetchMaxSeqForClub(code, sup) {
-  const prefix = 'SMS' + code;
-  const r = await erpRequest('GET', '/api/products?sku=' + encodeURIComponent(prefix));
-  let max = sup.lastKnownMaxSeq?.[code] || 0;
-  const arr = Array.isArray(r.data) ? r.data
-            : Array.isArray(r.data?.data) ? r.data.data
-            : Array.isArray(r.data?.products) ? r.data.products
-            : null;
-  if (arr && arr.length) {
-    for (const row of arr) {
-      const sku = row?.sku || row?.SKU || '';
-      // Tolerate "-test" suffix and any extra letters after the digits
-      const m = sku.match(new RegExp('^' + prefix + '(\\d+)'));
-      if (m) {
-        const n = parseInt(m[1], 10);
-        if (n > max) max = n;
-      }
-    }
-  } else if (r.data?.sku) {
-    // Single-row response shape
-    const m = String(r.data.sku).match(new RegExp('^' + prefix + '(\\d+)'));
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  }
-  return max;
-}
-
-// Assign SEQ + SKU to each pending SMS load by fetching the real max per
-// distinct club code from the ERP (one call per club, in parallel), then
-// incrementing within the batch for repeat clubs.
-async function assignSamsSequences(pending) {
-  const sup = SUPPLIERS.SMS;
-  const codes = [...new Set(pending.map(l => l.locCode).filter(Boolean))];
-  const maxes = {};
-  await Promise.all(codes.map(async code => {
-    try { maxes[code] = await fetchMaxSeqForClub(code, sup); }
-    catch (err) { maxes[code] = sup.lastKnownMaxSeq?.[code] || 0; }
-  }));
-  // Also respect SEQs already in the loads list (loads not yet pushed)
-  for (const l of loads) {
-    if (l.supplierKey !== 'SMS' || !l.locCode) continue;
-    const n = parseInt(l.seq, 10);
-    if (Number.isFinite(n)) maxes[l.locCode] = Math.max(maxes[l.locCode] || 0, n);
-  }
-  for (const l of pending) {
-    if (!l.locCode) continue;
-    const next = (maxes[l.locCode] || 0) + 1;
-    maxes[l.locCode] = next;
-    l.seq    = next;
-    l.sku    = sup.buildSKU(l.locCode, null, null, next);
-    l.status = l.flags.length ? 'review' : 'ready';
-  }
-}
+// (Sam's SKUs are now derived directly from the manifest # — SMS<club><last 5> —
+// so the old per-club max-sequence lookup against the ERP has been removed.)
 
 // ── Sam's manifest CSV → Load Center rows ───────────────────────────────────
 // Output columns (16, in this order):
@@ -2663,12 +2611,7 @@ function renderLoads() {
             </select>
           </div>
 
-          ${isSams ? `
-          <div class="po-field">
-            <label>Sequence <span style="color:var(--amber);">(required)</span></label>
-            <input type="number" data-field="seq" value="${esc(load.seq ?? '')}" placeholder="e.g. 143" min="1" step="1">
-          </div>
-          ` : `
+          ${isSams ? '' : `
           <div class="po-field">
             <label>Type code</label>
             <select data-field="typeCode">
@@ -2933,12 +2876,11 @@ function attachHandlers() {
       if (!isSams) load.loadId = load.loadId.toUpperCase();
       load.locCode  = f('locCode')  || null;
       load.typeCode = isSams ? 'GM' : (f('typeCode') || null);
-      if (isSams) load.seq = (f('seq') || '').trim() || null;
-      // If locCode changed re-derive; otherwise respect manual overrides from the review card.
-      // SMS uses (locCode, seq); WYF uses (locCode, typeCode, loadId).
+      // If locCode/manifest changed re-derive; otherwise respect manual overrides.
+      // SMS SKU = SMS<club><last 5 of manifest #>; WYF uses (locCode, typeCode, loadId).
       let autoSku = null;
       if (isSams) {
-        autoSku = load.locCode && load.seq ? sup.buildSKU(load.locCode, null, null, load.seq) : null;
+        autoSku = load.locCode && load.loadId ? sup.buildSKU(load.locCode, null, load.loadId) : null;
       } else {
         autoSku = load.locCode && load.typeCode ? sup.buildSKU(load.locCode, load.typeCode, load.loadId) : null;
       }
@@ -2960,7 +2902,7 @@ function attachHandlers() {
       load.flags = [];
       if (!load.locCode)  load.flags.push(isSams ? 'Club code not set' : 'Location not set');
       if (isSams) {
-        if (!load.seq) load.flags.push('Sequence number required');
+        if (!load.loadId) load.flags.push('Manifest # required');
       } else {
         if (!load.typeCode) load.flags.push('Type not set');
       }
@@ -3361,12 +3303,8 @@ async function triggerParse() {
     return;
   }
 
-  // Sam's flow: hit the ERP for the real per-club max SEQ before assigning,
-  // so multi-user workflows stay collision-free without a shared local cache.
-  if (activeSupplier === 'SMS') {
-    setStatus($('parse-status'), 'info', `Fetching current max SKUs for ${new Set(found.map(l => l.locCode).filter(Boolean)).size} club(s)…`);
-    await assignSamsSequences(found);
-  }
+  // Sam's SKUs are derived directly from the manifest # (SMS<club><last5>) at
+  // parse time — no ERP max-seq lookup needed.
 
   // Merge: avoid duplicates by loadId+locCode+typeCode
   const existing = new Set(loads.map(l => l.loadId + '|' + l.locCode + '|' + l.typeCode));
@@ -3538,9 +3476,8 @@ async function inboxFetch() {
   }
 
   if (activeSupplier === 'SMS') {
-    setStatus($('inbox-status'), 'info', `Fetching current max SKUs for ${new Set(allFound.map(l => l.locCode).filter(Boolean)).size} club(s)…`);
-    await assignSamsSequences(allFound);
-    // Auto-attach each manifest CSV (now that SKUs are assigned).
+    // SKUs already assigned at parse (SMS<club><last5 of manifest>).
+    // Auto-attach each manifest CSV.
     for (const l of allFound) {
       const csv = csvByManifest[l.loadId];
       if (!csv || !l.sku) {
@@ -3993,7 +3930,6 @@ function downloadLoadsCsv() {
     ['FOB state',           (l) => l.fobName || ''],
     ['FOB id',              (l) => l.fobId ?? ''],
     ['Type',                (l) => l.typeCode || ''],
-    ['Seq',                 (l) => l.seq ?? ''],
     ['SKU',                 (l) => withEnvSuffix(l.sku) || ''],
     ['Product name',        (l) => l.name || ''],
     ['Condition',           (l) => l.condName || ''],
