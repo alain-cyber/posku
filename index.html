@@ -1126,6 +1126,7 @@ PO_DEFAULTS.SMS = {
   ...PO_DEFAULTS.WYF,
   supplier_id:            SUPPLIERS.SMS.erpSupplier,   // 1205 Wal-Mart SAMS CLUB (was Wayfair's 770)
   billing_address:        '',                          // blank default for Sam's (was Wayfair's address)
+  shipping_company_id:    null,                        // no proposed carrier for Sam's (was Wayfair's Santa Fe)
   shipping_address_byLoc: {},                          // Sam's → Via Trading DC; fill per club when known
   facilityByLoc: Object.fromEntries(
     Object.entries(SUPPLIERS.SMS.clubCities || {})
@@ -4039,8 +4040,9 @@ function renderPoDrafts() {
         </div>
 
         <div class="po-field wide">
-          <label>Shipping company (proposed: ${esc(def.shippingCompanies[0].name)}) — confirm or override</label>
+          <label>Shipping company ${def.shipping_company_id ? `(proposed: ${esc(def.shippingCompanies[0].name)}) — confirm or override` : '— optional, select a carrier'}</label>
           <select data-po="${idx}" data-k="shipping_company_id">
+            <option value="" ${!d.shipping_company_id ? 'selected' : ''}>— none —</option>
             ${def.shippingCompanies.map(c => `<option value="${c.id}" ${c.id === d.shipping_company_id ? 'selected' : ''}>${c.id} — ${esc(c.name)}</option>`).join('')}
           </select>
         </div>
@@ -4178,7 +4180,7 @@ function buildPoPayload(d) {
     delivery_date:           pushDate,
     // shipping
     shipping_method_id:      Number(d.shipping_method_id),
-    shipping_company_id:     Number(d.shipping_company_id),
+    shipping_company_id:     d.shipping_company_id ? Number(d.shipping_company_id) : null,
     // amounts
     sub_total:               Number(d.sub_total) || 0,
     amount:                  Number(d.amount) || 0,
