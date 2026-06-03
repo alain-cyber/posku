@@ -1685,6 +1685,12 @@ function parseSamsEmail(text, sup) {
     const code    = sup.clubByManifest[clubNum] || null;
     const flags   = [];
     if (!code) flags.push(`Unknown Sam's Club #${clubNum} — add to clubByManifest`);
+    // Loads whose club defaults to a "Direct" shipping method (e.g. Direct
+    // Truckload / Direct LTL) start inactive (active=0) so they aren't listed
+    // for sale until reviewed. Resolution mirrors the invoice-draft default.
+    const shipId   = (code && sup.invoiceShippingByLoc) ? sup.invoiceShippingByLoc[code] : null;
+    const shipName = (INV_SHIPPING_METHODS.find(o => o.id === (shipId || INV_DEFAULT_SHIPPING.SMS))?.name) || '';
+    const active   = /direct/i.test(shipName) ? 0 : 1;
     return {
       id:           'load_' + Date.now() + '_' + Math.random().toString(36).slice(2),
       supplierKey:  'SMS',
@@ -1699,6 +1705,7 @@ function parseSamsEmail(text, sup) {
       condName:      'Customer Returns',
       manifestTrait: 603,
       manifestName:  'Manifested',
+      active,
       flags,
       status:    flags.length ? 'review' : 'ready',
       erpResult: null,
@@ -2935,8 +2942,8 @@ function renderLoads() {
           <div class="po-field">
             <label>Active</label>
             <select data-field="active">
-              <option value="1" selected>1 — Active</option>
-              <option value="0">0 — Inactive</option>
+              <option value="1" ${(load.active ?? 1)===1?'selected':''}>1 — Active</option>
+              <option value="0" ${(load.active ?? 1)===0?'selected':''}>0 — Inactive</option>
             </select>
           </div>
 
