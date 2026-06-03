@@ -862,8 +862,8 @@ const SUPPLIERS = {
     },
 
     // Condition trait IDs (from airbyte_sync.products_traits)
-    conditionTraits: { LQ: 63, S: 63, HDO: 63, A: 61, QC: 62 },
-    conditionNames:  { LQ: 'Customer Returns', S: 'Customer Returns', HDO: 'Customer Returns', A: 'New Overstock', QC: 'Shelf Pulls' },
+    conditionTraits: { LQ: 63, S: 63, HDO: 63, A: 61, QC: 62, PG: 63 },
+    conditionNames:  { LQ: 'Customer Returns', S: 'Customer Returns', HDO: 'Customer Returns', A: 'New Overstock', QC: 'Shelf Pulls', PG: 'Customer Returns' },
 
     // Manifest trait IDs (default = 603 Manifested; overrides below)
     manifestTraits: { S: 514 },  // Salvage = Unmanifested
@@ -876,7 +876,7 @@ const SUPPLIERS = {
     // Salvage (S) is sold UNMANIFESTED at a FLAT dollar price (the manifest is
     // disregarded) — stored here as a whole-dollar amount, not a fraction.
     // Type codes: LQ=Liquidation(Smalls), A=Aged(S/L), HDO=Large, QC=IMP,
-    // S=Salvage(flat $), P=Perigold. Missing cells fall back to defaultPricing.
+    // S=Salvage(flat $), PG=Perigold. Missing cells fall back to defaultPricing.
     pricing: {
       PR:   { LQ: 0.115, A: 0.14,  HDO: 0.115, QC: 0.165, S: 3000 },
       LA:   { LQ: 0.115, A: 0.105,                          S: 3000 },
@@ -887,9 +887,9 @@ const SUPPLIERS = {
       AMD:  { LQ: 0.115, A: 0.105,                          S: 3000 },
       KWA:  { LQ: 0.115, A: 0.105 },
       POR:  { LQ: 0.115, A: 0.105 },
-      MCDO: {            A: 0.105,                                    P: 0.125 },
+      MCDO: {            A: 0.105,                                    PG: 0.125 },
     },
-    defaultPricing:   { LQ: 0.115, A: 0.105, HDO: 0.115, QC: 0.165, P: 0.125 },
+    defaultPricing:   { LQ: 0.115, A: 0.105, HDO: 0.115, QC: 0.165, PG: 0.125 },
     flatSalvagePrice: 3000,
 
     // Taxonomy. Per the products API schema, `categories` and `groups` are
@@ -926,6 +926,7 @@ const SUPPLIERS = {
       { patterns: ['aged like new', 'aged '],                              code: 'A',   label: 'Aged' },
       { patterns: ['qc rejects', 'qc reject', ' qc ', '(qc)', '[qc]'],   code: 'QC',  label: 'QC' },
       { patterns: [' hdo ', '(hdo)', '[hdo]', 'hdo-', '-hdo'],            code: 'HDO', label: 'HDO' },
+      { patterns: ['perigold', ' pg ', '(pg)', '[pg]', 'pg-', '-pg'],     code: 'PG',  label: 'Perigold' },
     ],
 
     // Product name derivation
@@ -935,6 +936,7 @@ const SUPPLIERS = {
       if (typeCode === 'A')   return 'WYF Excess & Aged Inventory';
       if (typeCode === 'QC')  return 'WYF QC Imperfection Loads';
       if (typeCode === 'HDO') return 'WYF Liquidation Returns - Larger Items';
+      if (typeCode === 'PG')  return 'WYF Perigold Liquidation Returns';
       // LQ — varies by location
       if (locCode === 'PR')   return 'WYF Liquidation Returns - Smaller Items';
       if (locCode === 'KWA')  return 'WYF Liquidation Returns - Larger Items';
@@ -1160,7 +1162,7 @@ const PO_DEFAULTS = {
       { id: 220, name: 'LTL x3' },
       { id: 66,  name: 'LTL' },
     ],
-    typeLabel: { LQ: 'Liquidation', S: 'Salvage', QC: 'QC', A: 'Excess', HDO: 'HDO' },
+    typeLabel: { LQ: 'Liquidation', S: 'Salvage', QC: 'QC', A: 'Excess', HDO: 'HDO', PG: 'Perigold' },
 
     // Status IDs per Via Trading docs
     statuses: [
@@ -2910,6 +2912,7 @@ function renderLoads() {
               <option value="A"   ${load.typeCode==='A'   ? 'selected' : ''}>A — Aged</option>
               <option value="QC"  ${load.typeCode==='QC'  ? 'selected' : ''}>QC — QC Rejects</option>
               <option value="HDO" ${load.typeCode==='HDO' ? 'selected' : ''}>HDO</option>
+              <option value="PG"  ${load.typeCode==='PG'  ? 'selected' : ''}>PG — Perigold</option>
             </select>
           </div>
           `}
