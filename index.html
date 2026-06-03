@@ -869,6 +869,29 @@ const SUPPLIERS = {
     manifestTraits: { S: 514 },  // Salvage = Unmanifested
     manifestNames:  { S: 'Unmanifested' },
 
+    // Pricing matrix — our sell as a fraction of retail ("Your Price %"),
+    // keyed by location × load type, straight from the Wayfair pricing sheet.
+    // These are RECOVERY rates (~10.5–16.5%), NOT the file's ~65% wholesale
+    // column. Manifested types (LQ/A/HDO/QC/P) are fractions of retail.
+    // Salvage (S) is sold UNMANIFESTED at a FLAT dollar price (the manifest is
+    // disregarded) — stored here as a whole-dollar amount, not a fraction.
+    // Type codes: LQ=Liquidation(Smalls), A=Aged(S/L), HDO=Large, QC=IMP,
+    // S=Salvage(flat $), P=Perigold. Missing cells fall back to defaultPricing.
+    pricing: {
+      PR:   { LQ: 0.115, A: 0.14,  HDO: 0.115, QC: 0.165, S: 3000 },
+      LA:   { LQ: 0.115, A: 0.105,                          S: 3000 },
+      CI:   {            HDO: 0.115 },
+      LTX:  { LQ: 0.115, A: 0.105,                          S: 3000 },
+      JFL:  { LQ: 0.115, A: 0.105,                          S: 3000 },
+      RIL:  { LQ: 0.115, A: 0.105,                          S: 3000 },
+      AMD:  { LQ: 0.115, A: 0.105,                          S: 3000 },
+      KWA:  { LQ: 0.115, A: 0.105 },
+      POR:  { LQ: 0.115, A: 0.105 },
+      MCDO: {            A: 0.105,                                    P: 0.125 },
+    },
+    defaultPricing:   { LQ: 0.115, A: 0.105, HDO: 0.115, QC: 0.165, P: 0.125 },
+    flatSalvagePrice: 3000,
+
     // Taxonomy. Per the products API schema, `categories` and `groups` are
     // SEPARATE arrays — 56 (Load Center) is a group, not a category.
     //   201 = Furniture   (category, applied to ALL WYF loads)
@@ -1712,6 +1735,26 @@ function samsMarkupFor(clubCode, mainCategory, sup) {
   return sup.defaultMarkups?.[mainCategory] ?? sup.defaultMarkups?.['General Merchandise'] ?? 0;
 }
 
+// Recovery rate (our sell as a fraction of retail) for a MANIFESTED Wayfair
+// load, from the location × type pricing matrix. Falls back to defaultPricing
+// by type, then null (caller keeps the file's wholesale figure). Salvage (S)
+// is intentionally excluded — it's a flat $ amount, not a rate.
+function wyfPriceRate(locCode, typeCode, sup) {
+  if (!typeCode || typeCode === 'S') return null;
+  const m = sup.pricing?.[locCode];
+  if (m && m[typeCode] != null) return m[typeCode];
+  return sup.defaultPricing?.[typeCode] ?? null;
+}
+
+// Flat sell price for an UNMANIFESTED (Salvage) Wayfair load — the whole load
+// goes at one price and the manifest is disregarded. Location override first,
+// else the supplier-wide flat default.
+function wyfFlatPrice(locCode, sup) {
+  const m = sup.pricing?.[locCode];
+  if (m && m.S != null) return m.S;
+  return sup.flatSalvagePrice ?? null;
+}
+
 // Strip "=\"…\"" / "$X.XX" / "Y%" wrappers Sam's CSV uses, return Number or string
 function unwrapCell(s) {
   if (s == null) return '';
@@ -1861,7 +1904,12 @@ function fixMojibake(s) {
 // WAYFAIR_MANIFEST_MAPPING.md) into Load Center rows. `text` is the manifest as
 // CSV/TSV text; `sku` is the Posku-assigned load SKU. All load types share this
 // layout — type/location come from the filename, not the columns.
-function transformWayfairManifest(text, sku) {
+function transformWayfairManifest(text, sku, locCode, typeCode) {
+  const sup = SUPPLIERS.WYF;
+  // Our sell is the recovery rate from the pricing matrix (retail × rate),
+  // NOT the manifest file's wholesale column. If the loc/type isn't priced,
+  // rate is null and we fall back to the file's wholesale figure.
+  const rate = wyfPriceRate(locCode, typeCode, sup);
   const rows = parseCsv(text);
   // Locate the header row (xlsx may prepend a sheet-name fragment to cell 0).
   let h = -1;
@@ -1901,6 +1949,12 @@ function transformWayfairManifest(text, sku) {
     const wholesaleUnit = moneyToNum(cell(r, ix.wholesaleUnit));
     const extTotal      = moneyToNum(cell(r, ix.totalPrice));
     const desc = [fixMojibake(cell(r, ix.maker)), fixMojibake(cell(r, ix.name))].filter(Boolean).join(' ');
+    // Our sell: retail × recovery-rate when the loc/type is priced; otherwise
+    // fall back to the file's wholesale column (legacy behavior).
+    const yourPct  = rate != null ? rate
+                   : (retailUnit && wholesaleUnit != null) ? (wholesaleUnit / retailUnit) : null;
+    const yourUnit = rate != null ? (retailUnit != null ? retailUnit * rate : null)
+                   : wholesaleUnit;
     out.push({
       SKU:                 sku,
       Store:               'WYF',
@@ -1913,9 +1967,9 @@ function transformWayfairManifest(text, sku) {
       Quantity:            qty,
       'Appx. EXT Retail':  extTotal != null ? round2(extTotal) : (retailUnit != null ? round2(retailUnit * qty) : null),
       'Appx. Unit Retail': retailUnit != null ? round2(retailUnit) : null,
-      'Your Price %':      (retailUnit && wholesaleUnit != null) ? (wholesaleUnit / retailUnit) : null,
-      'Your EXT Price':    wholesaleUnit != null ? round2(wholesaleUnit * qty) : null,
-      'Your Unit Price $': wholesaleUnit != null ? round2(wholesaleUnit) : null,
+      'Your Price %':      yourPct,
+      'Your EXT Price':    yourUnit != null ? round2(yourUnit * qty) : null,
+      'Your Unit Price $': yourUnit != null ? round2(yourUnit) : null,
       '% of Load QTY':     null,
       '% of Load $$':      null,
       'Product Image URL': cell(r, ix.imageUrl),
@@ -1933,7 +1987,7 @@ function transformWayfairManifest(text, sku) {
 // Fetch a Wayfair manifest from Drive and transform it. CSV is parsed directly;
 // native Google Sheets are exported as CSV server-side. XLSX returns base64 and
 // needs a client xlsx parser (not yet bundled) — surfaced as a clear error.
-async function fetchAndTransformWayfairManifest(fileId, sku) {
+async function fetchAndTransformWayfairManifest(fileId, sku, locCode, typeCode) {
   let res;
   try { res = await fetch(`/api/drive/file?id=${encodeURIComponent(fileId)}`, { cache: 'no-store' }); }
   catch (e) { return { rows: [], palletIds: [], error: `Drive fetch failed: ${e.message}` }; }
@@ -1942,7 +1996,7 @@ async function fetchAndTransformWayfairManifest(fileId, sku) {
   if (j.format === 'xlsx-base64') {
     return { rows: [], palletIds: [], error: `Couldn't parse this XLSX server-side${j.parseError ? ' (' + j.parseError + ')' : ''} — try a CSV export.` };
   }
-  return transformWayfairManifest(j.content || '', sku);
+  return transformWayfairManifest(j.content || '', sku, locCode, typeCode);
 }
 
 // Parse a Wayfair manifest Drive file and attach it to a WYF load (creating the
@@ -1957,26 +2011,46 @@ async function processWayfairManifestFile(fileId) {
   const baseSku = (manual ? manual.replace(/-test$/, '') : (d?.sku || '')) || '';
   if (!baseSku) return { ok: false, msg: `no SKU for "${f.name}" — resolve the SKU first` };
   const finalSku = withEnvSuffix(baseSku);
-  // Parse the Drive manifest file (CSV or XLSX) → Load Center rows.
-  const res = await fetchAndTransformWayfairManifest(fileId, finalSku);
-  if (res.error || !res.rows.length) return { ok: false, msg: res.error || 'no rows parsed' };
   const typeCode = d?.loadType || null;
   const locCode  = d?.locCode || null;
-  let load = loads.find(l => l.sku && withEnvSuffix(l.sku).toUpperCase() === finalSku.toUpperCase());
-  if (!load) {
-    load = {
-      id: 'load_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-      supplierKey: 'WYF', loadId: d?.loadId || '', locCode, typeCode, sku: baseSku,
-      name: (typeCode && locCode) ? sup.getProductName(typeCode, locCode) : (f.name || 'Wayfair load'),
-      fobId: locCode ? sup.fobIds[locCode] : null, fobName: locCode ? sup.fobNames[locCode] : '—',
-      condTrait: typeCode ? sup.conditionTraits[typeCode] : null,
-      condName:  typeCode ? sup.conditionNames[typeCode] : '—',
-      manifestTrait: typeCode ? (sup.manifestTraits[typeCode] || 603) : 603,
-      manifestName:  typeCode ? (sup.manifestNames[typeCode] || 'Manifested') : 'Manifested',
-      flags: [], status: 'ready', erpResult: null,
-    };
-    loads.push(load);
+  const manifestTrait = typeCode ? (sup.manifestTraits[typeCode] || 603) : 603;
+
+  // Find-or-create the load up front so both branches (manifested / salvage)
+  // share the same identity-building code.
+  const findOrCreate = () => {
+    let load = loads.find(l => l.sku && withEnvSuffix(l.sku).toUpperCase() === finalSku.toUpperCase());
+    if (!load) {
+      load = {
+        id: 'load_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+        supplierKey: 'WYF', loadId: d?.loadId || '', locCode, typeCode, sku: baseSku,
+        name: (typeCode && locCode) ? sup.getProductName(typeCode, locCode) : (f.name || 'Wayfair load'),
+        fobId: locCode ? sup.fobIds[locCode] : null, fobName: locCode ? sup.fobNames[locCode] : '—',
+        condTrait: typeCode ? sup.conditionTraits[typeCode] : null,
+        condName:  typeCode ? sup.conditionNames[typeCode] : '—',
+        manifestTrait,
+        manifestName:  typeCode ? (sup.manifestNames[typeCode] || 'Manifested') : 'Manifested',
+        flags: [], status: 'ready', erpResult: null,
+      };
+      loads.push(load);
+    }
+    return load;
+  };
+
+  // Unmanifested (Salvage / trait 514): sold at a flat price, manifest
+  // disregarded — no Load Center rows, no sheet push. Just pin the flat $.
+  if (manifestTrait === 514) {
+    const load = findOrCreate();
+    load.manifestRows = [];
+    load.manifestPalletIds = [];
+    load.flatPrice = wyfFlatPrice(locCode, sup);
+    load.manifestExpanded = false;
+    return { ok: true, msg: `unmanifested — flat $${load.flatPrice} (manifest disregarded)`, sku: finalSku };
   }
+
+  // Parse the Drive manifest file (CSV or XLSX) → Load Center rows.
+  const res = await fetchAndTransformWayfairManifest(fileId, finalSku, locCode, typeCode);
+  if (res.error || !res.rows.length) return { ok: false, msg: res.error || 'no rows parsed' };
+  const load = findOrCreate();
   load.manifestRows = res.rows;
   load.manifestPalletIds = res.palletIds || [];
   load.manifestExpanded = true;
@@ -2086,7 +2160,23 @@ function buildUpdatePayload(load) {
 //   price_per_pallet      = our sell per pallet
 function buildLoadTotals(load) {
   const rows = load.manifestRows || [];
-  if (!rows.length) return null;
+  if (!rows.length) {
+    // Unmanifested WYF (Salvage / trait 514) loads have no per-line manifest —
+    // they sell at a flat load price. Push that as `price` so the SKU lands
+    // priced. Pallet count (if known from the email) drives price_per_pallet.
+    if (load.supplierKey === 'WYF' && load.manifestTrait === 514) {
+      const flat = load.flatPrice != null ? Number(load.flatPrice) : wyfFlatPrice(load.locCode, SUPPLIERS.WYF);
+      if (flat != null && Number.isFinite(flat)) {
+        const pCount = (load.palletCount > 0) ? load.palletCount : undefined;
+        return {
+          price:            round2(flat),
+          pallets_qty:      pCount,
+          price_per_pallet: pCount ? round2(flat / pCount) : undefined,
+        };
+      }
+    }
+    return null;
+  }
   const totalQty    = rows.reduce((s, r) => s + (Number(r.Quantity) || 0), 0);
   const totalRetail = rows.reduce((s, r) => s + (Number(r['Appx. EXT Retail']) || 0), 0);
   const totalSell   = rows.reduce((s, r) => s + (Number(r['Your EXT Price']) || 0), 0);
