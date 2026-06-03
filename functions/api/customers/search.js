@@ -15,7 +15,7 @@
 //
 // Request:  GET /api/customers/search?q=<partial email or name>&max=<N>
 // Response: { ok, customers: [{ customer_id, email, name, company, phone,
-//             billing_address, shipping_address }], query }
+//             sales_rep, sales_rep_id, billing_address, shipping_address }], query }
 
 const SCOPE = 'https://www.googleapis.com/auth/bigquery.readonly';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -52,7 +52,7 @@ export async function onRequest(context) {
   const sql = `
     SELECT
       customer_id, primary_email, customer_full_name, company_name,
-      first_name, last_name, phone,
+      first_name, last_name, phone, sales_rep, sales_rep_id,
       billing_address, billing_address_more, billing_city, billing_state,
       billing_zip, billing_country, billing_country_code,
       CASE
@@ -126,6 +126,8 @@ export async function onRequest(context) {
       name:             obj.customer_full_name || '',
       company:          obj.company_name || '',
       phone:            obj.phone || '',
+      sales_rep:        obj.sales_rep || '',
+      sales_rep_id:     obj.sales_rep_id != null ? Number(obj.sales_rep_id) : null,
       billing_address:  billing,
       shipping_address: { ...billing, commercial: 0, liftgate: 0 },
     };
