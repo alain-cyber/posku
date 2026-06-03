@@ -48,16 +48,17 @@ export async function onRequest(context) {
     return json(502, { ok: false, error: `Auth failed: ${err.message}` });
   }
 
-  // Make sure the target tab exists — create it (+ header row) if missing,
-  // so e.g. the first Wayfair push doesn't fail against a sheet that only has
-  // a Sam's tab.
-  let createdTab = false;
-  try { createdTab = await ensureTab(accessToken, cfg.sheetId, tab, headers); }
-  catch (err) { return json(502, { ok: false, error: `Ensure tab "${tab}" failed: ${err.message}` }); }
+  // Resolve the tab case-insensitively (sheet may be "wayfair" while config
+  // says "Wayfair") and create it (+ header row) only if truly missing.
+  let createdTab = false, effectiveTab = tab;
+  try {
+    const r = await ensureTab(accessToken, cfg.sheetId, tab, headers);
+    createdTab = r.created; effectiveTab = r.tab;
+  } catch (err) { return json(502, { ok: false, error: `Ensure tab "${tab}" failed: ${err.message}` }); }
 
-  // Sheets API: append to the named tab. valueInputOption=USER_ENTERED makes
+  // Sheets API: append to the resolved tab. valueInputOption=USER_ENTERED makes
   // Sheets interpret strings like "$4.25" / "25.00%" as numbers when possible.
-  const range = encodeURIComponent(tab);
+  const range = encodeURIComponent(effectiveTab);
   const url = `${SHEETS_URL}/${cfg.sheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
   const res = await fetch(url, {
     method: 'POST',
@@ -80,16 +81,18 @@ export async function onRequest(context) {
   });
 }
 
-// Ensure a tab exists. Returns true if it had to create it. When creating and
-// `headers` are supplied, writes them as the first row.
+// Ensure a tab exists. Matches existing tabs case-insensitively and returns the
+// ACTUAL title to use ({ tab, created }). Only creates a new tab if none match;
+// when creating and `headers` are supplied, writes them as the first row.
 async function ensureTab(token, sheetId, tab, headers) {
   const metaRes = await fetch(`${SHEETS_URL}/${sheetId}?fields=sheets.properties.title`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!metaRes.ok) throw new Error(`meta ${metaRes.status}: ${await metaRes.text()}`);
   const meta = await metaRes.json();
-  const titles = (meta.sheets || []).map(s => s.properties?.title);
-  if (titles.includes(tab)) return false;
+  const titles = (meta.sheets || []).map(s => s.properties?.title).filter(Boolean);
+  const match = titles.find(t => t.toLowerCase() === String(tab).toLowerCase());
+  if (match) return { tab: match, created: false };   // use the sheet's real title
   const buRes = await fetch(`${SHEETS_URL}/${sheetId}:batchUpdate`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -105,7 +108,7 @@ async function ensureTab(token, sheetId, tab, headers) {
     });
     if (!hRes.ok) throw new Error(`header write ${hRes.status}: ${await hRes.text()}`);
   }
-  return true;
+  return { tab, created: true };
 }
 
 // ── Helpers (same JWT/RS256 flow as gmail/messages.js) ───────────────────────
