@@ -913,7 +913,7 @@ const SUPPLIERS = {
       { patterns: ['lancaster, tx', 'lancaster tx', 'lancaster, t', 'lancaster'],     code: 'LTX',  label: 'Lancaster TX' },
       { patterns: ['lathrop'],                                                         code: 'LA',   label: 'Lathrop CA' },
       { patterns: ['kent, wa', 'kent wa', 'kent'],                                    code: 'KWA',  label: 'Kent WA' },
-      { patterns: ['city of industry', 'coi'],                                        code: 'CI',   label: 'City of Industry CA' },
+      { patterns: ['city of industry', 'coi', 'perigold'],                            code: 'CI',   label: 'City of Industry CA' },
       { patterns: ['portland, or', 'portland or', 'portland'],                        code: 'POR',  label: 'Portland OR' },
       { patterns: ['mcdonough, ga', 'mcdonough ga', 'mcdonough'],                     code: 'MCDO', label: 'McDonough GA' },
       { patterns: ['kentucky', 'hebron', 'erlanger', 'walton', 'florence, ky', 'edgewood'], code: 'EKY', label: 'Kentucky' },
@@ -936,7 +936,7 @@ const SUPPLIERS = {
       if (typeCode === 'A')   return 'WYF Excess & Aged Inventory';
       if (typeCode === 'QC')  return 'WYF QC Imperfection Loads';
       if (typeCode === 'HDO') return 'WYF Liquidation Returns - Larger Items';
-      if (typeCode === 'PG')  return 'WYF Perigold Liquidation Returns';
+      if (typeCode === 'PG')  return 'WYF Liquidation Returns - Larger Items';
       // LQ — varies by location
       if (locCode === 'PR')   return 'WYF Liquidation Returns - Smaller Items';
       if (locCode === 'KWA')  return 'WYF Liquidation Returns - Larger Items';
@@ -1600,8 +1600,13 @@ function detectLocation(text, sup) {
 }
 
 function detectType(text, locCode, sup) {
-  if (locCode && sup.hdoLocations && sup.hdoLocations.has(locCode)) return 'HDO';
   const lower = text.toLowerCase();
+  // An explicit Perigold facility/mention wins over the HDO location auto-infer:
+  // Perigold ships from City of Industry (CI), which would otherwise be forced
+  // to HDO before we ever look at the type text.
+  const pg = sup.types.find(t => t.code === 'PG');
+  if (pg && pg.patterns.some(p => lower.includes(p))) return 'PG';
+  if (locCode && sup.hdoLocations && sup.hdoLocations.has(locCode)) return 'HDO';
   for (const t of sup.types) {
     if (t.patterns.some(p => lower.includes(p))) return t.code;
   }
