@@ -324,9 +324,10 @@ textarea::placeholder { color: var(--text4); }
 .loads-title { font-family: 'DM Serif Display', serif; font-size: 1.3rem; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 
 .table-wrap { overflow-x: auto; }
-.table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
-.table th { text-align: left; font-family: 'DM Mono', monospace; font-size: 0.6rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text3); padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--border2); white-space: nowrap; }
-.table td { padding: 0.65rem 0.6rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.table th { text-align: left; font-family: 'DM Mono', monospace; font-size: 0.56rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text3); padding: 0.4rem 0.35rem; border-bottom: 1px solid var(--border2); white-space: nowrap; }
+.table td { padding: 0.4rem 0.35rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table .btn.small { padding: 0.3rem 0.5rem; font-size: 0.6rem; letter-spacing: 0.06em; }
 .table tr:last-child td { border-bottom: none; }
 .table tr:hover td { background: rgba(0,0,0,0.02); }
 .table tr.review td { background: rgba(138,101,16,0.05); }
@@ -2632,10 +2633,10 @@ function renderLoads() {
       <td><span class="mono">${esc(load.locCode || '—')}</span></td>
       <td><span class="mono">${esc(load.typeCode || '—')}</span></td>
       <td>${load.sku ? `<span class="mono-green">${esc(withEnvSuffix(load.sku))}</span>` : `<span class="mono-amber">—</span>`}</td>
-      <td style="font-size:0.8rem;color:var(--text2);max-width:220px;">${esc(load.name || '—')}</td>
-      <td class="mono">${esc(load.fobName)}</td>
-      <td style="font-size:0.78rem;">${esc(load.condName)}</td>
-      <td style="font-size:0.78rem;">${esc(load.manifestName)}</td>
+      <td style="font-size:0.72rem;color:var(--text2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(load.name || '')}">${esc(load.name || '—')}</td>
+      <td class="mono" style="font-size:0.72rem;">${esc(load.fobName)}</td>
+      <td style="font-size:0.7rem;">${esc(load.condName)}</td>
+      <td style="font-size:0.7rem;">${esc(load.manifestName)}</td>
       <td>${statusChip()}${load.status === 'done' ? ` <label class="unique-toggle ${load.uniqueInvoice === false ? '' : 'on'}" title="On: this SKU gets its own PO and its own invoice. Off: it merges with other 'off' SKUs — into one PO per supplier+facility, and one invoice per customer."><input type="checkbox" data-unique-invoice="${idx}" ${load.uniqueInvoice === false ? '' : 'checked'} style="margin:0;"> unique po/inv</label>` : ''}</td>
       <td style="white-space:nowrap;">
         ${load.status !== 'done' && load.status !== 'pushing' && load.status !== 'dup' ? `
