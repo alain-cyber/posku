@@ -1887,9 +1887,46 @@ async function fetchAndTransformWayfairManifest(fileId, sku) {
   const j = await res.json().catch(() => null);
   if (!res.ok || !j?.ok) return { rows: [], palletIds: [], error: j?.error || `HTTP ${res.status}` };
   if (j.format === 'xlsx-base64') {
-    return { rows: [], palletIds: [], error: 'XLSX manifest — client xlsx parsing not yet bundled. Use a CSV export, or convert to Google Sheet.' };
+    return { rows: [], palletIds: [], error: `Couldn't parse this XLSX server-side${j.parseError ? ' (' + j.parseError + ')' : ''} — try a CSV export.` };
   }
   return transformWayfairManifest(j.content || '', sku);
+}
+
+// Parse a Wayfair manifest Drive file and attach it to a WYF load (creating the
+// load if needed) so it shows in the loads table with preview + Send-to-Sheet
+// (Wayfair tab) + SKU push — the same flow Sam's uses. Returns a status string.
+async function processWayfairManifestFile(fileId) {
+  const f = (_lastMfetchFiles || []).find(x => x.id === fileId);
+  if (!f) return { ok: false, msg: 'file not found' };
+  const sup = SUPPLIERS.WYF;
+  const d = deriveWyfSkuFromFilename(f.name, f.tree, f.path);
+  const manual = _manualSkuByFileId.get(fileId);
+  const baseSku = (manual ? manual.replace(/-test$/, '') : (d?.sku || '')) || '';
+  if (!baseSku) return { ok: false, msg: `no SKU for "${f.name}" — resolve the SKU first` };
+  const finalSku = withEnvSuffix(baseSku);
+  const res = await fetchAndTransformWayfairManifest(fileId, finalSku);
+  if (res.error || !res.rows.length) return { ok: false, msg: res.error || 'no rows parsed' };
+  const typeCode = d?.loadType || null;
+  const locCode  = d?.locCode || null;
+  let load = loads.find(l => l.sku && withEnvSuffix(l.sku).toUpperCase() === finalSku.toUpperCase());
+  if (!load) {
+    load = {
+      id: 'load_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+      supplierKey: 'WYF', loadId: d?.loadId || '', locCode, typeCode, sku: baseSku,
+      name: (typeCode && locCode) ? sup.getProductName(typeCode, locCode) : (f.name || 'Wayfair load'),
+      fobId: locCode ? sup.fobIds[locCode] : null, fobName: locCode ? sup.fobNames[locCode] : '—',
+      condTrait: typeCode ? sup.conditionTraits[typeCode] : null,
+      condName:  typeCode ? sup.conditionNames[typeCode] : '—',
+      manifestTrait: typeCode ? (sup.manifestTraits[typeCode] || 603) : 603,
+      manifestName:  typeCode ? (sup.manifestNames[typeCode] || 'Manifested') : 'Manifested',
+      flags: [], status: 'ready', erpResult: null,
+    };
+    loads.push(load);
+  }
+  load.manifestRows = res.rows;
+  load.manifestPalletIds = res.palletIds || [];
+  load.manifestExpanded = true;
+  return { ok: true, msg: `${res.rows.length} line(s)`, sku: finalSku };
 }
 
 // Tab-separated string of all rows + header — paste straight into Google Sheets.
@@ -2775,8 +2812,9 @@ function renderLoads() {
     body.appendChild(dr);
     body.appendChild(er);
 
-    // Sam's manifest section — drop a CSV here to reshape into Load Center columns
-    if (load.supplierKey === 'SMS') {
+    // Manifest section — Sam's (drop a CSV) or any load with a manifest already
+    // attached (e.g. a Wayfair load parsed from a Drive manifest).
+    if (load.supplierKey === 'SMS' || (load.manifestRows && load.manifestRows.length)) {
       body.appendChild(buildSamsManifestRow(load, idx));
     }
 
@@ -3769,16 +3807,44 @@ function mfetchRenderResults(files) {
         <tbody>${rows}</tbody>
       </table>
     </div>
+    <div class="btn-row" style="margin-top:0.7rem;">
+      <button class="btn" id="mfetch-process-btn">Process selected → parse manifests into loads</button>
+      <span class="hint" id="mfetch-process-status" style="margin-left:0.5rem;"></span>
+    </div>
     <div style="margin-top:0.6rem;font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text3);">
       ${matchedCount}/${files.length} manifest(s) match a SKU already in the detected-loads table below.
       For rows the filename couldn't resolve, type a SKU and press Enter — it'll be validated against the ERP.
-      Pick a row + click <strong>Process</strong> below to parse + push.
-      Parsers wired: <code>FC</code> (LQ / Salvage / Aged / QC). HDO / Outlet / Perigold parsers coming next — those rows will be flagged.
+      <strong>Process selected</strong> parses each picked manifest (CSV or XLSX) and attaches it to a load below —
+      then preview + <strong>Send to Sheet</strong> (Wayfair tab) + push the SKU from there.
+      SKU naming wired: <code>FC</code> (LQ / Salvage / Aged / QC). HDO / Outlet / Perigold filename rules coming next.
     </div>
   `;
   attachManualSkuHandlers();
+  $('mfetch-process-btn').onclick = processSelectedManifests;
   // Kick off async ERP dedup checks for any SKU we haven't checked yet.
   runErpDedupChecks(files);
+}
+
+// Process the checked manifest rows: parse each (CSV/XLSX) and attach to a load.
+async function processSelectedManifests() {
+  const btn = $('mfetch-process-btn');
+  const statusEl = $('mfetch-process-status');
+  const picked = [...document.querySelectorAll('[data-mfetch-pick]:checked')].map(cb => cb.dataset.mfetchPick);
+  if (!picked.length) { setStatus(statusEl, 'warn', 'Pick at least one manifest row.'); return; }
+  btn.disabled = true;
+  let ok = 0; const fails = [];
+  for (let i = 0; i < picked.length; i++) {
+    setStatus(statusEl, 'info', `Parsing ${i + 1}/${picked.length}…`);
+    const res = await processWayfairManifestFile(picked[i]);
+    if (res.ok) ok++; else fails.push(res.msg);
+  }
+  sortLoads();
+  $('loads-section').style.display = '';
+  renderLoads();
+  markExistingSkus();
+  btn.disabled = false;
+  setStatus(statusEl, fails.length ? 'warn' : 'ok',
+    `Parsed ${ok} manifest(s) into loads${fails.length ? ` · ${fails.length} failed: ${fails.slice(0, 2).join('; ')}` : ''}. Preview + Send to Sheet below.`);
 }
 
 // Hook up the per-row "type a SKU" inputs: validate against ERP on Enter/blur,
