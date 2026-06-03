@@ -39,6 +39,7 @@ export async function onRequest(context) {
   const values = Array.isArray(body.values) ? body.values : null;
   if (!values || !values.length) return json(400, { ok: false, error: 'values must be a non-empty 2D array' });
   const tab = body.tab || cfg.defaultTab;
+  const headers = Array.isArray(body.headers) && body.headers.length ? body.headers : null;
 
   let accessToken;
   try {
@@ -46,6 +47,13 @@ export async function onRequest(context) {
   } catch (err) {
     return json(502, { ok: false, error: `Auth failed: ${err.message}` });
   }
+
+  // Make sure the target tab exists — create it (+ header row) if missing,
+  // so e.g. the first Wayfair push doesn't fail against a sheet that only has
+  // a Sam's tab.
+  let createdTab = false;
+  try { createdTab = await ensureTab(accessToken, cfg.sheetId, tab, headers); }
+  catch (err) { return json(502, { ok: false, error: `Ensure tab "${tab}" failed: ${err.message}` }); }
 
   // Sheets API: append to the named tab. valueInputOption=USER_ENTERED makes
   // Sheets interpret strings like "$4.25" / "25.00%" as numbers when possible.
@@ -68,7 +76,36 @@ export async function onRequest(context) {
     updatedRange: data.updates?.updatedRange,
     updatedRows:  data.updates?.updatedRows,
     tab,
+    createdTab,
   });
+}
+
+// Ensure a tab exists. Returns true if it had to create it. When creating and
+// `headers` are supplied, writes them as the first row.
+async function ensureTab(token, sheetId, tab, headers) {
+  const metaRes = await fetch(`${SHEETS_URL}/${sheetId}?fields=sheets.properties.title`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!metaRes.ok) throw new Error(`meta ${metaRes.status}: ${await metaRes.text()}`);
+  const meta = await metaRes.json();
+  const titles = (meta.sheets || []).map(s => s.properties?.title);
+  if (titles.includes(tab)) return false;
+  const buRes = await fetch(`${SHEETS_URL}/${sheetId}:batchUpdate`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requests: [{ addSheet: { properties: { title: tab } } }] }),
+  });
+  if (!buRes.ok) throw new Error(`addSheet ${buRes.status}: ${await buRes.text()}`);
+  if (headers) {
+    const hUrl = `${SHEETS_URL}/${sheetId}/values/${encodeURIComponent(tab + '!A1')}?valueInputOption=RAW`;
+    const hRes = await fetch(hUrl, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [headers] }),
+    });
+    if (!hRes.ok) throw new Error(`header write ${hRes.status}: ${await hRes.text()}`);
+  }
+  return true;
 }
 
 // ── Helpers (same JWT/RS256 flow as gmail/messages.js) ───────────────────────

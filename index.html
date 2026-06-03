@@ -2501,7 +2501,7 @@ function attachSamsManifestHandlers() {
         const r = await fetch('/api/sheets/append', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ values, tab: sup.sheetTab }),
+          body: JSON.stringify({ values, tab: sup.sheetTab, headers: LC_COLUMNS }),
         });
         const j = await r.json().catch(() => ({}));
         if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
@@ -4058,7 +4058,7 @@ $('send-all-manifests-btn').onclick = async () => {
       const r = await fetch('/api/sheets/append', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values, tab: sup.sheetTab }),
+        body: JSON.stringify({ values, tab: sup.sheetTab, headers: LC_COLUMNS }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
