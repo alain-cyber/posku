@@ -1351,6 +1351,33 @@ function applyRulesOverride() {
     }
     wyf.invoiceCustomerByLocType = cleaned;
   }
+  // Pricing matrix — recovery rate (fraction of retail) per location × type,
+  // plus a per-type default fallback and the flat salvage $ amount.
+  if (w.pricing && typeof w.pricing === 'object') {
+    const cleaned = {};
+    for (const [loc, m] of Object.entries(w.pricing)) {
+      if (!loc || !m || typeof m !== 'object') continue;
+      const row = {};
+      for (const [t, v] of Object.entries(m)) {
+        const n = Number(v);
+        if (t && v !== '' && v !== null && Number.isFinite(n)) row[t] = n;
+      }
+      if (Object.keys(row).length) cleaned[String(loc).trim().toUpperCase()] = row;
+    }
+    wyf.pricing = cleaned;
+  }
+  if (w.defaultPricing && typeof w.defaultPricing === 'object') {
+    const cleaned = {};
+    for (const [t, v] of Object.entries(w.defaultPricing)) {
+      const n = Number(v);
+      if (t && v !== '' && v !== null && Number.isFinite(n)) cleaned[t] = n;
+    }
+    wyf.defaultPricing = cleaned;
+  }
+  if (w.flatSalvagePrice !== undefined && w.flatSalvagePrice !== '' && w.flatSalvagePrice !== null) {
+    const n = Number(w.flatSalvagePrice);
+    if (Number.isFinite(n)) wyf.flatSalvagePrice = n;
+  }
 }
 
 function applySamsRulesOverride(s) {
@@ -1576,6 +1603,9 @@ function currentWyfRulesAsEditable() {
       manifestName:   w.manifestNames[t.code]   ?? '',
       patterns: (t.patterns || []).join(', '),
     })),
+    pricing: Object.fromEntries(Object.entries(w.pricing || {}).map(([loc, m]) => [loc, { ...m }])),
+    defaultPricing: { ...(w.defaultPricing || {}) },
+    flatSalvagePrice: w.flatSalvagePrice ?? '',
     invoiceCustomerByLocType: { ...(w.invoiceCustomerByLocType || {}) },
   };
 }
@@ -5113,6 +5143,14 @@ function drawCfgUIWyf() {
     </div>
 
     <div class="cfg-block">
+      <h3>Pricing matrix (recovery rates)</h3>
+      <div class="cfg-hint">Our sell as a <b>% of retail</b>, by location (rows) × load type (columns). A <b>blank</b> cell falls back to the <code>default</code> row for that type. Salvage (<code>S</code>) is a <b>flat $</b> amount (manifest disregarded), so its cells and the <code>default</code> S cell are dollars, not a %.</div>
+      <div class="cfg-table-wrap">
+        ${wyfPricingTable(d)}
+      </div>
+    </div>
+
+    <div class="cfg-block">
       <h3>Default invoice customer per location + type</h3>
       <div class="cfg-hint">Pre-fills the customer on the invoice draft when a Wayfair load matches both this location code AND this load type. Use the customer's primary email — Posku resolves it against the warehouse customer record automatically.</div>
       <div class="cfg-table-wrap">
@@ -5177,6 +5215,35 @@ function typeRow(t, i) {
   </tr>`;
 }
 
+// Display helpers for the pricing grid: rate types are shown as a percent
+// (0.115 ⇄ 11.5), Salvage (S) cells are raw dollar amounts.
+function pricePctStr(v) { return (v == null || v === '') ? '' : String(+(Number(v) * 100).toFixed(4)); }
+function priceDolStr(v) { return (v == null || v === '') ? '' : String(Number(v)); }
+
+function wyfPricingTable(d) {
+  const types = (d.types || []).map(t => t.code).filter(Boolean);
+  const isSal = t => t === 'S';
+  const head = types.map(t => `<th class="narrow">${esc(t)} ${isSal(t) ? '($)' : '(%)'}</th>`).join('');
+  const cell = (loc, t) => {
+    const v = (d.pricing?.[loc] || {})[t];
+    const disp = isSal(t) ? priceDolStr(v) : pricePctStr(v);
+    return `<td class="narrow"><input data-price-type="${esc(t)}" type="number" step="any" value="${esc(disp)}" placeholder="${isSal(t) ? '$' : '%'}"></td>`;
+  };
+  const locRows = (d.locations || []).map(l => l.code).filter(Boolean).map(loc =>
+    `<tr data-price-loc="${esc(loc)}"><td class="narrow"><b>${esc(loc)}</b></td>${types.map(t => cell(loc, t)).join('')}</tr>`
+  ).join('');
+  const defCell = t => {
+    const v = isSal(t) ? d.flatSalvagePrice : (d.defaultPricing?.[t]);
+    const disp = isSal(t) ? priceDolStr(v) : pricePctStr(v);
+    return `<td class="narrow"><input data-price-type="${esc(t)}" type="number" step="any" value="${esc(disp)}" placeholder="${isSal(t) ? '$' : '%'}"></td>`;
+  };
+  const defRow = `<tr id="cfg-price-default"><td class="narrow"><b>default</b></td>${types.map(defCell).join('')}</tr>`;
+  return `<table class="cfg-table">
+    <thead><tr><th class="narrow">Location \\ Type</th>${head}</tr></thead>
+    <tbody id="cfg-price-body">${locRows}${defRow}</tbody>
+  </table>`;
+}
+
 function bindCfgHandlers() {
   // Top-level fields
   $('cfg-section').querySelectorAll('input[data-c]').forEach(el => {
@@ -5222,6 +5289,42 @@ function bindCfgHandlers() {
     cfgDraft.types.push({ code: '', label: '', conditionTrait: '', conditionName: '', manifestTrait: '', manifestName: '', patterns: '' });
     drawCfgUI();
   };
+  // Pricing matrix — rebuild from the grid. Rate cells are entered as a percent
+  // (stored as a fraction); Salvage (S) cells are raw dollars. The `default` row
+  // feeds defaultPricing (and its S cell feeds flatSalvagePrice).
+  function rebuildWyfPricing() {
+    const pricing = {};
+    document.querySelectorAll('#cfg-price-body tr[data-price-loc]').forEach(tr => {
+      const loc = tr.dataset.priceLoc;
+      const row = {};
+      tr.querySelectorAll('input[data-price-type]').forEach(inp => {
+        const t = inp.dataset.priceType;
+        const raw = inp.value.trim();
+        if (raw === '') return;
+        const num = Number(raw);
+        if (!Number.isFinite(num)) return;
+        row[t] = (t === 'S') ? num : Number((num / 100).toFixed(5));
+      });
+      if (Object.keys(row).length) pricing[loc] = row;
+    });
+    cfgDraft.pricing = pricing;
+    const dp = {};
+    const defRow = $('cfg-price-default');
+    if (defRow) {
+      defRow.querySelectorAll('input[data-price-type]').forEach(inp => {
+        const t = inp.dataset.priceType;
+        const raw = inp.value.trim();
+        const num = Number(raw);
+        if (raw === '' || !Number.isFinite(num)) return;
+        if (t === 'S') cfgDraft.flatSalvagePrice = num;
+        else dp[t] = Number((num / 100).toFixed(5));
+      });
+    }
+    cfgDraft.defaultPricing = dp;
+  }
+  document.querySelectorAll('#cfg-price-body input[data-price-type]').forEach(el => {
+    el.oninput = rebuildWyfPricing;
+  });
   // Default invoice customer per locCode + typeCode — rebuild map from rows.
   function rebuildWyfInvCustomers() {
     const out = {};
