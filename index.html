@@ -1006,6 +1006,14 @@ const SUPPLIERS = {
       THO: 'countryyegua@aol.com',
     },
 
+    // Default invoice shipping method per club (id: 65 Direct Truckload,
+    // 66 LTL, 74 Direct LTL — see INV_SHIPPING_METHODS).
+    invoiceShippingByLoc: {
+      RVE: 74, FMS: 65, CON: 65, RVS: 65, LB:  65, FUL: 65, SIO: 65, CB:  65,
+      GRF: 74, BIL: 74, RDL: 65, PRO: 65, LOG: 65, LAY: 65, CHE: 74, CAS: 74,
+      LAR: 74, HAR: 66, MCA: 66, IF:  65, DEN: 65, LT:  65, THO: 65,
+    },
+
     // Markup % we charge our customers, per Main Category (load-center "Your Price %")
     defaultMarkups: { APPAREL: 0.20, 'General Merchandise': 0.305, Electronics: 0.33, Food: 0.22 },
     // Per-club overrides. Only the clubs that deviate from defaultMarkups appear here.
@@ -5326,6 +5334,8 @@ function generateInvoiceDrafts() {
 
   invoiceDrafts = groups.map((g, i) => {
     const supKey = g.loads[0].supplierKey;
+    // Per-club default shipping method (Sam's), else the supplier default.
+    const clubShip = (SUPPLIERS[supKey]?.invoiceShippingByLoc || {})[g.loads[0].locCode];
     return {
       id:                'd' + i + '_' + Date.now(),
       supplierKey:       supKey,
@@ -5333,7 +5343,7 @@ function generateInvoiceDrafts() {
       ruleEmail:         g.ruleEmail || '',
       order_type_id:     INV_DEFAULT_ORDER_TYPE,
       payment_method_id: INV_DEFAULT_PAYMENT,
-      shipping_method_id: INV_DEFAULT_SHIPPING[supKey] || 94,
+      shipping_method_id: clubShip || INV_DEFAULT_SHIPPING[supKey] || 94,
       salesrep_id:       '',
       promo_code:        '',
       shipping_cost:     '0',
