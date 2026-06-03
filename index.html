@@ -2349,6 +2349,17 @@ function celebratePush(originEl, count, statsBefore) {
 
 // Compact inbox-fetch diagnostic, surfaced on /diagnostic so I can debug
 // auto-attach issues without asking the user to open DevTools.
+// Keep the last 10 "Send to Sheet" attempts (request meta + full response) so
+// the diagnostic page can show exactly why a push failed.
+function stashSheetDiag(entry) {
+  try {
+    const k = 'posku.sheet.history.v1';
+    const arr = JSON.parse(localStorage.getItem(k) || '[]');
+    arr.unshift(entry); while (arr.length > 10) arr.pop();
+    localStorage.setItem(k, JSON.stringify(arr));
+  } catch {}
+}
+
 function stashInboxDiag(payload) {
   try { localStorage.setItem('posku.inbox.diag.v1', JSON.stringify(payload)); } catch {}
 }
@@ -2498,19 +2509,28 @@ function attachSamsManifestHandlers() {
       b.disabled = true; b.textContent = 'Sending…';
       try {
         const sup = SUPPLIERS[load.supplierKey] || SUPPLIERS.SMS;
+        const diag = { at: new Date().toISOString(), env: loadEnv(), supplier: load.supplierKey,
+                       sku: withEnvSuffix(load.sku || ''), tab: sup.sheetTab, rows: values.length };
         const r = await fetch('/api/sheets/append', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ values, tab: sup.sheetTab, headers: LC_COLUMNS }),
         });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+        const text = await r.text();
+        let j = {}; try { j = JSON.parse(text); } catch {}
+        diag.status = r.status; diag.response = (text || '').slice(0, 2000);
+        if (!r.ok || !j.ok) {
+          diag.ok = false; stashSheetDiag(diag);
+          throw new Error(j.error || `HTTP ${r.status}: ${(text || '').slice(0, 400)}`);
+        }
+        diag.ok = true; stashSheetDiag(diag);
         load.manifestSentTo = j.updatedRange || j.tab || 'Sheet';
+        load.manifestError = null;
         load.manifestExpanded = false;
         renderLoads();
       } catch (err) {
         b.disabled = false; b.textContent = 'Send to Sheet';
-        load.manifestError = `Send failed: ${err.message}`;
+        load.manifestError = `Send to Sheet failed (tab "${(SUPPLIERS[load.supplierKey]||SUPPLIERS.SMS).sheetTab}"): ${err.message}`;
         renderLoads();
       }
     };

@@ -115,6 +115,19 @@ async function run() {
     }
   }
 
+  // Send-to-Sheet history — the last 10 append attempts (Sam's + Wayfair),
+  // with the tab targeted and the full server response, so a failed push is
+  // copy-pasteable here.
+  let sheetHist;
+  try { sheetHist = JSON.parse(localStorage.getItem('posku.sheet.history.v1') || '[]'); } catch {}
+  if (sheetHist && sheetHist.length) {
+    lines.push('', '── SEND TO SHEET (last ' + sheetHist.length + ') ──');
+    for (const s of sheetHist) {
+      lines.push(`  ${s.ok ? 'OK ' : 'XX '} ${s.at}  ${s.supplier || '?'}  sku=${s.sku || '?'}  tab="${s.tab}"  rows=${s.rows}  env=${s.env}  HTTP ${s.status ?? '?'}`);
+      if (!s.ok || s.error) lines.push(`        response: ${(s.error ? s.error + ' · ' : '') + (s.response || '')}`.slice(0, 600));
+    }
+  }
+
   // Dropdown reference — id+name for packings and product_types so we can
   // verify the values posku is pinning are real options the API recognizes.
   lines.push('', '── DROPDOWNS (id → name for packings & product_types) ──');
