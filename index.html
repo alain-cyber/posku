@@ -2037,15 +2037,38 @@ async function erpRequest(method, path, body) {
 async function checkSKUExists(sku) {
   const r = await erpRequest('GET', '/api/products?sku=' + encodeURIComponent(sku));
   if (!r.ok && !r.status) return { error: r.error };
-  // 404 → not found → safe to create. 200 with empty → safe. 200 with data → duplicate.
+  // 404 → not found → safe to create. 200 → look for an EXACT sku match
+  // (the ?sku= query is a prefix search, so filter to the exact one) and return
+  // its product id so an existing SKU can be updated.
   if (r.status === 404) return { exists: false };
+  let arr = null;
   if (r.ok && r.data) {
-    const arr = Array.isArray(r.data) ? r.data : (Array.isArray(r.data?.data) ? r.data.data : null);
-    if (arr !== null) return { exists: arr.length > 0 };
-    // If it's an object with an id, it exists
-    if (r.data?.id || r.data?.sku) return { exists: true };
+    arr = Array.isArray(r.data) ? r.data
+        : Array.isArray(r.data?.data) ? r.data.data
+        : (r.data?.id || r.data?.sku) ? [r.data] : null;
   }
+  if (!arr) return { exists: false };
+  const want = String(sku).toLowerCase();
+  const exact = arr.find(p => String(p?.sku || p?.SKU || '').toLowerCase() === want);
+  if (exact) return { exists: true, id: exact.id ?? exact.product_id ?? exact.productId ?? null };
   return { exists: false };
+}
+
+// Price/qty fields to update on an EXISTING product — the same load-level
+// values Sam's/Wayfair pushes set on create (manifest-derived). Used for the
+// upsert path so re-pushing an existing SKU refreshes its pricing.
+function buildUpdatePayload(load) {
+  const totals = buildLoadTotals(load);
+  if (!totals) return null;
+  const data = {};
+  if (totals.qty)                           data.unit_qty              = totals.qty;
+  if (totals.pallets_qty != null)           data.pallets_qty           = totals.pallets_qty;
+  if (totals.price != null)                 data.price                 = totals.price;
+  if (totals.retail_price != null)          data.retail_price          = totals.retail_price;
+  if (totals.price_per_unit != null)        data.unit_price            = totals.price_per_unit;
+  if (totals.retail_price_per_unit != null) data.retail_price_per_unit = totals.retail_price_per_unit;
+  if (totals.price_per_pallet != null)      data.price_per_pallet      = totals.price_per_pallet;
+  return Object.keys(data).length ? { data } : null;
 }
 
 // Aggregate the per-line manifest rows into load-level totals we can push to
@@ -2369,10 +2392,28 @@ async function pushLoad(load) {
   // Apply env-driven suffix before any ERP call (also what gets sent in the payload).
   const liveSku = withEnvSuffix(load.sku);
 
-  // 1. Dedup check
+  // 1. Exists check → UPSERT. If the SKU already exists (the norm), update its
+  // price/qty/value fields instead of failing.
   const dup = await checkSKUExists(liveSku);
   if (dup.error) return { ok: false, error: dup.error };
-  if (dup.exists) return { ok: false, skipped: true, error: `SKU ${liveSku} already exists in ERP.` };
+  if (dup.exists) {
+    const upd = buildUpdatePayload(load);
+    if (!upd) return { ok: false, skipped: true, error: `SKU ${liveSku} exists; attach a manifest to update its price/qty.` };
+    if (!dup.id) return { ok: false, error: `SKU ${liveSku} exists but couldn't read its product id to update.` };
+    console.log('[Posku] PUT /api/products/' + dup.id + ' payload:', JSON.stringify(upd, null, 2));
+    const ur = await erpRequest('PUT', `/api/products/${dup.id}`, upd);
+    console.log('[Posku] PUT response:', JSON.stringify(ur, null, 2));
+    try {
+      const history = JSON.parse(localStorage.getItem('posku.push.history.v1') || '[]');
+      history.unshift({ at: new Date().toISOString(), env: loadEnv(), sku: liveSku, supplier: load.supplierKey,
+        request: { method: 'PUT', path: `/api/products/${dup.id}`, body: upd },
+        response: { ok: ur.ok, status: ur.status, error: ur.error, data: ur.data } });
+      while (history.length > 10) history.pop();
+      localStorage.setItem('posku.push.history.v1', JSON.stringify(history));
+    } catch {}
+    if (ur.ok) return { ok: true, updated: true, erpId: dup.id };
+    return { ok: false, error: `Update failed: ${ur.data?.message || ur.data?.error || ur.error || 'HTTP ' + ur.status}` };
+  }
 
   // 2. Create
   const payload = buildPayload(load);
@@ -2526,10 +2567,12 @@ function attachSamsManifestHandlers() {
         load.manifestSentTo = j.updatedRange || j.tab || 'Sheet';
         load.manifestError = null;
         load.manifestExpanded = false;
+        setStatus($('push-status'), 'ok', `Sent ${values.length} row(s) to "${j.tab || diag.tab}"${j.createdTab ? ' (created tab)' : ''}.`);
         renderLoads();
       } catch (err) {
         b.disabled = false; b.textContent = 'Send to Sheet';
         load.manifestError = `Send to Sheet failed (tab "${(SUPPLIERS[load.supplierKey]||SUPPLIERS.SMS).sheetTab}"): ${err.message}`;
+        setStatus($('push-status'), 'err', load.manifestError);
         renderLoads();
       }
     };
@@ -3122,7 +3165,7 @@ async function doPush(indices) {
       load.status = 'done';
       load.selected = true;  // auto-select so Generate PO is ready without a second click
       load.productId = result.erpId;
-      load.erpResult = `ERP id: ${result.erpId ?? 'n/a'}`;
+      load.erpResult = result.updated ? `Updated · ERP id: ${result.erpId ?? 'n/a'}` : `ERP id: ${result.erpId ?? 'n/a'}`;
       okCount++;
       recordPushSuccess();
     } else if (result.skipped) {
