@@ -1414,6 +1414,16 @@ function applySamsRulesOverride(s) {
     // unless a saved config explicitly overrides that club.
     sms.invoiceCustomerByLoc = { ...sms.invoiceCustomerByLoc, ...cleaned };
   }
+  // Default invoice shipping method per club — { DEN: 65, RVE: 74, ... }.
+  if (s.invoiceShippingByLoc && typeof s.invoiceShippingByLoc === 'object') {
+    const cleaned = {};
+    for (const [code, id] of Object.entries(s.invoiceShippingByLoc)) {
+      const c = String(code || '').trim().toUpperCase();
+      const n = Number(id);
+      if (c && Number.isFinite(n) && n > 0) cleaned[c] = n;
+    }
+    sms.invoiceShippingByLoc = { ...sms.invoiceShippingByLoc, ...cleaned };
+  }
 }
 
 function currentRulesAsEditable() {
@@ -1454,6 +1464,7 @@ function currentSamsRulesAsEditable() {
     peachtreeQty:          s.peachtreeQty != null ? s.peachtreeQty : 1,
     clubs,
     invoiceCustomerByLoc:  { ...(s.invoiceCustomerByLoc || {}) },
+    invoiceShippingByLoc:  { ...(s.invoiceShippingByLoc || {}) },
   };
 }
 
@@ -4665,10 +4676,11 @@ function drawCfgUISams() {
           <thead><tr>
             <th class="narrow">Club code</th>
             <th>Customer email</th>
+            <th class="narrow">Shipping method</th>
             <th class="x-col"></th>
           </tr></thead>
           <tbody id="cfg-sms-invcust-body">
-            ${Object.entries(d.invoiceCustomerByLoc || {}).map(([code, email], i) => samsInvCustomerRow(code, email, i)).join('')}
+            ${Object.entries(d.invoiceCustomerByLoc || {}).map(([code, email], i) => samsInvCustomerRow(code, email, (d.invoiceShippingByLoc || {})[code], i)).join('')}
           </tbody>
         </table>
       </div>
@@ -4717,10 +4729,14 @@ function samsClubRow(c, i) {
   </tr>`;
 }
 
-function samsInvCustomerRow(code, email, i) {
+function samsInvCustomerRow(code, email, ship, i) {
+  const opts = ['<option value="">— supplier default —</option>']
+    .concat(INV_SHIPPING_METHODS.map(o => `<option value="${o.id}" ${String(ship ?? '') === String(o.id) ? 'selected' : ''}>${o.id} — ${esc(o.name)}</option>`))
+    .join('');
   return `<tr data-sici="${i}">
     <td class="narrow"><input data-sicik="code" value="${esc(code)}" placeholder="DEN" style="text-transform:uppercase;"></td>
     <td><input data-sicik="email" value="${esc(email)}" placeholder="customer@example.com" type="email"></td>
+    <td class="narrow"><select data-sicik="ship">${opts}</select></td>
     <td class="x-col"><button class="x-btn" data-sms-invcust-del="${i}" title="Remove">×</button></td>
   </tr>`;
 }
@@ -4818,16 +4834,19 @@ function bindCfgHandlersSams() {
 
   // Default invoice customer per location — rebuild the map from rows on edit.
   function rebuildSamsInvCustomers() {
-    const out = {};
+    const out = {}, ship = {};
     document.querySelectorAll('#cfg-sms-invcust-body tr').forEach(tr => {
       const code = (tr.querySelector('input[data-sicik="code"]')?.value || '').trim().toUpperCase();
       const email = (tr.querySelector('input[data-sicik="email"]')?.value || '').trim().toLowerCase();
+      const sv = tr.querySelector('select[data-sicik="ship"]')?.value || '';
       if (code && email) out[code] = email;
+      if (code && sv) ship[code] = Number(sv);
     });
     cfgDraft.invoiceCustomerByLoc = out;
+    cfgDraft.invoiceShippingByLoc = ship;
   }
-  document.querySelectorAll('#cfg-sms-invcust-body input[data-sicik]').forEach(el => {
-    el.oninput = rebuildSamsInvCustomers;
+  $('cfg-sms-invcust-body').querySelectorAll('input[data-sicik], select[data-sicik]').forEach(el => {
+    el.oninput = el.onchange = rebuildSamsInvCustomers;
   });
   document.querySelectorAll('[data-sms-invcust-del]').forEach(b => {
     b.onclick = () => { b.closest('tr')?.remove(); rebuildSamsInvCustomers(); };
@@ -4835,7 +4854,7 @@ function bindCfgHandlersSams() {
   $('cfg-sms-add-invcust').onclick = () => {
     const tbody = $('cfg-sms-invcust-body');
     const i = tbody.querySelectorAll('tr').length;
-    tbody.insertAdjacentHTML('beforeend', samsInvCustomerRow('', '', i));
+    tbody.insertAdjacentHTML('beforeend', samsInvCustomerRow('', '', '', i));
     bindCfgHandlersSams();  // re-bind to pick up new row
   };
   $('cfg-sms-init-headers').onclick = async () => {
