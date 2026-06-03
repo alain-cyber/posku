@@ -901,9 +901,6 @@ const SUPPLIERS = {
     groupIds:              [],
     manifestedGroupIds:    [56],
 
-    // Locations where type is always HDO (inferred from location, not email text)
-    hdoLocations: new Set(['CI', 'POR']),
-
     // Location detection patterns (more specific first)
     locations: [
       { patterns: ['perris sp', 'perris lp', 'perris'],                              code: 'PR',   label: 'Perris CA' },
@@ -1343,9 +1340,6 @@ function applyRulesOverride() {
       });
     });
   }
-  if (Array.isArray(w.hdoLocations)) {
-    wyf.hdoLocations = new Set(w.hdoLocations.map(s => s.trim()).filter(Boolean));
-  }
   // Default invoice customer per location + type — { 'PR_LQ': 'email@x.com', ... }
   // Keys are uppercased locCode '_' typeCode. Read by resolveInvoiceCustomer().
   if (w.invoiceCustomerByLocType && typeof w.invoiceCustomerByLocType === 'object') {
@@ -1582,7 +1576,6 @@ function currentWyfRulesAsEditable() {
       manifestName:   w.manifestNames[t.code]   ?? '',
       patterns: (t.patterns || []).join(', '),
     })),
-    hdoLocations: [...(w.hdoLocations || [])],
     invoiceCustomerByLocType: { ...(w.invoiceCustomerByLocType || {}) },
   };
 }
@@ -1599,14 +1592,13 @@ function detectLocation(text, sup) {
   return null;
 }
 
-function detectType(text, locCode, sup) {
+function detectType(text, sup) {
   const lower = text.toLowerCase();
-  // An explicit Perigold facility/mention wins over the HDO location auto-infer:
-  // Perigold ships from City of Industry (CI), which would otherwise be forced
-  // to HDO before we ever look at the type text.
+  // Type comes purely from the email text — nothing is forced from location.
+  // Check Perigold first since its emails also say "Liquidation" (which would
+  // otherwise match LQ before we ever see the Perigold facility name).
   const pg = sup.types.find(t => t.code === 'PG');
   if (pg && pg.patterns.some(p => lower.includes(p))) return 'PG';
-  if (locCode && sup.hdoLocations && sup.hdoLocations.has(locCode)) return 'HDO';
   for (const t of sup.types) {
     if (t.patterns.some(p => lower.includes(p))) return t.code;
   }
@@ -1648,7 +1640,7 @@ function parseEmail(text, supplierKey) {
   if (supplierKey === 'SMS') return parseSamsEmail(text, sup);
 
   const locCode  = detectLocation(text, sup);
-  const typeCode = detectType(text, locCode, sup);
+  const typeCode = detectType(text, sup);
   const rawIds   = extractLoadIds(text);
 
   if (!rawIds.length) return [];
@@ -5121,16 +5113,6 @@ function drawCfgUIWyf() {
     </div>
 
     <div class="cfg-block">
-      <h3>HDO locations</h3>
-      <div class="cfg-hint">Locations that are always classified as HDO regardless of email text. Comma-separated location codes.</div>
-      <div class="cfg-row">
-        <div class="cfg-field" style="grid-column:span 4;">
-          <input type="text" id="cfg-hdo" value="${esc(d.hdoLocations.join(', '))}">
-        </div>
-      </div>
-    </div>
-
-    <div class="cfg-block">
       <h3>Default invoice customer per location + type</h3>
       <div class="cfg-hint">Pre-fills the customer on the invoice draft when a Wayfair load matches both this location code AND this load type. Use the customer's primary email — Posku resolves it against the warehouse customer record automatically.</div>
       <div class="cfg-table-wrap">
@@ -5239,10 +5221,6 @@ function bindCfgHandlers() {
   $('cfg-add-type').onclick = () => {
     cfgDraft.types.push({ code: '', label: '', conditionTrait: '', conditionName: '', manifestTrait: '', manifestName: '', patterns: '' });
     drawCfgUI();
-  };
-  // HDO
-  $('cfg-hdo').oninput = () => {
-    cfgDraft.hdoLocations = $('cfg-hdo').value.split(',').map(s => s.trim()).filter(Boolean);
   };
   // Default invoice customer per locCode + typeCode — rebuild map from rows.
   function rebuildWyfInvCustomers() {
