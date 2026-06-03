@@ -1695,7 +1695,7 @@ function parseSamsEmail(text, sup) {
 const LC_COLUMNS = [
   'SKU','Store','Pallet ID','Item ID','UPC','Description','Main Category','Subcategory',
   'Quantity','Appx. EXT Retail','Appx. Unit Retail','Your Price %','Your EXT Price',
-  'Your Unit Price $','% of Load QTY','% of Load $$',
+  'Your Unit Price $','% of Load QTY','% of Load $$','Product Image URL',
 ];
 
 function samsMainCategory(subcat, sup) {
@@ -1887,6 +1887,7 @@ function transformWayfairManifest(text, sku) {
     upc: col('Product UPC or EAN'),
     priceUnit: col('Price Per Product'), totalPrice: col('Total Product Price'),
     wholesaleUnit: col('Wholesale Price Per Product'),
+    imageUrl: col('Product Image URL'),
   };
   const cell = (r, i) => (i >= 0 && i < r.length) ? String(r[i]).trim() : '';
   const out = [];
@@ -1918,6 +1919,7 @@ function transformWayfairManifest(text, sku) {
       'Your Unit Price $': wholesaleUnit != null ? round2(wholesaleUnit) : null,
       '% of Load QTY':     null,
       '% of Load $$':      null,
+      'Product Image URL': cell(r, ix.imageUrl),
     });
   }
   const totQty = out.reduce((s, r) => s + (r.Quantity || 0), 0) || 1;
