@@ -328,6 +328,8 @@ textarea::placeholder { color: var(--text4); }
 .table th { text-align: left; font-family: 'DM Mono', monospace; font-size: 0.56rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text3); padding: 0.4rem 0.35rem; border-bottom: 1px solid var(--border2); white-space: nowrap; }
 .table td { padding: 0.4rem 0.35rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .table .btn.small { padding: 0.3rem 0.5rem; font-size: 0.6rem; letter-spacing: 0.06em; }
+.grp-input { width: 44px; background: var(--surface); border: 1px solid var(--border2); border-radius: 5px; padding: 0.25rem 0.3rem; font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--text); text-align: center; }
+.grp-input:focus { outline: none; border-color: var(--green); }
 .table tr:last-child td { border-bottom: none; }
 .table tr:hover td { background: rgba(0,0,0,0.02); }
 .table tr.review td { background: rgba(138,101,16,0.05); }
@@ -763,6 +765,8 @@ textarea::placeholder { color: var(--text4); }
                 <th>Condition</th>
                 <th>Manifest</th>
                 <th>Status</th>
+                <th title="Loads sharing a PO # go on one purchase order (default: same club + received day)">PO #</th>
+                <th title="Loads sharing an Invoice # go on one invoice (default: same club + received day)">Inv #</th>
                 <th></th>
               </tr>
             </thead>
@@ -2386,7 +2390,7 @@ function buildSamsManifestRow(load, idx) {
     ? `${load.manifestRows.length} line item(s) · ${load.manifestPalletIds?.length || 0} pallet(s)`
     : 'No manifest attached yet';
   const sku = load.sku ? withEnvSuffix(load.sku) : '(SKU pending)';
-  tr.innerHTML = `<td colspan="11" style="padding:0.55rem 0.8rem;background:var(--surface2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
+  tr.innerHTML = `<td colspan="13" style="padding:0.55rem 0.8rem;background:var(--surface2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
     <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
       <span style="font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text3);letter-spacing:0.1em;text-transform:uppercase;">Load-center manifest for ${esc(sku)}</span>
       <span style="font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text4);">manifest #${esc(manId)} · ${esc(summary)}</span>
@@ -2533,6 +2537,42 @@ function sortLoads() {
     String(a.loadId || '').localeCompare(String(b.loadId || '')));
 }
 
+// The day a load was "received" — calendar day of the source email (✉), else
+// the day it was first added in Posku. Drives the default PO/invoice grouping.
+function receivedDay(load) {
+  if (load.emailDate) {
+    const d = new Date(load.emailDate);
+    if (!isNaN(d.getTime())) return d.toLocaleDateString('en-CA');  // YYYY-MM-DD local
+  }
+  if (!load._addedDay) load._addedDay = todayISO(0);
+  return load._addedDay;
+}
+
+// Default PO# / INVOICE# grouping for Sam's loads: same club + same received-day
+// share a group number (user can override per cell). Only fills blanks, so
+// manual edits and prior numbers are preserved when new loads arrive.
+function assignDefaultGroups() {
+  const keyToNum = new Map();
+  let maxNum = 0;
+  for (const l of loads) {
+    if (l.supplierKey !== 'SMS') continue;
+    if (l.poGroup != null) {
+      const key = (l.locCode || '?') + '|' + receivedDay(l);
+      if (!keyToNum.has(key)) keyToNum.set(key, l.poGroup);
+    }
+    maxNum = Math.max(maxNum, l.poGroup || 0, l.invGroup || 0);
+  }
+  for (const l of loads) {
+    if (l.supplierKey !== 'SMS') continue;
+    if (l.poGroup != null && l.invGroup != null) continue;
+    const key = (l.locCode || '?') + '|' + receivedDay(l);
+    let n = keyToNum.get(key);
+    if (n == null) { n = ++maxNum; keyToNum.set(key, n); }
+    if (l.poGroup == null)  l.poGroup = n;
+    if (l.invGroup == null) l.invGroup = n;
+  }
+}
+
 // Location filter: a Set of locCodes to SHOW. Empty/null = show all.
 let loadLocationFilter = null;
 
@@ -2587,6 +2627,7 @@ async function markExistingSkus() {
 }
 
 function renderLoads() {
+  assignDefaultGroups();
   renderLoadsFilter();
   const filterActive = loadLocationFilter && loadLocationFilter.size > 0;
   const body = $('loads-body');
@@ -2645,7 +2686,9 @@ function renderLoads() {
       <td class="mono" style="font-size:0.72rem;">${esc(load.fobName)}</td>
       <td style="font-size:0.7rem;">${esc(load.condName)}</td>
       <td style="font-size:0.7rem;">${esc(load.manifestName)}</td>
-      <td>${statusChip()}${load.status === 'done' ? ` <label class="unique-toggle ${load.uniqueInvoice === false ? '' : 'on'}" title="On: this SKU gets its own PO and its own invoice. Off: it merges with other 'off' SKUs — into one PO per supplier+facility, and one invoice per customer."><input type="checkbox" data-unique-invoice="${idx}" ${load.uniqueInvoice === false ? '' : 'checked'} style="margin:0;"> unique po/inv</label>` : ''}</td>
+      <td>${statusChip()}</td>
+      <td>${load.supplierKey === 'SMS' ? `<input type="number" min="1" class="grp-input" data-grp-po="${idx}" value="${esc(load.poGroup ?? '')}" title="PO group">` : '<span class="mono" style="color:var(--text4);">—</span>'}</td>
+      <td>${load.supplierKey === 'SMS' ? `<input type="number" min="1" class="grp-input" data-grp-inv="${idx}" value="${esc(load.invGroup ?? '')}" title="Invoice group">` : '<span class="mono" style="color:var(--text4);">—</span>'}</td>
       <td style="white-space:nowrap;">
         ${load.status !== 'done' && load.status !== 'pushing' && load.status !== 'dup' ? `
           <button class="btn small" data-push="${idx}" ${!load.sku ? 'disabled' : ''}>Push</button>
@@ -2663,7 +2706,7 @@ function renderLoads() {
     const isSams = load.supplierKey === 'SMS';
     const condOpts  = Object.entries(sup.conditionTraits).map(([tc, id]) =>
       `<option value="${tc}" ${load.typeCode === tc ? 'selected' : ''}>${tc} → id ${id} (${sup.conditionNames[tc]})</option>`).join('');
-    er.innerHTML = `<td colspan="11" style="padding:0;">
+    er.innerHTML = `<td colspan="13" style="padding:0;">
       <div style="background:var(--surface2);border-bottom:1px solid var(--border2);padding:1rem 1.1rem;">
 
         <div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--text3);margin-bottom:0.8rem;">
@@ -2813,7 +2856,7 @@ function renderLoads() {
     const sup2 = SUPPLIERS[load.supplierKey] || SUPPLIERS.WYF;
     const finalSku = load.sku ? withEnvSuffix(load.sku) : null;
     const slug = finalSku ? finalSku.toLowerCase().replace(/[^a-z0-9]+/g, '-') : '—';
-    dr.innerHTML = `<td colspan="11" class="details-strip">
+    dr.innerHTML = `<td colspan="13" class="details-strip">
       <div class="chips-wrap">
         <span class="chip-mini"><b>active</b> <i>${load.active ?? 1}</i> <em>(${(load.active ?? 1) ? 'Active' : 'Inactive'})</em></span>
         <span class="chip-mini"><b>packing</b> <i>${sup2.packingTrait}</i> <em>(${load.supplierKey==='SMS'?'LTL':'Load'})</em></span>
@@ -2857,7 +2900,7 @@ function renderLoads() {
 
     if ((load.status === 'failed' || load.status === 'dup') && load.erpResult) {
       const msgRow = document.createElement('tr');
-      msgRow.innerHTML = `<td colspan="11" style="padding:0.5rem 0.8rem;background:${load.status==='failed'?'var(--red-dim)':'var(--surface2)'};border-bottom:1px solid var(--border);">
+      msgRow.innerHTML = `<td colspan="13" style="padding:0.5rem 0.8rem;background:${load.status==='failed'?'var(--red-dim)':'var(--surface2)'};border-bottom:1px solid var(--border);">
         <span class="mono" style="color:${load.status==='failed'?'var(--red)':'var(--text2)'};font-size:0.74rem;">
           ${load.status==='failed' ? '✗' : 'ℹ'} ${esc(load.erpResult)}
         </span>
@@ -3001,14 +3044,18 @@ function attachHandlers() {
       updatePoActionRow();
     };
   });
-  // Per-load `unique invoice` toggle — drives the invoice draft grouping.
-  $('loads-body').querySelectorAll('[data-unique-invoice]').forEach(cb => {
-    cb.onchange = () => {
-      const idx = +cb.dataset.uniqueInvoice;
-      loads[idx].uniqueInvoice = cb.checked;
-      // Re-render the toggle's parent label so the .on class refreshes
-      const lbl = cb.closest('.unique-toggle');
-      if (lbl) lbl.classList.toggle('on', cb.checked);
+  // Editable PO# / Invoice# group columns — drive PO and invoice grouping.
+  $('loads-body').querySelectorAll('[data-grp-po]').forEach(inp => {
+    inp.onchange = () => {
+      const l = loads[+inp.dataset.grpPo];
+      if (l) l.poGroup = inp.value === '' ? null : Number(inp.value);
+      updatePoActionRow();
+    };
+  });
+  $('loads-body').querySelectorAll('[data-grp-inv]').forEach(inp => {
+    inp.onchange = () => {
+      const l = loads[+inp.dataset.grpInv];
+      if (l) l.invGroup = inp.value === '' ? null : Number(inp.value);
       updatePoActionRow();
     };
   });
@@ -4051,6 +4098,8 @@ function downloadLoadsCsv() {
     ['Manifest units',      (l, t) => t?.qty ?? ''],
     ['Sell price',          (l, t) => t?.price ?? ''],
     ['Retail',              (l, t) => t?.retail_price ?? ''],
+    ['PO #',                (l) => l.poGroup ?? ''],
+    ['Invoice #',           (l) => l.invGroup ?? ''],
     ['Email from',          (l) => l.emailFrom || ''],
     ['Email received',      (l) => l.emailDate || ''],
     ['Flags',               (l) => (l.flags || []).join('; ')],
@@ -4154,19 +4203,16 @@ function generatePoDrafts() {
   // Skip loads already on a draft (by load+sku across all draft line items).
   const inDraft = new Set(poDrafts.flatMap(p => (p.items || []).map(it => it.loadId + '|' + it.sku)));
   const fresh = selected.filter(l => !inDraft.has(l.loadId + '|' + l.sku));
-  // Grouping mirrors invoices: a load with `unique` ON (default) gets its own
-  // PO; loads with `unique` OFF merge with other off-loads from the same
-  // supplier + facility into one multi-line PO.
+  // Group by the editable PO # column (default = same club + received-day).
+  // Loads with no PO # each become their own PO.
   const groups = [];
-  const merged = new Map();
+  const byNum = new Map();
   for (const l of fresh) {
-    const isUnique = l.uniqueInvoice !== false;  // shared toggle; default true
-    if (isUnique) { groups.push([l]); continue; }
-    const key = l.supplierKey + '|' + (l.locCode || '');
-    if (!merged.has(key)) merged.set(key, []);
-    merged.get(key).push(l);
+    const g = (l.supplierKey === 'SMS' && l.poGroup != null) ? ('g' + l.poGroup) : null;
+    if (g == null) { groups.push([l]); continue; }
+    if (!byNum.has(g)) { byNum.set(g, []); groups.push(byNum.get(g)); }
+    byNum.get(g).push(l);
   }
-  for (const g of merged.values()) groups.push(g);
   groups.forEach(g => poDrafts.push(createDraftFromLoads(g)));
   // unselect after adding
   selected.forEach(l => l.selected = false);
@@ -5304,25 +5350,25 @@ function resolveInvoiceCustomer(load) {
 }
 
 // ── Grouping logic ───────────────────────────────────────────────────────────
-// Selected eligible loads → array of draft "groups": [{ customerKey, loads[] }]
-// uniqueInvoice=true loads each become their own group (1 load).
-// uniqueInvoice=false loads cluster by resolved customer email.
+// Selected eligible loads → draft "groups", keyed by the editable Invoice #
+// column (default = same Sam's club + same received-day). Loads with no
+// Invoice # each become their own invoice.
 function previewInvoiceGroups() {
   const eligible = loads.filter(l => l.status === 'done' && l.selected);
+  // Group by the editable Invoice # column (default = same club + received-day).
+  // Loads with no Invoice # each become their own invoice.
   const groups = [];
-  const merged = new Map();  // customerKey → group
+  const byNum = new Map();
   for (const l of eligible) {
-    const isUnique = l.uniqueInvoice !== false;  // default true
     const ruleEmail = resolveInvoiceCustomer(l) || '';
-    if (isUnique) {
-      groups.push({ key: `unique:${l.loadId}:${l.sku}`, ruleEmail, loads: [l] });
+    const g = (l.supplierKey === 'SMS' && l.invGroup != null) ? ('g' + l.invGroup) : null;
+    if (g == null) {
+      groups.push({ key: `single:${l.loadId}:${l.sku}`, ruleEmail, loads: [l] });
     } else {
-      const key = ruleEmail || '__unset__';
-      if (!merged.has(key)) merged.set(key, { key: `merged:${key}`, ruleEmail, loads: [] });
-      merged.get(key).loads.push(l);
+      if (!byNum.has(g)) { byNum.set(g, { key: `inv:${g}`, ruleEmail, loads: [] }); groups.push(byNum.get(g)); }
+      byNum.get(g).loads.push(l);
     }
   }
-  for (const g of merged.values()) groups.push(g);
   return groups;
 }
 
