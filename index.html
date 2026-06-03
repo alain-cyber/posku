@@ -1340,29 +1340,23 @@ function applyRulesOverride() {
       });
     });
   }
-  // Default invoice customer per location + type — { 'PR_LQ': 'email@x.com', ... }
-  // Keys are uppercased locCode '_' typeCode. Read by resolveInvoiceCustomer().
-  if (w.invoiceCustomerByLocType && typeof w.invoiceCustomerByLocType === 'object') {
-    const cleaned = {};
-    for (const [k, email] of Object.entries(w.invoiceCustomerByLocType)) {
-      const key = String(k || '').trim().toUpperCase();
-      const e   = String(email || '').trim().toLowerCase();
-      if (key && e) cleaned[key] = e;
-    }
-    wyf.invoiceCustomerByLocType = cleaned;
-  }
-  // Customer invoice price per location_type — { 'AMD_LQ': {mode:'percent'|'flat', value} }.
-  // percent values are fractions of retail; flat values are whole-load dollars.
-  if (w.invoicePricingByLocType && typeof w.invoicePricingByLocType === 'object') {
-    const cleaned = {};
-    for (const [k, p] of Object.entries(w.invoicePricingByLocType)) {
-      const key = String(k || '').trim().toUpperCase();
-      if (!key || !p || typeof p !== 'object') continue;
-      const mode = p.mode === 'flat' ? 'flat' : 'percent';
-      const val  = Number(p.value);
-      if (Number.isFinite(val)) cleaned[key] = { mode, value: val };
-    }
-    wyf.invoicePricingByLocType = cleaned;
+  // Standing deals — list of { loc, type, email, mode, value }. Multiple deals
+  // may share a loc+type (customers rotate); the first matching deal is the
+  // default. `mode`/`value` (percent fraction of retail, or flat $) are the
+  // customer-specific invoice price; absent → fall back to the SKU list price.
+  if (Array.isArray(w.invoiceDeals)) {
+    wyf.invoiceDeals = w.invoiceDeals.map(x => {
+      const loc   = String(x?.loc   || '').trim().toUpperCase();
+      const type  = String(x?.type  || '').trim().toUpperCase();
+      const email = String(x?.email || '').trim().toLowerCase();
+      if (!loc || !type || !email) return null;
+      const out = { loc, type, email };
+      if (x.mode && x.value !== '' && x.value != null) {
+        const v = Number(x.value);
+        if (Number.isFinite(v)) { out.mode = x.mode === 'flat' ? 'flat' : 'percent'; out.value = v; }
+      }
+      return out;
+    }).filter(Boolean);
   }
   // Pricing matrix — recovery rate (fraction of retail) per location × type,
   // plus a per-type default fallback and the flat salvage $ amount.
@@ -1619,8 +1613,7 @@ function currentWyfRulesAsEditable() {
     pricing: Object.fromEntries(Object.entries(w.pricing || {}).map(([loc, m]) => [loc, { ...m }])),
     defaultPricing: { ...(w.defaultPricing || {}) },
     flatSalvagePrice: w.flatSalvagePrice ?? '',
-    invoiceCustomerByLocType: { ...(w.invoiceCustomerByLocType || {}) },
-    invoicePricingByLocType: Object.fromEntries(Object.entries(w.invoicePricingByLocType || {}).map(([k, p]) => [k, { ...p }])),
+    invoiceDeals: (w.invoiceDeals || []).map(x => ({ ...x })),
   };
 }
 
@@ -1712,7 +1705,7 @@ function parseEmail(text, supplierKey) {
       // Loads that match a standing deal (a default invoice customer exists for
       // this location+type) start inactive (active=0) — they're pre-sold, not
       // listed for open sale. Everything else defaults to active=1.
-      active: (locCode && typeCode && (sup.invoiceCustomerByLocType || {})[`${locCode}_${typeCode}`]) ? 0 : 1,
+      active: (locCode && typeCode && (sup.invoiceDeals || []).some(x => x.loc === locCode && x.type === typeCode)) ? 0 : 1,
       flags,
       status:    flags.length ? 'review' : 'ready',
       erpResult: null,
@@ -5170,7 +5163,7 @@ function drawCfgUIWyf() {
 
     <div class="cfg-block">
       <h3>Default invoice customer + price per location + type</h3>
-      <div class="cfg-hint">When a Wayfair load matches both this location code AND load type, the invoice draft pre-fills this customer (resolved against the warehouse record, with their account manager as salesrep), prices the line at the value below, and the SKU is created <b>inactive</b> (active=0). Price type <b>Percent</b> = % of retail; <b>Flat</b> = whole-load $. Leave the price blank to fall back to the SKU's listed price.</div>
+      <div class="cfg-hint">When a Wayfair load matches both this location code AND load type, the invoice draft pre-fills this customer (resolved against the warehouse record, with their account manager as salesrep), prices the line at the value below, and the SKU is created <b>inactive</b> (active=0). You can list <b>more than one</b> customer for the same location+type — the first is the default and the rest appear in a dropdown on the draft. Price type <b>Percent</b> = % of retail; <b>Flat</b> = whole-load $. Leave the price blank to fall back to the SKU's listed price.</div>
       <div class="cfg-table-wrap">
         <table class="cfg-table">
           <thead><tr>
@@ -5182,11 +5175,7 @@ function drawCfgUIWyf() {
             <th class="x-col"></th>
           </tr></thead>
           <tbody id="cfg-wyf-invcust-body">
-            ${Object.entries(d.invoiceCustomerByLocType || {}).map(([key, email], i) => {
-              const [loc, type] = (key || '').split('_');
-              const p = (d.invoicePricingByLocType || {})[key] || {};
-              return wyfInvCustomerRow(loc || '', type || '', email, p.mode, p.value, i);
-            }).join('')}
+            ${(d.invoiceDeals || []).map((dl, i) => wyfInvCustomerRow(dl.loc || '', dl.type || '', dl.email || '', dl.mode, dl.value, i)).join('')}
           </tbody>
         </table>
       </div>
@@ -5356,25 +5345,22 @@ function bindCfgHandlers() {
   });
   // Default invoice customer per locCode + typeCode — rebuild map from rows.
   function rebuildWyfInvCustomers() {
-    const out = {};
-    const prices = {};
+    const deals = [];
     document.querySelectorAll('#cfg-wyf-invcust-body tr').forEach(tr => {
       const loc   = (tr.querySelector('input[data-wicik="loc"]')?.value   || '').trim().toUpperCase();
       const type  = (tr.querySelector('input[data-wicik="type"]')?.value  || '').trim().toUpperCase();
       const email = (tr.querySelector('input[data-wicik="email"]')?.value || '').trim().toLowerCase();
       const mode  = (tr.querySelector('select[data-wicik="mode"]')?.value === 'flat') ? 'flat' : 'percent';
       const rawV  = (tr.querySelector('input[data-wicik="value"]')?.value || '').trim();
-      if (!loc || !type) return;
-      if (email) out[`${loc}_${type}`] = email;
+      if (!loc || !type || !email) return;   // a deal needs location + type + customer
+      const deal = { loc, type, email };
       if (rawV !== '') {
         const num = Number(rawV);
-        if (Number.isFinite(num)) {
-          prices[`${loc}_${type}`] = { mode, value: mode === 'flat' ? num : Number((num / 100).toFixed(5)) };
-        }
+        if (Number.isFinite(num)) { deal.mode = mode; deal.value = mode === 'flat' ? num : Number((num / 100).toFixed(5)); }
       }
+      deals.push(deal);
     });
-    cfgDraft.invoiceCustomerByLocType = out;
-    cfgDraft.invoicePricingByLocType = prices;
+    cfgDraft.invoiceDeals = deals;
   }
   document.querySelectorAll('#cfg-wyf-invcust-body input[data-wicik], #cfg-wyf-invcust-body select[data-wicik]').forEach(el => {
     el.oninput = rebuildWyfInvCustomers;
@@ -5612,27 +5598,51 @@ async function searchCustomers(q) {
 // ── Resolve a load's default customer via rules (Tier 2 — for later) ─────────
 // Placeholder: rules-editor wiring lands in a follow-up commit. For now this
 // always returns null and the user picks the customer from the typeahead.
-// The customer-specific invoice price for a deal-matched load: a percent of the
-// load's total retail, or a flat whole-load $. Returns null when no deal price
-// is configured (caller falls back to the SKU's listed price).
-function resolveInvoicePrice(load) {
+// Standing deals (Wayfair) matching a load's location+type, in list order.
+function wyfDealsFor(load) {
   const sup = SUPPLIERS[load.supplierKey];
-  const p = (sup && sup.invoicePricingByLocType)
-    ? sup.invoicePricingByLocType[`${load.locCode}_${load.typeCode}`] : null;
-  if (!p) return null;
-  if (p.mode === 'flat') return Number.isFinite(Number(p.value)) ? round2(Number(p.value)) : null;
+  if (!sup || !Array.isArray(sup.invoiceDeals)) return [];
+  return sup.invoiceDeals.filter(x => x.loc === load.locCode && x.type === load.typeCode);
+}
+
+// Ordered, de-duped list of candidate deal customers for a group of loads.
+function dealCandidatesForLoads(loadsArr) {
+  const seen = new Map();
+  for (const l of loadsArr) {
+    for (const dl of wyfDealsFor(l)) {
+      const e = (dl.email || '').toLowerCase();
+      if (e && !seen.has(e)) seen.set(e, { email: dl.email });
+    }
+  }
+  return [...seen.values()];
+}
+
+// The customer-specific invoice price for a given load + customer email: a
+// percent of the load's total retail, or a flat whole-load $. Null when that
+// customer has no deal for this loc+type (caller falls back to the SKU price).
+function dealPriceFor(load, email) {
+  if (!email) return null;
+  const e = String(email).toLowerCase();
+  const deal = wyfDealsFor(load).find(x => (x.email || '').toLowerCase() === e);
+  if (!deal || deal.mode == null || deal.value == null) return null;
+  if (deal.mode === 'flat') return Number.isFinite(Number(deal.value)) ? round2(Number(deal.value)) : null;
   const totals = buildLoadTotals(load);
   const retail = (totals && totals.retail_price != null) ? totals.retail_price : null;
-  return (retail != null && Number.isFinite(Number(p.value))) ? round2(retail * Number(p.value)) : null;
+  return (retail != null && Number.isFinite(Number(deal.value))) ? round2(retail * Number(deal.value)) : null;
+}
+
+// Default (first-listed) deal price for a load — used when the draft is created.
+function resolveInvoicePrice(load) {
+  const deals = wyfDealsFor(load);
+  return deals.length ? dealPriceFor(load, deals[0].email) : null;
 }
 
 function resolveInvoiceCustomer(load) {
   const sup = SUPPLIERS[load.supplierKey];
   if (!sup) return null;
-  const email = load.supplierKey === 'SMS'
-    ? (sup.invoiceCustomerByLoc || {})[load.locCode]
-    : (sup.invoiceCustomerByLocType || {})[`${load.locCode}_${load.typeCode}`];
-  return email || null;
+  if (load.supplierKey === 'SMS') return (sup.invoiceCustomerByLoc || {})[load.locCode] || null;
+  const deals = wyfDealsFor(load);   // first-listed deal is the default customer
+  return deals.length ? (deals[0].email || null) : null;
 }
 
 // ── Grouping logic ───────────────────────────────────────────────────────────
@@ -5673,6 +5683,7 @@ function generateInvoiceDrafts() {
       supplierKey:       supKey,
       customer:          null,   // {customer_id, email, name, billing_address, shipping_address}
       ruleEmail:         g.ruleEmail || '',
+      dealCandidates:    dealCandidatesForLoads(g.loads),   // rotating deal customers; first = default
       order_type_id:     INV_DEFAULT_ORDER_TYPE,
       payment_method_id: INV_DEFAULT_PAYMENT,
       shipping_method_id: clubShip || INV_DEFAULT_SHIPPING[supKey] || 94,
@@ -5711,7 +5722,7 @@ function generateInvoiceDrafts() {
     if (!d.ruleEmail) return;
     const { results } = await searchCustomers(d.ruleEmail);
     const exact = results.find(c => (c.email || '').toLowerCase() === d.ruleEmail.toLowerCase());
-    if (exact) { await enrichCustomerAddresses(exact); assignDraftCustomer(d, exact); renderInvoiceDrafts(); }
+    if (exact) { await enrichCustomerAddresses(exact); assignDraftCustomer(d, exact); recomputeDraftPrices(d); renderInvoiceDrafts(); }
   });
 
   $('inv-section').style.display = 'block';
@@ -5890,9 +5901,40 @@ function shipLabel(a) {
   return [a.companyName, line].filter(Boolean).join(' — ');
 }
 
+// Recompute each line's price for the draft's current customer: a configured
+// deal price for that customer wins, else the SKU's listed price.
+function recomputeDraftPrices(d) {
+  const email = d.customer?.email || null;
+  (d.items || []).forEach(it => {
+    const l = loads[it.loadIdx];
+    if (!l) return;
+    const price = dealPriceFor(l, email);
+    const v = (price != null ? price : readSkuPriceFromLoad(l));
+    it.original_price = v != null ? String(v) : '';
+    it.price          = v != null ? String(v) : '';
+  });
+}
+
+// Dropdown of the draft's rotating deal customers (first = default), plus an
+// "Other" option that reveals the free customer search.
+function dealCustomerDropdown(d, idx) {
+  if (!d.dealCandidates || !d.dealCandidates.length) return '';
+  const cur = (d.customer?.email || '').toLowerCase();
+  const isCand = d.dealCandidates.some(c => c.email.toLowerCase() === cur);
+  return `
+    <div class="cust-deal" style="margin-bottom:0.5rem;">
+      <label style="font-family:'DM Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3);">Deal customer</label>
+      <select data-inv-deal-cust="${idx}">
+        ${d.dealCandidates.map(c => `<option value="${esc(c.email)}" ${c.email.toLowerCase() === cur ? 'selected' : ''}>${esc(c.email)}</option>`).join('')}
+        <option value="__other__" ${(!isCand && d.customer) ? 'selected' : ''}>Other (search below)…</option>
+      </select>
+    </div>`;
+}
+
 function renderCustomerPicker(d, idx) {
   if (d.customer) {
     return `
+      ${dealCustomerDropdown(d, idx)}
       <div class="cust-picker">
         <div class="cust-chosen">
           <div>
@@ -5916,6 +5958,7 @@ function renderCustomerPicker(d, idx) {
   }
   const recent = loadRecentCustomers();
   return `
+    ${dealCustomerDropdown(d, idx)}
     <div class="cust-picker">
       <input type="text" class="cust-input" data-inv-cust-input="${idx}" placeholder="Type email or name — at least 2 chars" autocomplete="off">
       ${recent.length ? `<div class="cust-recent">${recent.map(r => `<span class="recent-chip" data-inv-cust-recent="${idx}" data-customer-id="${r.customer_id}" data-customer-email="${esc(r.email)}">${esc(r.email)}</span>`).join('')}</div>` : ''}
@@ -5993,6 +6036,7 @@ function attachInvoiceHandlers() {
               item.style.opacity = '0.5';
               await enrichCustomerAddresses(picked);   // fetch default addresses
               assignDraftCustomer(invoiceDrafts[idx], picked);
+              recomputeDraftPrices(invoiceDrafts[idx]);
               rememberCustomer(picked);
               renderInvoiceDrafts();
             }
@@ -6013,6 +6057,7 @@ function attachInvoiceHandlers() {
       if (c) {
         await enrichCustomerAddresses(c);   // fetch default addresses
         assignDraftCustomer(invoiceDrafts[idx], c);
+        recomputeDraftPrices(invoiceDrafts[idx]);
         rememberCustomer(c);
         renderInvoiceDrafts();
       }
@@ -6062,6 +6107,23 @@ function attachInvoiceHandlers() {
     x.onclick = () => {
       const idx = +x.dataset.invClearCustomer;
       invoiceDrafts[idx].customer = null;
+      recomputeDraftPrices(invoiceDrafts[idx]);   // revert lines to SKU list price
+      renderInvoiceDrafts();
+    };
+  });
+  // Rotating deal customer dropdown — pick a listed candidate or fall through to
+  // the free search ("Other"). Selecting a candidate resolves the full customer
+  // record (with AM) and reprices the lines at that customer's deal.
+  document.querySelectorAll('[data-inv-deal-cust]').forEach(sel => {
+    sel.onchange = async () => {
+      const idx = +sel.dataset.invDealCust;
+      const d = invoiceDrafts[idx];
+      if (!d) return;
+      if (sel.value === '__other__') { d.customer = null; recomputeDraftPrices(d); renderInvoiceDrafts(); return; }
+      const { results } = await searchCustomers(sel.value);
+      const exact = results.find(c => (c.email || '').toLowerCase() === sel.value.toLowerCase());
+      if (exact) { await enrichCustomerAddresses(exact); assignDraftCustomer(d, exact); }
+      recomputeDraftPrices(d);
       renderInvoiceDrafts();
     };
   });
