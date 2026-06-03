@@ -2031,9 +2031,10 @@ function transformWayfairManifest(text, sku, locCode, typeCode) {
   return { rows: out, palletIds: [...new Set(out.map(r => r['Pallet ID']).filter(Boolean))] };
 }
 
-// Fetch a Wayfair manifest from Drive and transform it. CSV is parsed directly;
-// native Google Sheets are exported as CSV server-side. XLSX returns base64 and
-// needs a client xlsx parser (not yet bundled) — surfaced as a clear error.
+// Fetch a Wayfair manifest from Drive and transform it. /api/drive/file returns
+// CSV text for CSV files, native Google Sheets (server-exported), AND real .xlsx
+// workbooks (unzipped + first sheet → CSV server-side). Only an .xlsx the server
+// genuinely fails to parse comes back as base64 — surfaced as a clear error.
 async function fetchAndTransformWayfairManifest(fileId, sku, locCode, typeCode) {
   let res;
   try { res = await fetch(`/api/drive/file?id=${encodeURIComponent(fileId)}`, { cache: 'no-store' }); }
@@ -4071,7 +4072,7 @@ function mfetchRenderResults(files) {
       For rows the filename couldn't resolve, type a SKU and press Enter — it'll be validated against the ERP.
       <strong>Process selected</strong> parses each picked manifest (CSV or XLSX) and attaches it to a load below —
       then preview + <strong>Send to Sheet</strong> (Wayfair tab) + push the SKU from there.
-      SKU naming wired: <code>FC</code> (LQ / Salvage / Aged / QC). HDO / Outlet / Perigold filename rules coming next.
+      SKU naming wired: <code>FC</code> (LQ / Salvage / Aged / QC), <code>HDO</code>, and <code>Perigold</code>.
     </div>
   `;
   attachManualSkuHandlers();
