@@ -3460,6 +3460,9 @@ async function inboxFetch() {
     return;
   }
   const msgs = j.messages || [];
+  if (j.truncated) {
+    setStatus($('inbox-status'), 'warn', `${j.totalMatched} emails matched — only the first ${msgs.length} were fetched (subrequest limit). Narrow the date range and re-run to get the rest.`);
+  }
   if (!msgs.length) {
     setStatus($('inbox-status'), 'warn', `No messages found for ${human}.`);
     return;

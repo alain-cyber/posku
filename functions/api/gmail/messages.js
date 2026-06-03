@@ -20,6 +20,15 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GMAIL_BASE = 'https://gmail.googleapis.com/gmail/v1';
 
 export async function onRequest(context) {
+  try {
+    return await handle(context);
+  } catch (err) {
+    // Last-resort guard so the client gets a JSON error, not a bare 500.
+    return json(500, { ok: false, error: `gmail/messages crashed: ${err?.message || String(err)}` });
+  }
+}
+
+async function handle(context) {
   const { request, env } = context;
   if (request.method !== 'GET') return json(405, { ok: false, error: 'Method not allowed' });
 
@@ -64,35 +73,44 @@ export async function onRequest(context) {
     return json(listRes.status, { ok: false, error: `Gmail list failed (${listRes.status}): ${await listRes.text()}` });
   }
   const listJson = await listRes.json();
-  const ids = (listJson.messages || []).map(m => m.id);
-  if (!ids.length) return json(200, { ok: true, messages: [], query: q });
+  const allIds = (listJson.messages || []).map(m => m.id);
+  if (!allIds.length) return json(200, { ok: true, messages: [], query: q });
 
-  // Step 2 — fetch each message in parallel; also pull CSV attachments inline
-  // so the client never has to deal with attachment IDs.
+  // Cap the number of full-message fetches per invocation. Each is one
+  // subrequest and Pages Functions cap at ~50/invocation (token + list +
+  // attachments also count), so fetching every match in a busy window would
+  // throw "Too many subrequests" and crash the whole request. Truncate and
+  // tell the client to narrow the date range instead.
+  const FETCH_CAP = 40;
+  const truncated = allIds.length > FETCH_CAP;
+  const ids = allIds.slice(0, FETCH_CAP);
+
+  // Step 2 — fetch each message; one bad message must not reject the batch.
   const messages = await Promise.all(ids.map(async id => {
-    const res = await fetch(`${GMAIL_BASE}/users/me/messages/${id}?format=full`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!res.ok) return { id, error: `HTTP ${res.status}` };
-    const m = await res.json();
-    const headers = Object.fromEntries((m.payload?.headers || []).map(h => [h.name.toLowerCase(), h.value]));
-    // Only collect attachment REFS here — fetching the bytes inline costs
-    // one subrequest each, and Workers cap at 50/invocation. The client
-    // calls /api/gmail/attachment per CSV after this returns.
-    const attachmentRefs = collectAttachmentRefs(m.payload);
-    return {
-      id,
-      threadId: m.threadId,
-      subject:  headers.subject || '',
-      from:     headers.from || '',
-      date:     headers.date || '',
-      snippet:  m.snippet || '',
-      body:     extractBody(m.payload),
-      attachmentRefs,  // [{ filename, mimeType, size, attachmentId }]
-    };
+    try {
+      const res = await fetch(`${GMAIL_BASE}/users/me/messages/${id}?format=full`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) return { id, error: `HTTP ${res.status}` };
+      const m = await res.json();
+      const headers = Object.fromEntries((m.payload?.headers || []).map(h => [h.name.toLowerCase(), h.value]));
+      const attachmentRefs = collectAttachmentRefs(m.payload);
+      return {
+        id,
+        threadId: m.threadId,
+        subject:  headers.subject || '',
+        from:     headers.from || '',
+        date:     headers.date || '',
+        snippet:  m.snippet || '',
+        body:     extractBody(m.payload),
+        attachmentRefs,  // [{ filename, mimeType, size, attachmentId }]
+      };
+    } catch (err) {
+      return { id, error: err?.message || String(err) };
+    }
   }));
 
-  return json(200, { ok: true, messages, query: q });
+  return json(200, { ok: true, messages, query: q, truncated, totalMatched: allIds.length });
 }
 
 // Walk the payload and return references to every attachment part. Does
