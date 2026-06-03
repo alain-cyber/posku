@@ -1947,23 +1947,6 @@ async function fetchAndTransformWayfairManifest(fileId, sku) {
 // Parse a Wayfair manifest Drive file and attach it to a WYF load (creating the
 // load if needed) so it shows in the loads table with preview + Send-to-Sheet
 // (Wayfair tab) + SKU push — the same flow Sam's uses. Returns a status string.
-// Pull a load's manifest straight from the ERP mirror (airbyte_sync.
-// ProductManifest by load SKU) — already carries the Load Center values. This
-// is the primary source; the Drive-file parse is the fallback for brand-new
-// loads not yet in the table.
-async function fetchErpWayfairManifest(baseSku) {
-  try {
-    const r = await fetch(`/api/wayfair/manifest?sku=${encodeURIComponent(baseSku)}`, { cache: 'no-store' });
-    const j = await r.json().catch(() => null);
-    if (!r.ok || !j?.ok) return { rows: [], palletIds: [], error: j?.error || `HTTP ${r.status}` };
-    const rows = j.rows || [];
-    const totQty = rows.reduce((s, x) => s + (x.Quantity || 0), 0) || 1;
-    const tot$   = rows.reduce((s, x) => s + (x['Your EXT Price'] || 0), 0) || 1;
-    for (const x of rows) { x['% of Load QTY'] = (x.Quantity || 0) / totQty; x['% of Load $$'] = (x['Your EXT Price'] || 0) / tot$; }
-    return { rows, palletIds: [...new Set(rows.map(x => x['Pallet ID']).filter(Boolean))], name: j.name || '' };
-  } catch (e) { return { rows: [], palletIds: [], error: e.message }; }
-}
-
 async function processWayfairManifestFile(fileId) {
   const f = (_lastMfetchFiles || []).find(x => x.id === fileId);
   if (!f) return { ok: false, msg: 'file not found' };
@@ -1973,11 +1956,9 @@ async function processWayfairManifestFile(fileId) {
   const baseSku = (manual ? manual.replace(/-test$/, '') : (d?.sku || '')) || '';
   if (!baseSku) return { ok: false, msg: `no SKU for "${f.name}" — resolve the SKU first` };
   const finalSku = withEnvSuffix(baseSku);
-  // Primary: ERP mirror by SKU. Fallback: parse the Drive file.
-  let res = await fetchErpWayfairManifest(baseSku);
-  let source = 'ERP';
-  if (!res.rows.length) { res = await fetchAndTransformWayfairManifest(fileId, finalSku); source = 'file'; }
-  if (res.error || !res.rows.length) return { ok: false, msg: res.error || 'no manifest rows (not in ERP yet, and no parseable file)' };
+  // Parse the Drive manifest file (CSV or XLSX) → Load Center rows.
+  const res = await fetchAndTransformWayfairManifest(fileId, finalSku);
+  if (res.error || !res.rows.length) return { ok: false, msg: res.error || 'no rows parsed' };
   const typeCode = d?.loadType || null;
   const locCode  = d?.locCode || null;
   let load = loads.find(l => l.sku && withEnvSuffix(l.sku).toUpperCase() === finalSku.toUpperCase());
@@ -1985,7 +1966,7 @@ async function processWayfairManifestFile(fileId) {
     load = {
       id: 'load_' + Date.now() + '_' + Math.random().toString(36).slice(2),
       supplierKey: 'WYF', loadId: d?.loadId || '', locCode, typeCode, sku: baseSku,
-      name: res.name || ((typeCode && locCode) ? sup.getProductName(typeCode, locCode) : (f.name || 'Wayfair load')),
+      name: (typeCode && locCode) ? sup.getProductName(typeCode, locCode) : (f.name || 'Wayfair load'),
       fobId: locCode ? sup.fobIds[locCode] : null, fobName: locCode ? sup.fobNames[locCode] : '—',
       condTrait: typeCode ? sup.conditionTraits[typeCode] : null,
       condName:  typeCode ? sup.conditionNames[typeCode] : '—',
@@ -1994,13 +1975,11 @@ async function processWayfairManifestFile(fileId) {
       flags: [], status: 'ready', erpResult: null,
     };
     loads.push(load);
-  } else if (res.name) {
-    load.name = res.name;
   }
   load.manifestRows = res.rows;
   load.manifestPalletIds = res.palletIds || [];
   load.manifestExpanded = true;
-  return { ok: true, msg: `${res.rows.length} line(s) (${source})`, sku: finalSku };
+  return { ok: true, msg: `${res.rows.length} line(s)`, sku: finalSku };
 }
 
 // Tab-separated string of all rows + header — paste straight into Google Sheets.
