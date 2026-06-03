@@ -951,7 +951,7 @@ const SUPPLIERS = {
       RVS: 5,  GRF: 26, CHE: 50, SIO: 15, CB:  15,
       CON: 5,  LB:  5,  FUL: 5,  FMS: 5,  RVE: 5,
       LT:  6,  LAY: 44, RDL: 44, PRO: 44, LAR: 43, MCA: 43,
-      CAS: 50,
+      CAS: 50, THO: 6,
     },
     fobNames: {
       DEN: 'Colorado',     LOG: 'Utah',         BIL: 'Montana',      HAR: 'Texas',
@@ -959,7 +959,7 @@ const SUPPLIERS = {
       SIO: 'Iowa',         CB:  'Iowa',         CON: 'California',   LB:  'California',
       FUL: 'California',   FMS: 'California',   RVE: 'California',   LT:  'Colorado',
       LAY: 'Utah',         RDL: 'Utah',         PRO: 'Utah',         LAR: 'Texas',
-      MCA: 'Texas',        CAS: 'Wyoming',
+      MCA: 'Texas',        CAS: 'Wyoming',      THO: 'Colorado',
     },
     // Pretty city label for each club code
     clubCities: {
@@ -968,7 +968,7 @@ const SUPPLIERS = {
       SIO: 'Sioux City, IA',  CB:  'Council Bluffs, IA', CON: 'Concord, CA',   LB:  'Long Beach, CA',
       FUL: 'Fullerton, CA',   FMS: 'Folsom, CA',      RVE: 'Roseville, CA',    LT:  'Lone Tree, CO',
       LAY: 'Layton, UT',      RDL: 'Riverdale, UT',   PRO: 'Provo, UT',        LAR: 'Laredo, TX',
-      MCA: 'McAllen, TX',     CAS: 'Casper, WY',
+      MCA: 'McAllen, TX',     CAS: 'Casper, WY',      THO: 'Thornton, CO',
     },
     // First 4 digits of manifest # → club code
     clubByManifest: {
@@ -976,7 +976,33 @@ const SUPPLIERS = {
       '6378':'RVS', '6379':'GRF', '6430':'CHE', '6432':'SIO', '6472':'CB',
       '6612':'CON', '6613':'LB',  '6616':'FUL', '6620':'FMS', '6621':'RVE',
       '6634':'LT',  '6682':'LAY', '6684':'RDL', '6685':'PRO', '8156':'LAR',
-      '8250':'MCA', '6425':'CAS',
+      '8250':'MCA', '6425':'CAS', '4745':'THO',
+    },
+
+    // Default invoice customer per club (auto-filled when generating invoice
+    // drafts). HAR / MCA have no default yet (blank in source).
+    invoiceCustomerByLoc: {
+      RVE: 'heroicoffice@gmail.com',
+      FMS: 'heroicoffice@gmail.com',
+      CON: 'heroicoffice@gmail.com',
+      RVS: 'erenberg.william@gmail.com',
+      LB:  'erenberg.william@gmail.com',
+      FUL: 'erenberg.william@gmail.com',
+      SIO: 'IowaLiquidationDeals@gmail.com',
+      CB:  'sloguy2000@gmail.com',
+      GRF: 'rick@bigdealoutlet.com',
+      BIL: 'rick@bigdealoutlet.com',
+      RDL: 'rick@bigdealoutlet.com',
+      PRO: 'rick@bigdealoutlet.com',
+      LOG: 'rick@bigdealoutlet.com',
+      LAY: 'rick@bigdealoutlet.com',
+      CHE: 'rick@bigdealoutlet.com',
+      CAS: 'rick@bigdealoutlet.com',
+      IF:  'rick@bigdealoutlet.com',
+      LAR: 'unodiscount@yahoo.com',
+      DEN: 'countryyegua@aol.com',
+      LT:  'countryyegua@aol.com',
+      THO: 'countryyegua@aol.com',
     },
 
     // Markup % we charge our customers, per Main Category (load-center "Your Price %")
@@ -1371,7 +1397,9 @@ function applySamsRulesOverride(s) {
       const e = String(email || '').trim().toLowerCase();
       if (c && e) cleaned[c] = e;
     }
-    sms.invoiceCustomerByLoc = cleaned;
+    // Merge over the code defaults so the built-in per-club emails persist
+    // unless a saved config explicitly overrides that club.
+    sms.invoiceCustomerByLoc = { ...sms.invoiceCustomerByLoc, ...cleaned };
   }
 }
 
