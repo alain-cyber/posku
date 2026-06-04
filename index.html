@@ -892,6 +892,40 @@ const SUPPLIERS = {
     defaultPricing:   { LQ: 0.115, A: 0.105, HDO: 0.115, QC: 0.165, PG: 0.125 },
     flatSalvagePrice: 3000,
 
+    // Standing deals — { loc, type, email, mode, value }. When a load matches a
+    // loc+type, the invoice draft defaults to the FIRST matching customer (the
+    // rest appear in a dropdown), prices the line at the deal (percent of retail
+    // or flat $), and the SKU is created inactive (active=0). Editable in
+    // Settings → "Default invoice customer + price per location + type".
+    invoiceDeals: [
+      // carmen@crdpropertyholdings.com
+      { loc: 'AMD', type: 'LQ',  email: 'carmen@crdpropertyholdings.com', mode: 'percent', value: 0.065 },
+      { loc: 'RIL', type: 'LQ',  email: 'carmen@crdpropertyholdings.com', mode: 'percent', value: 0.065 },
+      { loc: 'JFL', type: 'LQ',  email: 'carmen@crdpropertyholdings.com', mode: 'percent', value: 0.055 },
+      { loc: 'AMD', type: 'S',   email: 'carmen@crdpropertyholdings.com', mode: 'flat',    value: 1100  },
+      { loc: 'RIL', type: 'S',   email: 'carmen@crdpropertyholdings.com', mode: 'flat',    value: 1100  },
+      { loc: 'JFL', type: 'S',   email: 'carmen@crdpropertyholdings.com', mode: 'flat',    value: 500   },
+      { loc: 'AMD', type: 'A',   email: 'carmen@crdpropertyholdings.com', mode: 'percent', value: 0.09  },
+      { loc: 'RIL', type: 'A',   email: 'carmen@crdpropertyholdings.com', mode: 'percent', value: 0.09  },
+      { loc: 'JFL', type: 'A',   email: 'carmen@crdpropertyholdings.com', mode: 'percent', value: 0.09  },
+      // charles@delaneyauction.com
+      { loc: 'PR',  type: 'LQ',  email: 'charles@delaneyauction.com',     mode: 'percent', value: 0.075 },
+      { loc: 'PR',  type: 'S',   email: 'charles@delaneyauction.com',     mode: 'flat',    value: 1000  },
+      { loc: 'PR',  type: 'HDO', email: 'charles@delaneyauction.com',     mode: 'percent', value: 0.1075 },
+      // gage@shortnorthlr.com — rotating 2nd customer for the AMD/RIL/JFL combos
+      { loc: 'AMD', type: 'LQ',  email: 'gage@shortnorthlr.com',          mode: 'percent', value: 0.065 },
+      { loc: 'RIL', type: 'LQ',  email: 'gage@shortnorthlr.com',          mode: 'percent', value: 0.065 },
+      { loc: 'JFL', type: 'LQ',  email: 'gage@shortnorthlr.com',          mode: 'percent', value: 0.055 },
+      { loc: 'AMD', type: 'S',   email: 'gage@shortnorthlr.com',          mode: 'flat',    value: 1100  },
+      { loc: 'RIL', type: 'S',   email: 'gage@shortnorthlr.com',          mode: 'flat',    value: 1100  },
+      { loc: 'JFL', type: 'S',   email: 'gage@shortnorthlr.com',          mode: 'flat',    value: 500   },
+      { loc: 'AMD', type: 'A',   email: 'gage@shortnorthlr.com',          mode: 'percent', value: 0.09  },
+      { loc: 'RIL', type: 'A',   email: 'gage@shortnorthlr.com',          mode: 'percent', value: 0.09  },
+      { loc: 'JFL', type: 'A',   email: 'gage@shortnorthlr.com',          mode: 'percent', value: 0.09  },
+      // valdiscounts@gmail.com
+      { loc: 'PR',  type: 'QC',  email: 'valdiscounts@gmail.com',         mode: 'percent', value: 0.15  },
+    ],
+
     // Taxonomy. Per the products API schema, `categories` and `groups` are
     // SEPARATE arrays — 56 (Load Center) is a group, not a category.
     //   201 = Furniture   (category, applied to ALL WYF loads)
