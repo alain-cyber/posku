@@ -787,8 +787,6 @@ textarea::placeholder { color: var(--text4); }
                 <th>Generated SKU</th>
                 <th>Product name</th>
                 <th>FOB state</th>
-                <th>Condition</th>
-                <th>Manifest</th>
                 <th>Status</th>
                 <th title="Loads sharing a PO # go on one purchase order (default: same club + received day)">PO #</th>
                 <th title="Loads sharing an Invoice # go on one invoice (default: same club + received day)">Inv #</th>
@@ -2653,7 +2651,7 @@ function buildSamsManifestRow(load, idx) {
     ? `${load.manifestRows.length} line item(s) · ${load.manifestPalletIds?.length || 0} pallet(s)`
     : 'No manifest attached yet';
   const sku = load.sku ? withEnvSuffix(load.sku) : '(SKU pending)';
-  tr.innerHTML = `<td colspan="13" style="padding:0.55rem 0.8rem;background:var(--surface2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
+  tr.innerHTML = `<td colspan="11" style="padding:0.55rem 0.8rem;background:var(--surface2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
     <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
       <span style="font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text3);letter-spacing:0.1em;text-transform:uppercase;">Load-center manifest for ${esc(sku)}</span>
       <span style="font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text4);">manifest #${esc(manId)} · ${esc(summary)}</span>
@@ -2967,8 +2965,6 @@ function renderLoads() {
       <td>${load.sku ? `<span class="mono-green">${esc(withEnvSuffix(load.sku))}</span>` : `<span class="mono-amber">—</span>`}</td>
       <td style="font-size:0.72rem;color:var(--text2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(load.name || '')}">${esc(load.name || '—')}</td>
       <td class="mono" style="font-size:0.72rem;">${esc(load.fobName)}</td>
-      <td style="font-size:0.7rem;">${esc(load.condName)}</td>
-      <td style="font-size:0.7rem;">${esc(load.manifestName)}</td>
       <td>${statusChip()}</td>
       <td>${load.supplierKey === 'SMS' ? `<input type="number" min="1" class="grp-input" data-grp-po="${idx}" value="${esc(load.poGroup ?? '')}" title="PO group">` : '<span class="mono" style="color:var(--text4);">—</span>'}</td>
       <td>${load.supplierKey === 'SMS' ? `<input type="number" min="1" class="grp-input" data-grp-inv="${idx}" value="${esc(load.invGroup ?? '')}" title="Invoice group">` : '<span class="mono" style="color:var(--text4);">—</span>'}</td>
@@ -2989,7 +2985,7 @@ function renderLoads() {
     const isSams = load.supplierKey === 'SMS';
     const condOpts  = Object.entries(sup.conditionTraits).map(([tc, id]) =>
       `<option value="${tc}" ${load.typeCode === tc ? 'selected' : ''}>${tc} → id ${id} (${sup.conditionNames[tc]})</option>`).join('');
-    er.innerHTML = `<td colspan="13" style="padding:0;">
+    er.innerHTML = `<td colspan="11" style="padding:0;">
       <div style="background:var(--surface2);border-bottom:1px solid var(--border2);padding:1rem 1.1rem;">
 
         <div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--text3);margin-bottom:0.8rem;">
@@ -3140,7 +3136,7 @@ function renderLoads() {
     const sup2 = SUPPLIERS[load.supplierKey] || SUPPLIERS.WYF;
     const finalSku = load.sku ? withEnvSuffix(load.sku) : null;
     const slug = finalSku ? finalSku.toLowerCase().replace(/[^a-z0-9]+/g, '-') : '—';
-    dr.innerHTML = `<td colspan="13" class="details-strip">
+    dr.innerHTML = `<td colspan="11" class="details-strip">
       <div class="chips-wrap">
         <span class="chip-mini"><b>active</b> <i>${load.active ?? 1}</i> <em>(${(load.active ?? 1) ? 'Active' : 'Inactive'})</em></span>
         <span class="chip-mini"><b>packing</b> <i>${sup2.packingTrait}</i> <em>(${load.supplierKey==='SMS'?'LTL':'Load'})</em></span>
@@ -3190,7 +3186,7 @@ function renderLoads() {
 
     if ((load.status === 'failed' || load.status === 'dup') && load.erpResult) {
       const msgRow = document.createElement('tr');
-      msgRow.innerHTML = `<td colspan="13" style="padding:0.5rem 0.8rem;background:${load.status==='failed'?'var(--red-dim)':'var(--surface2)'};border-bottom:1px solid var(--border);">
+      msgRow.innerHTML = `<td colspan="11" style="padding:0.5rem 0.8rem;background:${load.status==='failed'?'var(--red-dim)':'var(--surface2)'};border-bottom:1px solid var(--border);">
         <span class="mono" style="color:${load.status==='failed'?'var(--red)':'var(--text2)'};font-size:0.74rem;">
           ${load.status==='failed' ? '✗' : 'ℹ'} ${esc(load.erpResult)}
         </span>
