@@ -62,8 +62,7 @@
   <h1>What's <em>new</em></h1>
   <p class="lede">
     A plain-language history of how Posku has grown since launch on May 21, 2026.
-    Click any item to see what changed. Newest weeks at the bottom — the timeline
-    reads top-to-bottom like a project diary.
+    Newest week at the top — scroll down to read back through the project diary.
   </p>
 
   <div class="legend">
@@ -81,93 +80,68 @@
     </div>
   </div>
 
-  <!-- ── WEEK 1 ─────────────────────────────────────────────────────────── -->
-  <div class="week">
-    <div class="week-date">May 21 – 22, 2026 · Week 1</div>
-    <h2 class="week-title">The first version</h2>
-    <p class="week-summary">
-      Posku started as a single-page tool: paste an email, see loads, push SKUs
-      to the ERP. The first commits set up the dark theme, the drag-and-drop
-      surface, and a configurable ERP target.
-    </p>
-    <div class="item"><span class="tag feature">feature</span><h3>Single capture surface</h3><p>Replaced an earlier builder UI with one big paste / drag-and-drop area. You can paste an email body or drop a file (.eml, .txt) and it goes from there.</p></div>
-    <div class="item"><span class="tag ui">ui</span><h3>Light + dark themes</h3><p>Dark theme bumped for contrast, and a light off-white theme added for users who want it.</p></div>
-    <div class="item"><span class="tag feature">feature</span><h3>Configurable ERP target</h3><p>You can point pushes at different ERP environments instead of hard-coding one.</p></div>
-  </div>
-
-  <!-- ── WEEK 2 ─────────────────────────────────────────────────────────── -->
-  <div class="week">
-    <div class="week-date">May 25, 2026 · Week 2</div>
-    <h2 class="week-title">Wayfair parser + diagnostics</h2>
-    <p class="week-summary">
-      The real Wayfair flow landed: parse emails, preview SKUs, push them.
-      Outlook .msg support, supplier-aware architecture (so other suppliers
-      could be added later), and the first diagnostic page for debugging
-      bad pushes.
-    </p>
-    <div class="item"><span class="tag feature">feature</span><h3>Wayfair email → SKU push</h3><p>Phase 1 of the real flow: parse Wayfair load emails, preview the generated SKU, push to the ERP. FOB state, packing, condition, and manifest traits all start landing on the product.</p></div>
-    <div class="item"><span class="tag feature">feature</span><h3>Outlook .msg files</h3><p>Native .msg parser reads the full subject + body from Outlook files. .eml decoder added too, plus better detection of binary file payloads.</p></div>
-    <div class="item"><span class="tag infra">infra</span><h3>Supplier-aware architecture</h3><p>Reorganized internally as a registry pattern so each supplier is its own isolated bundle of rules. This is what later made Sam's, Harbor Freight, and Amazon possible as tabs.</p></div>
-    <div class="item"><span class="tag feature">feature</span><h3>Diagnostic page</h3><p>Full debug page for ERP push issues. Has gone through many shapes since — the current version shows the last push, what the server saved, and a known-good reference SKU for diffing.</p></div>
-    <div class="item"><span class="tag feature">feature</span><h3>Check IDs button</h3><p>Calls the ERP's dropdowns endpoint and validates that the trait IDs we send actually exist on that environment.</p></div>
-    <div class="item"><span class="tag fix">fix</span><h3>Push errors show inline</h3><p>Failed or duplicate loads now show their error under the row instead of vanishing silently.</p></div>
-  </div>
-
-  <!-- ── WEEK 3 ─────────────────────────────────────────────────────────── -->
-  <div class="week">
-    <div class="week-date">May 26, 2026 · Week 3</div>
-    <h2 class="week-title">Edit row, PO drafts, rules editor</h2>
-    <p class="week-summary">
-      More visibility per load: an expanded edit row that shows every field
-      being pushed, an always-visible chip strip beneath each row, and a
-      browser-local rules editor so power users can tweak Wayfair defaults
-      without redeploying.
-    </p>
-    <div class="item"><span class="tag feature">feature</span><h3>Full payload review per load</h3><p>The edit row expanded to show every field that would be pushed. Below each load row, a compact chip strip shows the same info inline.</p></div>
-    <div class="item"><span class="tag feature">feature</span><h3>Wayfair rules editor</h3><p>Tweak Wayfair-side defaults (supplier ID, store, condition mappings, etc.) directly in the browser. Saved locally so each user can override safely.</p></div>
-    <div class="item"><span class="tag feature">feature</span><h3>Purchase Order drafts</h3><p>After a SKU is pushed, you can draft a matching PO and push it in the same flow. Every "need PO" field from the official spec is supported.</p></div>
-  </div>
-
-  <!-- ── WEEK 4 ─────────────────────────────────────────────────────────── -->
-  <div class="week">
-    <div class="week-date">May 27, 2026 · Week 4</div>
-    <h2 class="week-title">Cloudflare + Sam's Club + Gmail inbox</h2>
-    <p class="week-summary">
-      Posku grew teeth this week. Moved to Cloudflare Pages so the API key
-      lives server-side instead of in browsers. Added the Sam's Club
-      supplier with auto-assigned SEQ numbers fetched from the ERP. And the
-      first version of Gmail inbox fetching — no more pasting emails by hand.
-    </p>
-    <div class="item"><span class="tag infra">infra</span><h3>Cloudflare Pages proxy</h3><p>The browser no longer sees the ERP API key. All /api calls go through a Cloudflare Pages Function that injects the key server-side. Same-origin, so no CORS headaches.</p></div>
-    <div class="item"><span class="tag feature">feature</span><h3>TEST vs LIVE switch</h3><p>Toggle in the sidebar lets you point the app at the test ERP (viatrading.biz) or the live one (ops.viatrading.com). Test SKUs get a "-test" suffix automatically.</p></div>
-    <div class="item"><span class="tag feature">feature</span><h3>Sam's Club supplier</h3><p>Sam's joins Wayfair as a fully wired supplier. Tabs in the sidebar let you switch between them.</p></div>
-    <div class="item"><span class="tag feature">feature</span><h3>Auto-assigned Sam's SEQ</h3><p>When a Sam's email is parsed, the app fetches the current max SKU per club from the ERP and assigns the next sequence number. No more typing them in.</p></div>
-    <div class="item"><span class="tag feature">feature</span><h3>Gmail inbox fetcher</h3><p>Instead of copy-pasting emails, point the app at a Gmail label and date range — it pulls every matching message, runs the parsers, and pre-fills the loads table.</p></div>
-    <div class="item"><span class="tag infra">infra</span><h3>Rules in Cloudflare KV</h3><p>Per-supplier rules moved out of each browser's localStorage and into Cloudflare KV — a single shared source of truth across all users.</p></div>
-    <div class="item"><span class="tag ui">ui</span><h3>Dark mode default</h3><p>Dark navy interface ships as the default look.</p></div>
-  </div>
-
-  <!-- ── WEEK 5 ─────────────────────────────────────────────────────────── -->
-  <div class="week">
-    <div class="week-date">May 28, 2026 · Week 5</div>
-    <h2 class="week-title">Manifests, Drive, Sheets, sidebar redesign</h2>
-    <p class="week-summary">
-      The "Load Center" workflow showed up this week — Sam's CSV manifests
-      auto-attach to their loads from inbox fetches, then bulk-append to a
-      Google Sheet. Wayfair gained a Drive-based manifest browser. And the
-      whole app got a UI redesign: dark navy sidebar, brand-colored titles
-      per supplier, the Vicki Intelligence badge in the footer.
-    </p>
-    <div class="item"><span class="tag feature">feature</span><h3>Sam's manifest CSV → Load Center sheet</h3><p>The CSV attached to each Sam's email gets parsed, the items get transformed into Load Center rows, and one click appends them to the shared Sheet. Per-load button or bulk send-all.</p></div>
-    <div class="item"><span class="tag feature">feature</span><h3>Wayfair "Fetch manifests from Drive"</h3><p>New panel that searches Google Drive for Wayfair manifest spreadsheets by upload date and derives a SKU per filename.</p></div>
-    <div class="item"><span class="tag feature">feature</span><h3>Reset sheet headers</h3><p>Button that rewrites the Load Center sheet's header row — fixes the recurring "columns got out of sync" issue.</p></div>
-    <div class="item"><span class="tag ui">ui</span><h3>Sidebar + app-shell redesign</h3><p>Dark navy sidebar, cleaner main area, brand color tinting the page title per supplier (Wayfair purple, Sam's blue), favicon + Via Trading mark up top, Vicki Intelligence credit at the bottom.</p></div>
-    <div class="item"><span class="tag fix">fix</span><h3>Inbox date semantics</h3><p>The Gmail before:date filter is exclusive — the picker now shows inclusive labels and uses the right boundary so "today through today" actually returns today.</p></div>
-  </div>
-
-  <!-- ── WEEK 6 (CURRENT) ────────────────────────────────────────────────── -->
+  <!-- ── WEEK 8 (CURRENT) ────────────────────────────────────────────────── -->
   <div class="week current">
-    <div class="week-date">May 29 – 30, 2026 · Week 6 (this week)</div>
+    <div class="week-date">June 3 – 4, 2026 · Week 8 (this week)</div>
+    <h2 class="week-title">Presold deals: auto-invoice, customer pricing, account managers</h2>
+    <p class="week-summary">
+      The week the presold path came together. When a Wayfair load matches a
+      standing deal (its location + load type), the SKU is created inactive, the
+      invoice draft defaults to the agreed customer at their negotiated price,
+      and the salesrep auto-fills to that customer's account manager. Perigold
+      became a real load type, the pricing matrix became editable in Settings,
+      and load types are now read purely from the email — nothing is forced.
+    </p>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Standing deals — default customer + price per location &amp; type</h3><p>A new rules table maps <code>location + load type</code> to a customer and a price. When a matching load is invoiced, that customer is pre-filled, the line is priced at the deal, and the pushed SKU is created inactive (it's presold, not for open sale). The current Wayfair list (Aberdeen / Romeoville / Jacksonville / Perris across LQ, Salvage, Aged, HDO, QC) ships loaded and editable.</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Rotating customers — default first, dropdown for the rest</h3><p>A location + type can list several customers. The invoice draft defaults to the first, shows the others in a "Deal customer" dropdown, and keeps the free customer search for anyone not on the list. Switching customer reprices every line to that customer's deal automatically.</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Customer-specific invoice pricing</h3><p>Each deal carries its own price — either a <strong>percent of retail</strong> or a <strong>flat whole-load $</strong> (Salvage). The invoice line uses the deal price when one exists, otherwise it falls back to the SKU's listed price.</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Salesrep auto-fills to the customer's account manager</h3><p>Customer search now returns the account manager (<code>sales_rep_id</code> from the warehouse <code>customers_flat</code> table), and picking a customer sets the invoice salesrep to their AM — no more typing it in.</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Perigold is a first-class load type</h3><p>Perigold (code <code>PG</code>, 12.5% of retail) is now a real type with its own condition trait, product name ("Liquidation Returns – Larger Items"), and detection. It's recognized straight from the facility name in the email, and an explicit Perigold mention wins over any other type guess.</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Editable pricing matrix in the rules editor</h3><p>The Wayfair recovery-rate matrix (our sell as a % of retail, by location × type, plus the per-type default and the flat salvage $) is now a grid you can edit and save in Settings — no redeploy to change a rate.</p></div>
+
+    <div class="item"><span class="tag fix">fix</span><h3>Load type comes only from the email</h3><p>Removed the rule that forced certain locations to a fixed type (City of Industry / Portland → HDO) regardless of the email. The type is now parsed purely from the message text; if it isn't stated, the load is flagged for review instead of guessed.</p></div>
+
+    <div class="item"><span class="tag fix">fix</span><h3>Sam's: "Direct" shipping loads start inactive</h3><p>Sam's loads whose club ships via a Direct method (Direct Truckload / Direct LTL) are now created inactive (active=0), so they aren't listed for open sale until reviewed.</p></div>
+
+    <div class="item"><span class="tag infra">infra</span><h3>Excel + CSV manifests both confirmed working</h3><p>Wayfair manifests arrive as a mix — some locations send CSV, others real <code>.xlsx</code>. Verified the server-side unzip-and-parse path handles xlsx end-to-end (shared strings, inline strings, numbers), so both formats attach cleanly. Corrected stale notes that claimed xlsx still needed a parser.</p></div>
+  </div>
+
+  <!-- ── WEEK 7 ──────────────────────────────────────────────────────────── -->
+  <div class="week">
+    <div class="week-date">May 30, 2026 · Week 7</div>
+    <h2 class="week-title">Customer invoices end-to-end</h2>
+    <p class="week-summary">
+      The big feature: Posku can now bill customers for presold loads. After a
+      SKU is pushed, you select one or more loads, the app pre-fills a customer
+      from a rule or lets you type-ahead one from the warehouse, and the
+      invoice goes to the ERP via the same env-aware proxy. Plus a stack of
+      smaller polish items.
+    </p>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Invoice flow — drafts, customer typeahead, push</h3><p>Selected pushed SKUs become draft invoices, grouped automatically by customer. Each draft is fully editable — header dropdowns, line qty/price, shipping cost, tax rate, notes — and pushes to <code>POST /api/orders</code> via the existing env-aware proxy. Successful pushes trigger the gamification HUD with a "+N invoiced" floater.</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>"Unique invoice" per load + auto-grouping</h3><p>Each pushed load has a per-row checkbox (default checked). Checked → that load gets its own invoice. Unchecked → it clusters with other un-unique loads going to the same customer. The header shows the predicted draft count live as you toggle, so you know exactly how many cards you'll get before clicking Generate.</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Customer typeahead (BigQuery)</h3><p>Type 2+ characters of an email or name → results dropdown with email, name, company, customer id. Matches ranked by exact email > prefix > contains > name > company. Picking auto-fills the billing + shipping address blocks. Recent picks are cached as one-tap chips. Temporary bridge over BigQuery <code>customers_flat</code> until the ERP team exposes a REST endpoint.</p></div>
+
+    <div class="item"><span class="tag feature">feature</span><h3>Default invoice customer in the rules editor</h3><p>Sam's rules editor gained a "Default invoice customer per location" table. Wayfair's gained "per location + type". Fill in a row, save → next time you generate an invoice draft from a matching load, the customer field is pre-filled.</p></div>
+
+    <div class="item"><span class="tag ui">ui</span><h3>SKU · PO · INV tri-chip status strip</h3><p>Successfully pushed loads now show a three-segment status strip — <code>[ SKU ✓ | PO ✓ | INV — ]</code> — so a glance tells you exactly how far each load has progressed through the pipeline. Icons: ✓ done · … in flight · ✗ failed · — not started.</p></div>
+
+    <div class="item"><span class="tag ui">ui</span><h3>All three workflow cards collapsible</h3><p>Detected loads, PO drafts, and Invoice drafts each have a chevron in their header — click to collapse or expand independently. The action buttons in each header stay clickable; only the title triggers the toggle.</p></div>
+
+    <div class="item"><span class="tag fix">fix</span><h3>Customer typeahead surfaces real errors</h3><p>The picker used to swallow every failure and show "no matches" no matter what. Now a failed lookup shows the actual reason inline — auth, IAM, network, whatever — so it takes seconds to tell "no customers matched" apart from "needs IAM grant" apart from "Pages function not deployed yet".</p></div>
+  </div>
+
+  <!-- ── WEEK 6 ──────────────────────────────────────────────────────────── -->
+  <div class="week">
+    <div class="week-date">May 29 – 30, 2026 · Week 6</div>
     <h2 class="week-title">Push reliability, deeper diagnostics, UX polish</h2>
     <p class="week-summary">
       A huge debug push. We learned that the ERP was silently dropping
@@ -204,34 +178,90 @@
     <div class="item"><span class="tag ui">ui</span><h3>Modernized card headings + collapsible paste card</h3><p>Card titles switched to Inter with a left-side gradient accent bar. The "Paste or drop email" card is now collapsible and starts collapsed each session, since most workflows use Inbox or Drive fetch instead.</p></div>
 
     <div class="item"><span class="tag feature">feature</span><h3>Diagnostic page: deeper signals</h3><p>The diagnostic now shows the last push request/response, a follow-up GET of the saved product, a known-good reference SKU for diffing, the ERP dropdown lists, AND the last inbox-fetch summary (which loads got their CSV auto-attached and why the others didn't).</p></div>
-
   </div>
 
-  <!-- ── WEEK 7 (CURRENT) ────────────────────────────────────────────────── -->
-  <div class="week current">
-    <div class="week-date">May 30, 2026 · Week 7 (this week)</div>
-    <h2 class="week-title">Customer invoices end-to-end</h2>
+  <!-- ── WEEK 5 ──────────────────────────────────────────────────────────── -->
+  <div class="week">
+    <div class="week-date">May 28, 2026 · Week 5</div>
+    <h2 class="week-title">Manifests, Drive, Sheets, sidebar redesign</h2>
     <p class="week-summary">
-      The big feature: Posku can now bill customers for presold loads. After a
-      SKU is pushed, you select one or more loads, the app pre-fills a customer
-      from a rule or lets you type-ahead one from the warehouse, and the
-      invoice goes to the ERP via the same env-aware proxy. Plus a stack of
-      smaller polish items.
+      The "Load Center" workflow showed up this week — Sam's CSV manifests
+      auto-attach to their loads from inbox fetches, then bulk-append to a
+      Google Sheet. Wayfair gained a Drive-based manifest browser. And the
+      whole app got a UI redesign: dark navy sidebar, brand-colored titles
+      per supplier, the Vicki Intelligence badge in the footer.
     </p>
+    <div class="item"><span class="tag feature">feature</span><h3>Sam's manifest CSV → Load Center sheet</h3><p>The CSV attached to each Sam's email gets parsed, the items get transformed into Load Center rows, and one click appends them to the shared Sheet. Per-load button or bulk send-all.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Wayfair "Fetch manifests from Drive"</h3><p>New panel that searches Google Drive for Wayfair manifest spreadsheets by upload date and derives a SKU per filename.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Reset sheet headers</h3><p>Button that rewrites the Load Center sheet's header row — fixes the recurring "columns got out of sync" issue.</p></div>
+    <div class="item"><span class="tag ui">ui</span><h3>Sidebar + app-shell redesign</h3><p>Dark navy sidebar, cleaner main area, brand color tinting the page title per supplier (Wayfair purple, Sam's blue), favicon + Via Trading mark up top, Vicki Intelligence credit at the bottom.</p></div>
+    <div class="item"><span class="tag fix">fix</span><h3>Inbox date semantics</h3><p>The Gmail before:date filter is exclusive — the picker now shows inclusive labels and uses the right boundary so "today through today" actually returns today.</p></div>
+  </div>
 
-    <div class="item"><span class="tag feature">feature</span><h3>Invoice flow — drafts, customer typeahead, push</h3><p>Selected pushed SKUs become draft invoices, grouped automatically by customer. Each draft is fully editable — header dropdowns, line qty/price, shipping cost, tax rate, notes — and pushes to <code>POST /api/orders</code> via the existing env-aware proxy. Successful pushes trigger the gamification HUD with a "+N invoiced" floater.</p></div>
+  <!-- ── WEEK 4 ──────────────────────────────────────────────────────────── -->
+  <div class="week">
+    <div class="week-date">May 27, 2026 · Week 4</div>
+    <h2 class="week-title">Cloudflare + Sam's Club + Gmail inbox</h2>
+    <p class="week-summary">
+      Posku grew teeth this week. Moved to Cloudflare Pages so the API key
+      lives server-side instead of in browsers. Added the Sam's Club
+      supplier with auto-assigned SEQ numbers fetched from the ERP. And the
+      first version of Gmail inbox fetching — no more pasting emails by hand.
+    </p>
+    <div class="item"><span class="tag infra">infra</span><h3>Cloudflare Pages proxy</h3><p>The browser no longer sees the ERP API key. All /api calls go through a Cloudflare Pages Function that injects the key server-side. Same-origin, so no CORS headaches.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>TEST vs LIVE switch</h3><p>Toggle in the sidebar lets you point the app at the test ERP (viatrading.biz) or the live one (ops.viatrading.com). Test SKUs get a "-test" suffix automatically.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Sam's Club supplier</h3><p>Sam's joins Wayfair as a fully wired supplier. Tabs in the sidebar let you switch between them.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Auto-assigned Sam's SEQ</h3><p>When a Sam's email is parsed, the app fetches the current max SKU per club from the ERP and assigns the next sequence number. No more typing them in.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Gmail inbox fetcher</h3><p>Instead of copy-pasting emails, point the app at a Gmail label and date range — it pulls every matching message, runs the parsers, and pre-fills the loads table.</p></div>
+    <div class="item"><span class="tag infra">infra</span><h3>Rules in Cloudflare KV</h3><p>Per-supplier rules moved out of each browser's localStorage and into Cloudflare KV — a single shared source of truth across all users.</p></div>
+    <div class="item"><span class="tag ui">ui</span><h3>Dark mode default</h3><p>Dark navy interface ships as the default look.</p></div>
+  </div>
 
-    <div class="item"><span class="tag feature">feature</span><h3>"Unique invoice" per load + auto-grouping</h3><p>Each pushed load has a per-row checkbox (default checked). Checked → that load gets its own invoice. Unchecked → it clusters with other un-unique loads going to the same customer. The header shows the predicted draft count live as you toggle, so you know exactly how many cards you'll get before clicking Generate.</p></div>
+  <!-- ── WEEK 3 ──────────────────────────────────────────────────────────── -->
+  <div class="week">
+    <div class="week-date">May 26, 2026 · Week 3</div>
+    <h2 class="week-title">Edit row, PO drafts, rules editor</h2>
+    <p class="week-summary">
+      More visibility per load: an expanded edit row that shows every field
+      being pushed, an always-visible chip strip beneath each row, and a
+      browser-local rules editor so power users can tweak Wayfair defaults
+      without redeploying.
+    </p>
+    <div class="item"><span class="tag feature">feature</span><h3>Full payload review per load</h3><p>The edit row expanded to show every field that would be pushed. Below each load row, a compact chip strip shows the same info inline.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Wayfair rules editor</h3><p>Tweak Wayfair-side defaults (supplier ID, store, condition mappings, etc.) directly in the browser. Saved locally so each user can override safely.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Purchase Order drafts</h3><p>After a SKU is pushed, you can draft a matching PO and push it in the same flow. Every "need PO" field from the official spec is supported.</p></div>
+  </div>
 
-    <div class="item"><span class="tag feature">feature</span><h3>Customer typeahead (BigQuery)</h3><p>Type 2+ characters of an email or name → results dropdown with email, name, company, customer id. Matches ranked by exact email > prefix > contains > name > company. Picking auto-fills the billing + shipping address blocks. Recent picks are cached as one-tap chips. Temporary bridge over BigQuery <code>customers_flat</code> until the ERP team exposes a REST endpoint.</p></div>
+  <!-- ── WEEK 2 ──────────────────────────────────────────────────────────── -->
+  <div class="week">
+    <div class="week-date">May 25, 2026 · Week 2</div>
+    <h2 class="week-title">Wayfair parser + diagnostics</h2>
+    <p class="week-summary">
+      The real Wayfair flow landed: parse emails, preview SKUs, push them.
+      Outlook .msg support, supplier-aware architecture (so other suppliers
+      could be added later), and the first diagnostic page for debugging
+      bad pushes.
+    </p>
+    <div class="item"><span class="tag feature">feature</span><h3>Wayfair email → SKU push</h3><p>Phase 1 of the real flow: parse Wayfair load emails, preview the generated SKU, push to the ERP. FOB state, packing, condition, and manifest traits all start landing on the product.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Outlook .msg files</h3><p>Native .msg parser reads the full subject + body from Outlook files. .eml decoder added too, plus better detection of binary file payloads.</p></div>
+    <div class="item"><span class="tag infra">infra</span><h3>Supplier-aware architecture</h3><p>Reorganized internally as a registry pattern so each supplier is its own isolated bundle of rules. This is what later made Sam's, Harbor Freight, and Amazon possible as tabs.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Diagnostic page</h3><p>Full debug page for ERP push issues. Has gone through many shapes since — the current version shows the last push, what the server saved, and a known-good reference SKU for diffing.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Check IDs button</h3><p>Calls the ERP's dropdowns endpoint and validates that the trait IDs we send actually exist on that environment.</p></div>
+    <div class="item"><span class="tag fix">fix</span><h3>Push errors show inline</h3><p>Failed or duplicate loads now show their error under the row instead of vanishing silently.</p></div>
+  </div>
 
-    <div class="item"><span class="tag feature">feature</span><h3>Default invoice customer in the rules editor</h3><p>Sam's rules editor gained a "Default invoice customer per location" table. Wayfair's gained "per location + type". Fill in a row, save → next time you generate an invoice draft from a matching load, the customer field is pre-filled.</p></div>
-
-    <div class="item"><span class="tag ui">ui</span><h3>SKU · PO · INV tri-chip status strip</h3><p>Successfully pushed loads now show a three-segment status strip — <code>[ SKU ✓ | PO ✓ | INV — ]</code> — so a glance tells you exactly how far each load has progressed through the pipeline. Icons: ✓ done · … in flight · ✗ failed · — not started.</p></div>
-
-    <div class="item"><span class="tag ui">ui</span><h3>All three workflow cards collapsible</h3><p>Detected loads, PO drafts, and Invoice drafts each have a chevron in their header — click to collapse or expand independently. The action buttons in each header stay clickable; only the title triggers the toggle.</p></div>
-
-    <div class="item"><span class="tag fix">fix</span><h3>Customer typeahead surfaces real errors</h3><p>The picker used to swallow every failure and show "no matches" no matter what. Now a failed lookup shows the actual reason inline — auth, IAM, network, whatever — so it takes seconds to tell "no customers matched" apart from "needs IAM grant" apart from "Pages function not deployed yet".</p></div>
+  <!-- ── WEEK 1 ──────────────────────────────────────────────────────────── -->
+  <div class="week">
+    <div class="week-date">May 21 – 22, 2026 · Week 1</div>
+    <h2 class="week-title">The first version</h2>
+    <p class="week-summary">
+      Posku started as a single-page tool: paste an email, see loads, push SKUs
+      to the ERP. The first commits set up the dark theme, the drag-and-drop
+      surface, and a configurable ERP target.
+    </p>
+    <div class="item"><span class="tag feature">feature</span><h3>Single capture surface</h3><p>Replaced an earlier builder UI with one big paste / drag-and-drop area. You can paste an email body or drop a file (.eml, .txt) and it goes from there.</p></div>
+    <div class="item"><span class="tag ui">ui</span><h3>Light + dark themes</h3><p>Dark theme bumped for contrast, and a light off-white theme added for users who want it.</p></div>
+    <div class="item"><span class="tag feature">feature</span><h3>Configurable ERP target</h3><p>You can point pushes at different ERP environments instead of hard-coding one.</p></div>
   </div>
 
   <div class="footer">
