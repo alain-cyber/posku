@@ -336,6 +336,30 @@ textarea::placeholder { color: var(--text4); }
 .table tr.done td { background: rgba(30,127,86,0.05); }
 .table tr.failed td { background: rgba(184,57,44,0.05); }
 
+/* ── Detected-loads polish (Option A: polished table) ───────────────────── */
+.type-pill { display: inline-block; font-family: 'DM Mono', monospace; font-size: 0.6rem; font-weight: 500; letter-spacing: 0.05em; padding: 0.18rem 0.46rem; border-radius: 5px; background: var(--surface2); color: var(--text2); }
+.type-pill.lq  { background: rgba(129,140,248,0.16); color: #aab4ff; }
+.type-pill.s   { background: rgba(251,191,36,0.16);  color: #f4c14d; }
+.type-pill.a   { background: rgba(74,222,128,0.16);  color: #5fe093; }
+.type-pill.qc  { background: rgba(248,113,113,0.16); color: #f88c8c; }
+.type-pill.hdo { background: rgba(56,189,248,0.16);  color: #62c8f2; }
+.type-pill.pg  { background: rgba(232,121,249,0.16); color: #ec8bfb; }
+.st-pill { display: inline-flex; align-items: center; gap: 0.35rem; font-family: 'DM Mono', monospace; font-size: 0.58rem; letter-spacing: 0.07em; text-transform: uppercase; padding: 0.22rem 0.5rem; border-radius: 5px; white-space: nowrap; }
+.st-pill .d { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.st-pill.ready   { background: var(--green-dim); color: var(--green); }
+.st-pill.ready .d   { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.st-pill.review  { background: var(--amber-dim); color: var(--amber); }
+.st-pill.review .d  { background: var(--amber); }
+.st-pill.pushing { background: var(--blue-dim); color: var(--blue); }
+.st-pill.pushing .d { background: var(--blue); }
+.st-pill.failed, .st-pill.dup { background: var(--red-dim); color: var(--red); }
+.st-pill.failed .d  { background: var(--red); }
+#loads-card .table thead th { position: sticky; top: 0; z-index: 2; background: var(--surface); }
+#loads-card .table tbody tr.alt td { background: rgba(255,255,255,0.022); }
+#loads-card .table tbody td.select-col { border-left: 3px solid var(--green); }
+#loads-card .table tbody tr.review td.select-col { border-left-color: var(--amber); }
+#loads-card .table tbody tr.failed td.select-col { border-left-color: var(--red); }
+
 .mono { font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--text2); }
 .mono-green { font-family: 'DM Mono', monospace; color: var(--green); font-size: 0.82rem; font-weight: 500; }
 .mono-amber { font-family: 'DM Mono', monospace; color: var(--amber); font-size: 0.78rem; }
@@ -2873,12 +2897,19 @@ async function markExistingSkus() {
   }
 }
 
+// Color-coded load-type pill (LQ/S/A/QC/HDO/PG each get their own hue).
+function typePill(code) {
+  if (!code) return `<span class="mono" style="color:var(--text4);">—</span>`;
+  return `<span class="type-pill ${String(code).toLowerCase()}">${esc(code)}</span>`;
+}
+
 function renderLoads() {
   assignDefaultGroups();
   renderLoadsFilter();
   const filterActive = loadLocationFilter && loadLocationFilter.size > 0;
   const body = $('loads-body');
   body.innerHTML = '';
+  let visRow = 0;   // counts visible main rows for zebra striping
   loads.forEach((load, idx) => {
     // Location filter — skip rows not in the active set (idx stays the true
     // array index so all row handlers keep pointing at the right load).
@@ -2887,15 +2918,18 @@ function renderLoads() {
     const tr = document.createElement('tr');
     tr.id = 'row-' + idx;
     tr.className = load.status === 'review' ? 'review' : (load.status === 'done' ? 'done' : (load.status === 'failed' ? 'failed' : ''));
+    // Zebra striping on the normal (un-statused) rows; status rows keep their tint.
+    if (tr.className === '' && visRow % 2 === 1) tr.className = 'alt';
+    visRow++;
 
     const statusChip = () => {
       // Pre-push or special states stay as a single chip — tri-strip only
       // makes sense once the SKU has actually landed.
-      if (load.status === 'failed')  return `<span class="chip red">failed</span>`;
-      if (load.status === 'review')  return `<span class="chip amber">review</span>`;
-      if (load.status === 'pushing') return `<span class="chip blue">pushing…</span>`;
-      if (load.status === 'dup')     return `<span class="chip red" title="A product with this SKU already exists in the ERP — cannot push">✗ duplicate in ERP</span>`;
-      if (load.status !== 'done')    return `<span class="chip green" style="background:var(--green-dim);color:var(--green);">ready</span>`;
+      if (load.status === 'failed')  return `<span class="st-pill failed"><span class="d"></span>failed</span>`;
+      if (load.status === 'review')  return `<span class="st-pill review"><span class="d"></span>review</span>`;
+      if (load.status === 'pushing') return `<span class="st-pill pushing"><span class="d"></span>pushing…</span>`;
+      if (load.status === 'dup')     return `<span class="st-pill dup" title="A product with this SKU already exists in the ERP — cannot push">✗ duplicate in ERP</span>`;
+      if (load.status !== 'done')    return `<span class="st-pill ready"><span class="d"></span>ready</span>`;
 
       // SKU done → render the three-stage progress strip.
       const finalSku = withEnvSuffix(load.sku);
@@ -2927,7 +2961,7 @@ function renderLoads() {
       <td class="select-col">${load.status === 'done' ? `<input type="checkbox" data-select="${idx}" ${load.selected ? 'checked' : ''}>` : ''}</td>
       <td class="mono">${esc(load.loadId)}${load.emailDate ? `<div style="font-size:0.6rem;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px;white-space:nowrap;" title="Email received${load.emailFrom ? ' from ' + esc(load.emailFrom) : ''}">✉ ${esc(fmtEmailDate(load.emailDate))}</div>` : ''}${(load._skuExists && load.status !== 'done' && load.status !== 'dup') ? `<div style="font-size:0.6rem;color:var(--amber,#d6a23a);font-family:'DM Mono',monospace;margin-top:2px;white-space:nowrap;" title="A product with this SKU already exists in the ERP (${esc(loadEnv())}) — it was pushed before">⚠ SKU already pushed</div>` : ''}</td>
       <td><span class="mono">${esc(load.locCode || '—')}</span></td>
-      <td><span class="mono">${esc(load.typeCode || '—')}</span></td>
+      <td>${typePill(load.typeCode)}</td>
       <td>${load.sku ? `<span class="mono-green">${esc(withEnvSuffix(load.sku))}</span>` : `<span class="mono-amber">—</span>`}</td>
       <td style="font-size:0.72rem;color:var(--text2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(load.name || '')}">${esc(load.name || '—')}</td>
       <td class="mono" style="font-size:0.72rem;">${esc(load.fobName)}</td>
