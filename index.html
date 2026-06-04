@@ -359,6 +359,8 @@ textarea::placeholder { color: var(--text4); }
 #loads-card .table tbody td.select-col { border-left: 3px solid var(--green); }
 #loads-card .table tbody tr.review td.select-col { border-left-color: var(--amber); }
 #loads-card .table tbody tr.failed td.select-col { border-left-color: var(--red); }
+.row-exp { cursor: pointer; color: var(--text4); font-size: 0.68rem; display: inline-block; width: 1.1em; margin-right: 0.15em; user-select: none; transition: color 0.12s; }
+.row-exp:hover { color: var(--text); }
 
 .mono { font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--text2); }
 .mono-green { font-family: 'DM Mono', monospace; color: var(--green); font-size: 0.82rem; font-weight: 500; }
@@ -2959,7 +2961,7 @@ function renderLoads() {
 
     tr.innerHTML = `
       <td class="select-col">${load.status === 'done' ? `<input type="checkbox" data-select="${idx}" ${load.selected ? 'checked' : ''}>` : ''}</td>
-      <td class="mono">${esc(load.loadId)}${load.emailDate ? `<div style="font-size:0.6rem;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px;white-space:nowrap;" title="Email received${load.emailFrom ? ' from ' + esc(load.emailFrom) : ''}">✉ ${esc(fmtEmailDate(load.emailDate))}</div>` : ''}${(load._skuExists && load.status !== 'done' && load.status !== 'dup') ? `<div style="font-size:0.6rem;color:var(--amber,#d6a23a);font-family:'DM Mono',monospace;margin-top:2px;white-space:nowrap;" title="A product with this SKU already exists in the ERP (${esc(loadEnv())}) — it was pushed before">⚠ SKU already pushed</div>` : ''}</td>
+      <td class="mono"><span class="row-exp" data-details-toggle="${idx}" title="Show / hide all push fields">${load.detailsExpanded ? '▾' : '▸'}</span>${esc(load.loadId)}${load.emailDate ? `<div style="font-size:0.6rem;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px;white-space:nowrap;" title="Email received${load.emailFrom ? ' from ' + esc(load.emailFrom) : ''}">✉ ${esc(fmtEmailDate(load.emailDate))}</div>` : ''}${(load._skuExists && load.status !== 'done' && load.status !== 'dup') ? `<div style="font-size:0.6rem;color:var(--amber,#d6a23a);font-family:'DM Mono',monospace;margin-top:2px;white-space:nowrap;" title="A product with this SKU already exists in the ERP (${esc(loadEnv())}) — it was pushed before">⚠ SKU already pushed</div>` : ''}</td>
       <td><span class="mono">${esc(load.locCode || '—')}</span></td>
       <td>${typePill(load.typeCode)}</td>
       <td>${load.sku ? `<span class="mono-green">${esc(withEnvSuffix(load.sku))}</span>` : `<span class="mono-amber">—</span>`}</td>
@@ -3174,10 +3176,16 @@ function renderLoads() {
     body.appendChild(dr);
     body.appendChild(er);
 
+    // Collapse the detail chip strip by default — one clean row per load until
+    // you click the chevron. The edit row (er) is separately hidden until Edit.
+    if (!load.detailsExpanded) dr.style.display = 'none';
+
     // Manifest section — Sam's (drop a CSV) or any load with a manifest already
     // attached (e.g. a Wayfair load parsed from a Drive manifest).
     if (load.supplierKey === 'SMS' || (load.manifestRows && load.manifestRows.length)) {
-      body.appendChild(buildSamsManifestRow(load, idx));
+      const mr = buildSamsManifestRow(load, idx);
+      if (!load.detailsExpanded) mr.style.display = 'none';
+      body.appendChild(mr);
     }
 
     if ((load.status === 'failed' || load.status === 'dup') && load.erpResult) {
@@ -3247,6 +3255,15 @@ function updateSummary() {
 
 function attachHandlers() {
   attachSamsManifestHandlers();
+  // Per-row chevron: show/hide the detail chip strip + manifest bar for one load.
+  $('loads-body').querySelectorAll('[data-details-toggle]').forEach(el => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      const idx = +el.dataset.detailsToggle;
+      loads[idx].detailsExpanded = !loads[idx].detailsExpanded;
+      renderLoads();
+    };
+  });
   $('loads-body').querySelectorAll('[data-push]').forEach(b => {
     b.onclick = async () => {
       const idx = +b.dataset.push;
