@@ -4385,6 +4385,13 @@ function todayISO(offsetDays = 0) {
   return d.toISOString().slice(0, 10);
 }
 
+// Add N days to a YYYY-MM-DD date string (UTC math, DST-safe). Falls back to today.
+function addDaysISO(iso, n) {
+  const base = iso ? new Date(iso + 'T00:00:00Z') : new Date();
+  base.setUTCDate(base.getUTCDate() + n);
+  return base.toISOString().slice(0, 10);
+}
+
 // Build a PO draft from one or more loads. Multiple loads (non-unique, merged
 // by supplier+facility) become multiple line items on a single PO. Header
 // fields come from the first load's supplier defaults.
@@ -4665,6 +4672,9 @@ function buildPoPayload(d) {
   // due/delivery dates are no longer shown in the UI but the API still gets a
   // value so the request doesn't break.
   const pushDate = todayISO(0);
+  const orderDate = d.order_date || pushDate;
+  // Sam's POs are due 2 weeks after the created (order) date; others = push date.
+  const dueDate = d.supplierKey === 'SMS' ? addDaysISO(orderDate, 14) : pushDate;
   const items = (d.items || []).map(it => {
     const item = {
       sku:          it.sku,
@@ -4689,9 +4699,10 @@ function buildPoPayload(d) {
     status_id:               Number(d.status_id) || 2,
     scheduled_date:          d.scheduled_date || '',
     tentative_schedule:      !!d.tentative_schedule,
-    // dates — all default to push date; only order_date is user-editable
-    order_date:              d.order_date || pushDate,
-    due_date:                pushDate,
+    // dates — order date is user-editable (defaults to push date). Sam's due
+    // date is order date + 2 weeks; everything else stays the push date.
+    order_date:              orderDate,
+    due_date:                dueDate,
     delivery_date:           pushDate,
     // shipping
     shipping_method_id:      Number(d.shipping_method_id),
