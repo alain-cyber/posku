@@ -2975,6 +2975,7 @@ function renderLoads() {
           <button class="btn small" data-push="${idx}" ${!load.sku ? 'disabled' : ''}>Push</button>
           <button class="btn ghost small" data-edit="${idx}">Edit</button>
         ` : ''}
+        ${(load.status === 'done' || load.status === 'dup') && (load.manifestRows?.length || load.flatPrice != null) ? `<button class="btn small" data-repush="${idx}" title="Re-push the manifest list price to this SKU in the ERP">Re-push price</button>` : ''}
         ${load.status === 'dup' ? `<button class="btn ghost small" data-edit="${idx}">Edit</button>` : ''}
         <button class="btn danger small" data-remove="${idx}">×</button>
       </td>`;
@@ -3268,6 +3269,15 @@ function attachHandlers() {
       await doPush([idx]);
     };
   });
+  // Re-push price: force an upsert on an already-pushed load so the ERP product
+  // picks up the manifest list price (used after a manifest arrives later).
+  $('loads-body').querySelectorAll('[data-repush]').forEach(b => {
+    b.onclick = async () => {
+      const idx = +b.dataset.repush;
+      _lastPushClick = b;
+      await doPush([idx], { force: true });
+    };
+  });
   $('loads-body').querySelectorAll('[data-edit]').forEach(b => {
     b.onclick = () => {
       const idx = +b.dataset.edit;
@@ -3364,7 +3374,7 @@ $('select-all').onchange = () => {
   renderLoads();
 };
 
-async function doPush(indices) {
+async function doPush(indices, opts = {}) {
   const cfg = loadCfg();
   if (IS_LOCAL_FILE && !cfg.apiKey) {
     setStatus($('push-status'), 'err', 'API key not set. Enter it in the settings bar and click Save.');
@@ -3378,7 +3388,10 @@ async function doPush(indices) {
   let okCount = 0;
   for (const idx of indices) {
     const load = loads[idx];
-    if (!load || load.status === 'done') continue;
+    // Normally skip already-pushed loads; `force` (a manual Re-push price) lets a
+    // done/dup load go through again so the upsert updates its manifest price.
+    if (!load) continue;
+    if (load.status === 'done' && !opts.force) continue;
     load.status = 'pushing';
     renderLoads();
     const result = await pushLoad(load);
@@ -5976,6 +5989,7 @@ function renderInvoiceDrafts() {
 
         <div class="btn-row" style="margin-top:0.9rem;">
           <button class="btn" data-inv-push="${idx}" ${d.status === 'done' || !d.customer || (d.appendMode && !d.appendOrderId) ? 'disabled' : ''}>${d.appendMode ? `Append to invoice${d.appendOrderId ? ' #' + esc(d.appendOrderId) : ''}` : 'Push invoice'}</button>
+          <button class="btn ghost small" data-inv-reprice="${idx}" title="Recompute line prices from the loads' current manifest / deal price">↻ Reprice from manifest</button>
           <button class="btn danger small" data-inv-remove="${idx}">Discard draft</button>
         </div>
       </div>
@@ -6218,6 +6232,17 @@ function attachInvoiceHandlers() {
       const { results } = await searchCustomers(sel.value);
       const exact = results.find(c => (c.email || '').toLowerCase() === sel.value.toLowerCase());
       if (exact) { await enrichCustomerAddresses(exact); assignDraftCustomer(d, exact); }
+      recomputeDraftPrices(d);
+      renderInvoiceDrafts();
+    };
+  });
+  // Reprice from manifest: re-pull each line's price from the load's current
+  // totals (manifest list price) / deal price — for after a manifest arrives.
+  document.querySelectorAll('[data-inv-reprice]').forEach(b => {
+    b.onclick = () => {
+      const idx = +b.dataset.invReprice;
+      const d = invoiceDrafts[idx];
+      if (!d || d.status === 'done') return;
       recomputeDraftPrices(d);
       renderInvoiceDrafts();
     };
