@@ -8,6 +8,14 @@
 //   Header `X-Posku-Env: test` → viatrading.biz       with env.BIZ_API
 //   Header `X-Posku-Env: live` → ops.viatrading.com   with env.ops_api_key
 //   Missing/unknown → defaults to test (safer).
+//
+// Also dispatches the inbox (Gmail) handlers from here. This project
+// intermittently fails to register standalone function files as their own
+// routes, but the catch-all ALWAYS runs — so we import those handlers and call
+// them directly, which guarantees they execute regardless of route registration.
+
+import { onRequest as inboxHandler }           from './inbox.js';
+import { onRequest as inboxAttachmentHandler } from './inbox-attachment.js';
 
 const ENVIRONMENTS = {
   test: { origin: 'https://viatrading.biz',     keyVar: 'BIZ_API' },
@@ -20,6 +28,10 @@ export async function onRequest(context) {
   // Gmail integration has its own handler at /api/gmail/* — pass through if
   // it somehow lands here (defensive; the static route file should win).
   const segs = Array.isArray(params.path) ? params.path : (params.path ? [params.path] : []);
+  // Inbox (Gmail) — run the handler here so it works even when its own route
+  // isn't registered by the platform.
+  if (segs[0] === 'inbox')            return inboxHandler(context);
+  if (segs[0] === 'inbox-attachment') return inboxAttachmentHandler(context);
   if (segs[0] === 'gmail' || segs[0] === 'rules' || segs[0] === 'sheets' || segs[0] === 'drive') {
     return jsonError(404, `${segs[0]} subpath not handled by ERP proxy`);
   }
