@@ -85,7 +85,7 @@ async function handleInboxMessages(context) {
   const after  = url.searchParams.get('after');
   const before = url.searchParams.get('before');
   const to     = url.searchParams.get('to');
-  const max    = Math.min(parseInt(url.searchParams.get('max') || '50', 10) || 50, 200);
+  const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10) || 0);
 
   const parts = [`label:${label}`];
   if (to)     parts.push(`to:${to}`);
@@ -97,16 +97,18 @@ async function handleInboxMessages(context) {
   try { accessToken = await mintGmailToken(cfg); }
   catch (err) { return gJson(502, { ok: false, error: `Auth failed: ${err.message}` }); }
 
-  const listUrl = `${GMAIL_BASE}/users/me/messages?q=${encodeURIComponent(q)}&maxResults=${max}`;
+  // List up to 500 matching IDs in one (cheap) subrequest; the client paginates
+  // full-message fetches via ?offset= so we never exceed the ~50 subrequest cap.
+  const listUrl = `${GMAIL_BASE}/users/me/messages?q=${encodeURIComponent(q)}&maxResults=500`;
   const listRes = await fetch(listUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
   if (!listRes.ok) return gJson(listRes.status, { ok: false, error: `Gmail list failed (${listRes.status}): ${await listRes.text()}` });
   const listJson = await listRes.json();
   const allIds = (listJson.messages || []).map(m => m.id);
-  if (!allIds.length) return gJson(200, { ok: true, messages: [], query: q });
+  const totalMatched = allIds.length;
+  if (!totalMatched) return gJson(200, { ok: true, messages: [], query: q, totalMatched: 0, offset, nextOffset: null });
 
   const FETCH_CAP = 40;
-  const truncated = allIds.length > FETCH_CAP;
-  const ids = allIds.slice(0, FETCH_CAP);
+  const ids = allIds.slice(offset, offset + FETCH_CAP);
 
   const messages = await Promise.all(ids.map(async id => {
     try {
@@ -129,7 +131,8 @@ async function handleInboxMessages(context) {
     }
   }));
 
-  return gJson(200, { ok: true, messages, query: q, truncated, totalMatched: allIds.length });
+  const nextOffset = (offset + ids.length < totalMatched) ? offset + ids.length : null;
+  return gJson(200, { ok: true, messages, query: q, totalMatched, offset, nextOffset });
 }
 
 // ── Inbox: single attachment text ────────────────────────────────────────────

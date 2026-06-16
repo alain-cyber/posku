@@ -3756,7 +3756,6 @@ async function inboxFetch() {
   if (before) params.set('before', before);
   if (sup.gmailToFilter) params.set('to', sup.gmailToFilter);
 
-  const url = '/api/inbox?' + params.toString();
   // Human-readable summary of what we're searching for — used in status updates
   // instead of Gmail's raw after:/before: syntax (which is confusing because of
   // the +1 day translation).
@@ -3767,29 +3766,43 @@ async function inboxFetch() {
   const human = `label "${label}"${toFilter}${fromTo ? ' · ' + fromTo : ''}`;
 
   setStatus($('inbox-status'), 'info', `Searching ${human}…`);
-  let res;
-  try {
-    res = await fetch(url, { cache: 'no-store' });
-  } catch (err) {
-    setStatus($('inbox-status'), 'err', `Network error: ${err.message}`);
-    return;
-  }
-  const j = await res.json().catch(() => null);
-  if (!res.ok || !j?.ok) {
-    // A non-JSON body on a 404 means the request never reached the gmail
-    // function (Pages-native 404) — almost always a stale/failed Functions
-    // deploy, since the function itself always returns JSON.
-    const detail = j?.error
-      || (j ? JSON.stringify(j)
-            : (res.status === 404
-                ? "no JSON body — /api/inbox isn't being served by Functions (stale/failed Cloudflare deploy, or the function route didn't register)"
-                : '(empty body)'));
-    setStatus($('inbox-status'), 'err', `HTTP ${res.status} from ${url} — ${detail}`);
-    return;
-  }
-  const msgs = j.messages || [];
-  if (j.truncated) {
-    setStatus($('inbox-status'), 'warn', `${j.totalMatched} emails matched — only the first ${msgs.length} were fetched (subrequest limit). Narrow the date range and re-run to get the rest.`);
+  // Auto-paginate: each /api/inbox call pulls up to 40 full messages (Workers'
+  // ~50 subrequest cap) and returns a nextOffset; loop until the whole window
+  // is fetched so the 40-per-call cap no longer limits the total.
+  const msgs = [];
+  let offset = 0, pages = 0;
+  while (true) {
+    const pageParams = new URLSearchParams(params);
+    pageParams.set('offset', String(offset));
+    const purl = '/api/inbox?' + pageParams.toString();
+    let res;
+    try {
+      res = await fetch(purl, { cache: 'no-store' });
+    } catch (err) {
+      setStatus($('inbox-status'), 'err', `Network error: ${err.message}`);
+      return;
+    }
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j?.ok) {
+      const detail = j?.error
+        || (j ? JSON.stringify(j)
+              : (res.status === 404
+                  ? "no JSON body — /api/inbox isn't being served by Functions (stale/failed Cloudflare deploy, or the function route didn't register)"
+                  : '(empty body)'));
+      setStatus($('inbox-status'), 'err', `HTTP ${res.status} from ${purl} — ${detail}`);
+      return;
+    }
+    msgs.push(...(j.messages || []));
+    pages++;
+    if (j.totalMatched > (j.messages?.length || 0)) {
+      setStatus($('inbox-status'), 'info', `Fetching ${msgs.length} of ${j.totalMatched} email(s) for ${human}…`);
+    }
+    if (j.nextOffset == null) break;
+    offset = j.nextOffset;
+    if (pages >= 50) {  // safety valve (~2000 emails)
+      setStatus($('inbox-status'), 'warn', `Stopped at ${msgs.length} emails (safety cap) — narrow the date range if you need more.`);
+      break;
+    }
   }
   if (!msgs.length) {
     setStatus($('inbox-status'), 'warn', `No messages found for ${human}.`);
