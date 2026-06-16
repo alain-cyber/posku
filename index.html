@@ -3756,7 +3756,7 @@ async function inboxFetch() {
   if (before) params.set('before', before);
   if (sup.gmailToFilter) params.set('to', sup.gmailToFilter);
 
-  const url = '/api/gmail/messages?' + params.toString();
+  const url = '/api/inbox?' + params.toString();
   // Human-readable summary of what we're searching for — used in status updates
   // instead of Gmail's raw after:/before: syntax (which is confusing because of
   // the +1 day translation).
@@ -3782,7 +3782,7 @@ async function inboxFetch() {
     const detail = j?.error
       || (j ? JSON.stringify(j)
             : (res.status === 404
-                ? "no JSON body — /api/gmail/messages isn't being served by Functions (likely a stale or failed Cloudflare deploy; redeploy and retry)"
+                ? "no JSON body — /api/inbox isn't being served by Functions (stale/failed Cloudflare deploy, or the function route didn't register)"
                 : '(empty body)'));
     setStatus($('inbox-status'), 'err', `HTTP ${res.status} from ${url} — ${detail}`);
     return;
@@ -3852,7 +3852,7 @@ async function inboxFetch() {
       const slice = pulls.slice(i, i + CHUNK);
       await Promise.all(slice.map(async ({ loadId, messageId, ref }) => {
         try {
-          const u = `/api/gmail/attachment?messageId=${encodeURIComponent(messageId)}&attachmentId=${encodeURIComponent(ref.attachmentId)}&filename=${encodeURIComponent(ref.filename)}`;
+          const u = `/api/inbox-attachment?messageId=${encodeURIComponent(messageId)}&attachmentId=${encodeURIComponent(ref.attachmentId)}&filename=${encodeURIComponent(ref.filename)}`;
           const r = await fetch(u, { cache: 'no-store' });
           const jj = await r.json().catch(() => null);
           if (!r.ok || !jj?.ok) {
