@@ -156,8 +156,10 @@ function classifyTree(name) {
   if (/Outlet/i.test(name))             return 'Outlet';
   // HDO: "<city> Liquidation Manifest LQ####.xlsx"
   if (/\bLiquidation\s+Manifest\s+LQ\d+/i.test(name)) return 'HDO';
-  // FC: "Liquidation Load 50595 Romeoville" / "Salvage Load …" / "Aged Inventory Load …" / "QC Load …"
-  if (/\b(Liquidation|Salvage|Aged|QC)(\s+Inventory)?\s+Load\s+\d+/i.test(name)) return 'FC';
+  // FC: "Aberdeen Liquidation Load ABD205 Manifest" (current) OR
+  //     "Liquidation Load 50595 Romeoville" (legacy). The load id may be a
+  //     location-prefixed code (ABD205) or a bare number (50595).
+  if (/\b(Liquidation|Salvage|Aged|QC)(\s+Inventory)?\s+Load\s+[A-Z]{0,4}\d+/i.test(name)) return 'FC';
   return null;
 }
 

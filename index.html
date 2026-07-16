@@ -978,7 +978,7 @@ const SUPPLIERS = {
 
     // Load type detection patterns
     types: [
-      { patterns: ['liquidation', ' lq ', '(lq)', '[lq]', 'lq-', '-lq'], code: 'LQ',  label: 'Liquidation' },
+      { patterns: ['liquidation', ' lq ', '(lq)', '[lq]', 'lq-', '-lq', ' liq ', ' liq\n', 'type: liq'], code: 'LQ',  label: 'Liquidation' },
       { patterns: ['salvage', 'slvg', '(salvage)', '[salvage]'],           code: 'S',   label: 'Salvage' },
       { patterns: ['aged like new', 'aged '],                              code: 'A',   label: 'Aged' },
       { patterns: ['qc rejects', 'qc reject', ' qc ', '(qc)', '[qc]'],   code: 'QC',  label: 'QC' },
@@ -1703,6 +1703,15 @@ function detectType(text, sup) {
 }
 
 function extractLoadIds(text) {
+  // 1. Authoritative "Load ID: ABD205" line (Wayfair's current format) — a
+  //    location-prefixed code (ABD205) OR a bare 4–6 digit number. When present
+  //    this IS the load id, so return ONLY these and never scoop up the Boston
+  //    ZIP (02116) / PO / seal / trailer numbers that also live in the email.
+  const explicit = [...text.matchAll(/\bLoad\s*ID\s*[:#\-]?\s*([A-Z]{2,4}\d{1,6}|\d{4,6})\b/gi)]
+    .map(m => m[1].trim().toUpperCase());
+  if (explicit.length) return [...new Set(explicit)];
+
+  // 2. Fallbacks for older / looser formats (e.g. .msg filenames listing loads).
   const ids = new Set();
   const patterns = [
     // "Load ID: 50544" / "Load #50544" / "Load Number 50544"
@@ -1746,7 +1755,10 @@ function parseEmail(text, supplierKey) {
     const flags = [];
     if (!locCode)  flags.push('Location not recognized — check the email');
     if (!typeCode) flags.push('Load type missing — check the email');
-    const sku  = locCode && typeCode ? sup.buildSKU(locCode, typeCode, loadId) : null;
+    // The SKU uses only the numeric part of the load id — the location prefix
+    // (ABD in ABD205) is already encoded as {loc}, so ABD205 → WYFAMDLQ205.
+    const skuNum = String(loadId).replace(/^[A-Za-z]+/, '') || loadId;
+    const sku  = locCode && typeCode ? sup.buildSKU(locCode, typeCode, skuNum) : null;
     const name = locCode && typeCode ? sup.getProductName(typeCode, locCode) : '';
     return {
       id:           'load_' + Date.now() + '_' + Math.random().toString(36).slice(2),
@@ -3965,10 +3977,26 @@ function setMfetchRange(daysBack) {
 function deriveWyfSkuFromFilename(filename, tree, path) {
   if (!filename) return null;
   const name = filename;
-  // ── FC manifests ──────────────────────────────────────────────────────────
+  // ── FC manifests (current July+ format) ───────────────────────────────────
+  // "Aberdeen Liquidation Load ABD205 Manifest.csv" / "Aberdeen Salvage Load ABD210 Manifest.csv"
+  // City first, load id is a location-prefixed code (ABD205), "Manifest" suffix
+  // (extension optional for native Google Sheets). SKU uses only the numeric part
+  // (ABD205 → 205) since {loc} already encodes the location.
+  let m = name.match(/^([A-Za-z\s]+?)\s+(Liquidation|Salvage|Aged(?:\s+Inventory)?|QC)\s+Load\s+([A-Za-z]{0,4}\d{1,6})\s+Manifest(?:\.(xlsx|csv))?$/i);
+  if (m) {
+    const t = m[2].toLowerCase().replace(/\s+inventory$/, '');
+    const loadType = { liquidation: 'LQ', salvage: 'S', aged: 'A', qc: 'QC' }[t];
+    const location = m[1].trim();
+    const locCode = wyfLocCodeFromCity(location);
+    const loadId = m[3].toUpperCase();                         // ABD205
+    const skuNum = loadId.replace(/^[A-Za-z]+/, '') || loadId; // 205
+    if (!loadType || !locCode) return { sku: null, loadType, locCode: null, loadId, reason: `Unknown location "${location}"` };
+    return { sku: `WYF${locCode}${loadType}${skuNum}`, loadType, locCode, loadId };
+  }
+  // ── FC manifests (legacy 50xxx format) ────────────────────────────────────
   // "Liquidation Load 50595 Romeoville.xlsx", "Salvage Load 50525 Romeoville.xlsx",
   // "Aged Load NNNNN Location.xlsx", etc.
-  let m = name.match(/^(Liquidation|Salvage|Aged|QC)\s+Load\s+(\d{4,6})\s+([A-Za-z\s]+?)\.(xlsx|csv)$/i);
+  m = name.match(/^(Liquidation|Salvage|Aged|QC)\s+Load\s+(\d{4,6})\s+([A-Za-z\s]+?)\.(xlsx|csv)$/i);
   if (m) {
     const typeMap = { liquidation: 'LQ', salvage: 'S', aged: 'A', qc: 'QC' };
     const loadType = typeMap[m[1].toLowerCase()];
