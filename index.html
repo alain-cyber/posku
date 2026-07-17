@@ -3257,8 +3257,9 @@ function updateSummary() {
   if (done)   chips.push(`<span class="chip" style="background:var(--green-dim);color:var(--green);border-color:rgba(30,127,86,.35);">${done} pushed</span>`);
   if (failed) chips.push(`<span class="chip red">${failed} failed</span>`);
   $('summary-chips').innerHTML = chips.join(' ');
-  // Show the bulk "Send all manifests" button only when there are unsent ones
-  const unsentManifests = loads.filter(l => l.supplierKey === 'SMS' && l.manifestRows?.length && !l.manifestSentTo).length;
+  // Show the bulk "Send all manifests" button only when there are unsent ones.
+  // Applies to ANY supplier — a Wayfair load with a parsed manifest counts too.
+  const unsentManifests = loads.filter(l => l.manifestRows?.length && !l.manifestSentTo).length;
   const btn = $('send-all-manifests-btn');
   if (btn) {
     btn.style.display = unsentManifests > 0 ? '' : 'none';
@@ -4359,7 +4360,7 @@ $('push-all-btn').onclick = async () => {
 $('send-all-manifests-btn').onclick = async () => {
   const pending = loads
     .map((l, i) => ({ l, i }))
-    .filter(({ l }) => l.supplierKey === 'SMS' && l.manifestRows?.length && !l.manifestSentTo);
+    .filter(({ l }) => l.manifestRows?.length && !l.manifestSentTo);
   if (!pending.length) { setStatus($('push-status'), 'warn', 'No manifests pending — all already sent.'); return; }
   const btn = $('send-all-manifests-btn');
   btn.disabled = true; btn.textContent = `Sending ${pending.length} manifest(s)…`;
