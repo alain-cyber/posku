@@ -17,7 +17,7 @@ const TOKEN_URL   = 'https://oauth2.googleapis.com/token';
 const GMAIL_BASE  = 'https://gmail.googleapis.com/gmail/v1';
 
 const ENVIRONMENTS = {
-  test: { origin: 'https://viatrading.biz',     keyVar: 'BIZ_API' },
+  test: { origin: 'https://ops.viatrading.biz', keyVar: 'BIZ_API' },
   live: { origin: 'https://ops.viatrading.com', keyVar: 'ops_api_key' },
 };
 

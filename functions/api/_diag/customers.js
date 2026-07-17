@@ -13,7 +13,7 @@
 // q = full_name search term (default "a").
 
 const ENVIRONMENTS = {
-  test: { origin: 'https://viatrading.biz',     keyVar: 'BIZ_API' },
+  test: { origin: 'https://ops.viatrading.biz', keyVar: 'BIZ_API' },
   live: { origin: 'https://ops.viatrading.com', keyVar: 'ops_api_key' },
 };
 

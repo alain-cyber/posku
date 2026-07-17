@@ -619,7 +619,7 @@ textarea::placeholder { color: var(--text4); }
 
     <div class="sidebar-footer">
       <div class="env-switch-side" id="env-switch" role="group" aria-label="API environment">
-        <button data-env="test" class="active" title="viatrading.biz — test/staging">TEST</button>
+        <button data-env="test" class="active" title="ops.viatrading.biz — test/staging">TEST</button>
         <button data-env="live" title="ops.viatrading.com — production">LIVE</button>
       </div>
       <div class="sidebar-meta" id="cfg-status-meta">Cloudflare proxy</div>
@@ -660,7 +660,7 @@ textarea::placeholder { color: var(--text4); }
     <!-- Hidden in CF mode — still here for local-file usage -->
     <div class="settings-bar">
       <label data-cfg-only>ERP base URL</label>
-      <input type="url" id="cfg-url" placeholder="https://viatrading.biz" data-cfg-only>
+      <input type="url" id="cfg-url" placeholder="https://ops.viatrading.biz" data-cfg-only>
       <label data-cfg-only>API key</label>
       <input type="password" id="cfg-key" class="key" placeholder="ims_…" data-cfg-only>
       <button class="btn ghost" id="cfg-save" data-cfg-only>Save</button>
@@ -2210,7 +2210,7 @@ async function erpRequest(method, path, body) {
   if (IS_LOCAL_FILE) {
     if (!cfg.apiKey) return { ok: false, error: 'No API key configured. Set it in the settings bar above.' };
     // In local-file mode the env switch picks the base URL directly.
-    const envBase = loadEnv() === 'live' ? 'https://ops.viatrading.com' : 'https://viatrading.biz';
+    const envBase = loadEnv() === 'live' ? 'https://ops.viatrading.com' : 'https://ops.viatrading.biz';
     const base = (cfg.baseUrl || envBase).replace(/\/+$/, '');
     url = base + path;
     headers['api-key'] = cfg.apiKey;
@@ -3451,7 +3451,7 @@ function applyEnvUI() {
 
 function initSettings() {
   const cfg = loadCfg();
-  $('cfg-url').value = cfg.baseUrl || 'https://viatrading.biz';
+  $('cfg-url').value = cfg.baseUrl || 'https://ops.viatrading.biz';
   $('cfg-key').value = cfg.apiKey  || '';
   // On Cloudflare Pages the API key lives as a server-side secret; hide the
   // browser-side key + base URL fields and show a status pill instead.
