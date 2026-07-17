@@ -1707,7 +1707,9 @@ function extractLoadIds(text) {
   //    location-prefixed code (ABD205) OR a bare 4–6 digit number. When present
   //    this IS the load id, so return ONLY these and never scoop up the Boston
   //    ZIP (02116) / PO / seal / trailer numbers that also live in the email.
-  const explicit = [...text.matchAll(/\bLoad\s*ID\s*[:#\-]?\s*([A-Z]{2,4}\d{1,6}|\d{4,6})\b/gi)]
+  // Matches "Load ID: ABD205", "Load ID: 51249 (Liquidation)" and Jacksonville's
+  // "Load: 51231" (no ID). Colon required so it never matches "Load Type: LQ".
+  const explicit = [...text.matchAll(/\bLoad(?:\s*ID)?\s*[:#\-]\s*([A-Z]{2,4}\d{1,6}|\d{4,6})\b/gi)]
     .map(m => m[1].trim().toUpperCase());
   if (explicit.length) return [...new Set(explicit)];
 
@@ -3970,6 +3972,21 @@ function setMfetchRange(daysBack) {
   $('mfetch-before').value = fmtDateInput(today);
 }
 
+// Map one-or-more type words ("Aged Salvage", "QC", "Salvage", "Aged Inventory")
+// to a single posku type code. Priority MUST mirror detectType()'s first-match
+// order (LQ > S > A > QC) so a manifest filename resolves to the SAME code the
+// email did — otherwise the manifest SKU wouldn't match the pushed SKU. Real
+// example: "Load ID: 51233 (Aged Salvage)" → email detectType hits 'salvage'
+// before 'aged', so → S; this helper must also return S. Returns null if none.
+function wyfTypeFromWords(s) {
+  s = String(s).toLowerCase();
+  if (/liquidation/.test(s)) return 'LQ';
+  if (/salvage/.test(s))     return 'S';
+  if (/aged/.test(s))        return 'A';
+  if (/\bqc\b/.test(s))      return 'QC';
+  return null;
+}
+
 // Derive a posku WYF SKU from the manifest filename + the tree it came from.
 // Returns { sku, loadType, locCode, loadId } or null when we can't recognize it.
 // We err on the side of "null" rather than guess — anything we return must be
@@ -3982,10 +3999,11 @@ function deriveWyfSkuFromFilename(filename, tree, path) {
   // City first, load id is a location-prefixed code (ABD205), "Manifest" suffix
   // (extension optional for native Google Sheets). SKU uses only the numeric part
   // (ABD205 → 205) since {loc} already encodes the location.
-  let m = name.match(/^([A-Za-z\s]+?)\s+(Liquidation|Salvage|Aged(?:\s+Inventory)?|QC)\s+Load\s+([A-Za-z]{0,4}\d{1,6})\s+Manifest(?:\.(xlsx|csv))?$/i);
+  // Type may be compound: "QC Liquidation", "Aged Salvage", "Aged Inventory".
+  const TYPEWORDS = '(?:QC|Liquidation|Salvage|Aged(?:\\s+Inventory)?)';
+  let m = name.match(new RegExp(`^([A-Za-z\\s]+?)\\s+(${TYPEWORDS}(?:\\s+${TYPEWORDS})?)\\s+Load\\s+([A-Za-z]{0,4}\\d{1,6})\\s+Manifest(?:\\.(xlsx|csv))?$`, 'i'));
   if (m) {
-    const t = m[2].toLowerCase().replace(/\s+inventory$/, '');
-    const loadType = { liquidation: 'LQ', salvage: 'S', aged: 'A', qc: 'QC' }[t];
+    const loadType = wyfTypeFromWords(m[2]);
     const location = m[1].trim();
     const locCode = wyfLocCodeFromCity(location);
     const loadId = m[3].toUpperCase();                         // ABD205
@@ -3996,14 +4014,15 @@ function deriveWyfSkuFromFilename(filename, tree, path) {
   // ── FC manifests (legacy 50xxx format) ────────────────────────────────────
   // "Liquidation Load 50595 Romeoville.xlsx", "Salvage Load 50525 Romeoville.xlsx",
   // "Aged Load NNNNN Location.xlsx", etc.
-  m = name.match(/^(Liquidation|Salvage|Aged|QC)\s+Load\s+(\d{4,6})\s+([A-Za-z\s]+?)\.(xlsx|csv)$/i);
+  m = name.match(new RegExp(`^(${TYPEWORDS}(?:\\s+${TYPEWORDS})?)\\s+Load\\s+([A-Za-z]{0,4}\\d{4,6})\\s+([A-Za-z\\s]+?)\\.(xlsx|csv)$`, 'i'));
   if (m) {
-    const typeMap = { liquidation: 'LQ', salvage: 'S', aged: 'A', qc: 'QC' };
-    const loadType = typeMap[m[1].toLowerCase()];
+    const loadType = wyfTypeFromWords(m[1]);
     const location = m[3].trim();
     const locCode = wyfLocCodeFromCity(location);
-    if (!loadType || !locCode) return { sku: null, loadType, locCode: null, loadId: m[2], reason: `Unknown location "${location}"` };
-    return { sku: `WYF${locCode}${loadType}${m[2]}`, loadType, locCode, loadId: m[2] };
+    const loadId = m[2].toUpperCase();
+    const skuNum = loadId.replace(/^[A-Za-z]+/, '') || loadId;
+    if (!loadType || !locCode) return { sku: null, loadType, locCode: null, loadId, reason: `Unknown location "${location}"` };
+    return { sku: `WYF${locCode}${loadType}${skuNum}`, loadType, locCode, loadId };
   }
   // ── HDO manifests ─────────────────────────────────────────────────────────
   // "Portland Liquidation Manifest LQ8068.xlsx"
