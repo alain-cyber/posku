@@ -1268,6 +1268,7 @@ PO_DEFAULTS.SMS = {
   ...PO_DEFAULTS.WYF,
   supplier_id:            SUPPLIERS.SMS.erpSupplier,   // 1205 Wal-Mart SAMS CLUB (was Wayfair's 770)
   defaultStatusId:        6,                           // Released (Sam's POs go straight to Released)
+  shipping_method_id:     66,                          // LTL (Sam's default when a club has no override)
   billing_address:        '',                          // blank default for Sam's (was Wayfair's address)
   shipping_company_id:    null,                        // no proposed carrier for Sam's (was Wayfair's Santa Fe)
   shipping_address_byLoc: {},                          // Sam's → Via Trading DC; fill per club when known
@@ -5055,7 +5056,7 @@ function drawCfgUISams() {
             <th class="narrow">Code</th>
             <th>City</th>
             <th title="Text written to the PO facility field. Leave blank to auto-use the UPPERCASE city.">Facility (PO)</th>
-            <th title="Default shipping method (title) for this club's POs. Blank = Truckload.">Ship title (PO)</th>
+            <th title="Default shipping method (title) for this club's POs. Blank = LTL.">Ship title (PO)</th>
             <th class="narrow">FOB state id</th>
             <th>FOB state name</th>
             <th class="x-col"></th>
@@ -5085,7 +5086,7 @@ function samsClubRow(c, i) {
     <td><input data-sck="city" value="${esc(c.city)}" placeholder="Idaho Falls, ID"></td>
     <td><input data-sck="facility" value="${esc(c.facility)}" placeholder="(auto: IDAHO FALLS)"></td>
     <td><select data-sck="poShip">
-      <option value="" ${!c.poShip ? 'selected' : ''}>— default (Truckload) —</option>
+      <option value="" ${!c.poShip ? 'selected' : ''}>— default (LTL) —</option>
       ${PO_DEFAULTS.SMS.shippingMethods.map(m => `<option value="${m.id}" ${String(c.poShip) === String(m.id) ? 'selected' : ''}>${m.id} — ${esc(m.name)}</option>`).join('')}
     </select></td>
     <td class="narrow"><input data-sck="fobId" type="number" value="${esc(c.fobId)}"></td>
