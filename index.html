@@ -1060,6 +1060,9 @@ const SUPPLIERS = {
     // Empty = derive it from the club city (UPPERCASE, part before the comma).
     // Fill a code here only when the ERP facility spelling differs from the city.
     clubFacilities: {},
+    // Optional per-club PO shipping method (shipping_method_id). Empty = the
+    // supplier default (64 Truckload). { LB: 65, IF: 66, ... }
+    poShippingByLoc: {},
     // First 4 digits of manifest # → club code
     clubByManifest: {
       '4777':'DEN', '4786':'LOG', '4805':'BIL', '6269':'HAR', '6345':'IF',
@@ -1192,6 +1195,7 @@ const PO_DEFAULTS = {
     user_name:         'posku_api',
     supplier_id:       770,
     legacy_user_id:    179,
+    defaultStatusId:   2,    // Pending (Wayfair default)
     shipping_method_id: 64,  // Truckload
     shipping_company_id: null, // no proposed carrier by default (was 393 Santa Fe)
     billing_address:   'Wayfair Inc., 4 Copley Place, 7th Floor, Boston, MA 02116',
@@ -1263,9 +1267,14 @@ const PO_DEFAULTS = {
 PO_DEFAULTS.SMS = {
   ...PO_DEFAULTS.WYF,
   supplier_id:            SUPPLIERS.SMS.erpSupplier,   // 1205 Wal-Mart SAMS CLUB (was Wayfair's 770)
+  defaultStatusId:        6,                           // Released (Sam's POs go straight to Released)
   billing_address:        '',                          // blank default for Sam's (was Wayfair's address)
   shipping_company_id:    null,                        // no proposed carrier for Sam's (was Wayfair's Santa Fe)
   shipping_address_byLoc: {},                          // Sam's → Via Trading DC; fill per club when known
+  // Per-club PO shipping method (shipping_method_id) — set in Sam's rules.
+  // Live getter so it always reflects the current rules; falls back to the
+  // supplier default (Truckload) when a club has no explicit method.
+  get poShippingByLoc() { return SUPPLIERS.SMS.poShippingByLoc || {}; },
   // Live getter so it always reflects the current Sam's rules (clubCities +
   // clubFacilities) even after a rules edit — no stale snapshot. An explicit
   // clubFacilities[code] wins; otherwise fall back to the UPPERCASE city
@@ -1518,7 +1527,7 @@ function applySamsRulesOverride(s) {
     sms.clubMarkups = cleaned;
   }
   if (Array.isArray(s.clubs) && s.clubs.length) {
-    sms.fobIds = {}; sms.fobNames = {}; sms.clubCities = {}; sms.clubByManifest = {}; sms.clubFacilities = {};
+    sms.fobIds = {}; sms.fobNames = {}; sms.clubCities = {}; sms.clubByManifest = {}; sms.clubFacilities = {}; sms.poShippingByLoc = {};
     s.clubs.forEach(c => {
       if (!c.code) return;
       sms.fobIds[c.code]      = Number(c.fobId) || null;
@@ -1526,6 +1535,8 @@ function applySamsRulesOverride(s) {
       sms.clubCities[c.code]  = c.city || '';
       const fac = String(c.facility || '').trim();
       if (fac) sms.clubFacilities[c.code] = fac;   // blank = derive from city
+      const ship = Number(c.poShip);
+      if (Number.isFinite(ship) && ship > 0) sms.poShippingByLoc[c.code] = ship;  // blank = supplier default
       if (c.manifestPrefix)   sms.clubByManifest[String(c.manifestPrefix)] = c.code;
     });
   }
@@ -1569,6 +1580,7 @@ function currentSamsRulesAsEditable() {
     manifestPrefix: (inv[code] || []).join(', '),
     city:     s.clubCities?.[code] || '',
     facility: s.clubFacilities?.[code] || '',
+    poShip:   s.poShippingByLoc?.[code] || '',
     fobId:    s.fobIds[code]   ?? '',
     fobName:  s.fobNames[code] ?? '',
   }));
@@ -4516,7 +4528,7 @@ function createDraftFromLoads(loadsArr) {
     // NEED fields (per Via Trading PO API docs)
     po_number:        load.sku,  // default = first SKU; can be cleared to auto-number
     facility:         def.facilityByLoc?.[load.locCode] || '',
-    status_id:        2,            // Pending (NEED — send explicitly)
+    status_id:        def.defaultStatusId ?? 2,   // Sam's → 6 Released, Wayfair → 2 Pending
     scheduled_date:   todayISO(7),  // dock arrival
     tentative_schedule: true,
     dock_id:          '',
@@ -4538,7 +4550,7 @@ function createDraftFromLoads(loadsArr) {
     order_date:       todayISO(0),
     due_date:         todayISO(7),
     delivery_date:    todayISO(10),
-    shipping_method_id: def.shipping_method_id,
+    shipping_method_id: def.poShippingByLoc?.[load.locCode] || def.shipping_method_id,
     shipping_company_id: def.shipping_company_id,
     sub_total:        0,
     billing_address:  def.billing_address,
@@ -5043,6 +5055,7 @@ function drawCfgUISams() {
             <th class="narrow">Code</th>
             <th>City</th>
             <th title="Text written to the PO facility field. Leave blank to auto-use the UPPERCASE city.">Facility (PO)</th>
+            <th title="Default shipping method (title) for this club's POs. Blank = Truckload.">Ship title (PO)</th>
             <th class="narrow">FOB state id</th>
             <th>FOB state name</th>
             <th class="x-col"></th>
@@ -5071,6 +5084,10 @@ function samsClubRow(c, i) {
     <td class="narrow"><input data-sck="code" value="${esc(c.code)}" placeholder="IF"></td>
     <td><input data-sck="city" value="${esc(c.city)}" placeholder="Idaho Falls, ID"></td>
     <td><input data-sck="facility" value="${esc(c.facility)}" placeholder="(auto: IDAHO FALLS)"></td>
+    <td><select data-sck="poShip">
+      <option value="" ${!c.poShip ? 'selected' : ''}>— default (Truckload) —</option>
+      ${PO_DEFAULTS.SMS.shippingMethods.map(m => `<option value="${m.id}" ${String(c.poShip) === String(m.id) ? 'selected' : ''}>${m.id} — ${esc(m.name)}</option>`).join('')}
+    </select></td>
     <td class="narrow"><input data-sck="fobId" type="number" value="${esc(c.fobId)}"></td>
     <td><input data-sck="fobName" value="${esc(c.fobName)}" placeholder="Idaho"></td>
     <td class="x-col"><button class="x-btn" data-sms-club-del="${i}" title="Remove">×</button></td>
@@ -5163,8 +5180,8 @@ function bindCfgHandlersSams() {
     tbody.insertAdjacentHTML('beforeend', samsMarkupRow('', {}, i));
     bindCfgHandlersSams();  // re-bind to pick up new row
   };
-  $('cfg-sms-club-body').querySelectorAll('input[data-sck]').forEach(el => {
-    el.oninput = () => {
+  $('cfg-sms-club-body').querySelectorAll('input[data-sck], select[data-sck]').forEach(el => {
+    el.oninput = el.onchange = () => {
       const i = +el.closest('tr').dataset.sci;
       cfgDraft.clubs[i][el.dataset.sck] = el.value;
     };
@@ -5176,7 +5193,7 @@ function bindCfgHandlersSams() {
     };
   });
   $('cfg-sms-add-club').onclick = () => {
-    cfgDraft.clubs.push({ manifestPrefix: '', code: '', city: '', facility: '', fobId: '', fobName: '' });
+    cfgDraft.clubs.push({ manifestPrefix: '', code: '', city: '', facility: '', poShip: '', fobId: '', fobName: '' });
     drawCfgUI();
   };
 
