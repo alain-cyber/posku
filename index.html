@@ -5088,11 +5088,14 @@ function drawCfgUISams() {
 }
 
 function samsClubRow(c, i) {
+  // Facility placeholder mirrors THIS club's city (UPPERCASE, before the comma)
+  // so it shows what the PO will actually auto-use when the field is left blank.
+  const autoFac = String(c.city || '').split(',')[0].trim().toUpperCase();
   return `<tr data-sci="${i}">
     <td class="narrow"><input data-sck="manifestPrefix" value="${esc(c.manifestPrefix)}" placeholder="6345"></td>
     <td class="narrow"><input data-sck="code" value="${esc(c.code)}" placeholder="IF"></td>
     <td><input data-sck="city" value="${esc(c.city)}" placeholder="Idaho Falls, ID"></td>
-    <td><input data-sck="facility" value="${esc(c.facility)}" placeholder="(auto: IDAHO FALLS)"></td>
+    <td><input data-sck="facility" value="${esc(c.facility)}" placeholder="${autoFac ? esc('(auto: ' + autoFac + ')') : '(auto: from city)'}"></td>
     <td><select data-sck="poShip">
       <option value="" ${!c.poShip ? 'selected' : ''}>— default (LTL) —</option>
       ${PO_DEFAULTS.SMS.shippingMethods.map(m => `<option value="${m.id}" ${String(c.poShip) === String(m.id) ? 'selected' : ''}>${m.id} — ${esc(m.name)}</option>`).join('')}
