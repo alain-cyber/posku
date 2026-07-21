@@ -1258,6 +1258,11 @@ const PO_DEFAULTS = {
   },
 };
 
+// Built-in club → city map, captured now (before any saved rules overwrite
+// SUPPLIERS.SMS.clubCities at startup). Used as a fallback so the PO facility
+// still derives from the known city even when a saved config dropped it.
+const SMS_DEFAULT_CLUB_CITIES = { ...SUPPLIERS.SMS.clubCities };
+
 // Sam's Club PO defaults. Inherits WYF's option lists (shipping methods /
 // companies / statuses) but fixes the Sam's-specific data that was wrongly
 // inherited from Wayfair: supplier id, and the billing address (which showed
@@ -1283,10 +1288,13 @@ PO_DEFAULTS.SMS = {
   get facilityByLoc() {
     const cities = SUPPLIERS.SMS.clubCities || {};
     const over   = SUPPLIERS.SMS.clubFacilities || {};
+    const codes  = new Set([...Object.keys(SMS_DEFAULT_CLUB_CITIES), ...Object.keys(cities), ...Object.keys(over)]);
     const out = {};
-    for (const code of new Set([...Object.keys(cities), ...Object.keys(over)])) {
+    for (const code of codes) {
       const o = String(over[code] || '').trim();
-      out[code] = o || String(cities[code] || '').split(',')[0].trim().toUpperCase();
+      // saved city → else built-in city; take the part before the comma, UPPERCASE.
+      const city = String(cities[code] || SMS_DEFAULT_CLUB_CITIES[code] || '').split(',')[0].trim().toUpperCase();
+      out[code] = o || city;
     }
     return out;
   },
@@ -1579,7 +1587,7 @@ function currentSamsRulesAsEditable() {
   const clubs = [...codes].sort().map(code => ({
     code,
     manifestPrefix: (inv[code] || []).join(', '),
-    city:     s.clubCities?.[code] || '',
+    city:     s.clubCities?.[code] || SMS_DEFAULT_CLUB_CITIES[code] || '',
     facility: s.clubFacilities?.[code] || '',
     poShip:   s.poShippingByLoc?.[code] || '',
     fobId:    s.fobIds[code]   ?? '',
