@@ -598,6 +598,7 @@ textarea::placeholder { color: var(--text4); }
 
     <div class="sidebar-section">
       <div class="sidebar-section-title">Tools</div>
+      <a class="nav-item" href="wayfair-activity.html" target="_blank" title="Wayfair activity — SKUs, POs, invoices, manifests"><span class="nav-icon">📋</span><span class="nav-label">WYF activity</span></a>
       <a class="nav-item" href="diagnostic.html" target="_blank" title="Diagnostics"><span class="nav-icon">🩺</span><span class="nav-label">Diagnostics</span></a>
       <a class="nav-item" href="whats-new.html" target="_blank" title="What's new"><span class="nav-icon">✨</span><span class="nav-label">What's new</span></a>
     </div>
@@ -2636,6 +2637,52 @@ function stashInboxDiag(payload) {
   try { localStorage.setItem('posku.inbox.diag.v1', JSON.stringify(payload)); } catch {}
 }
 
+// ── Activity ledger ──────────────────────────────────────────────────────────
+// An uncapped, upsert-by-key record of every real operation (SKU push, PO,
+// invoice, manifest→sheet) so the standalone activity page can show the full
+// history — including whether each SKU was pushed WITH a manifest/price or with
+// null values (no manifest fetched yet). Keyed so a later re-push updates the
+// same row rather than duplicating it.
+const LEDGER_KEY = 'posku.ledger.v1';
+function loadLedger() {
+  let l; try { l = JSON.parse(localStorage.getItem(LEDGER_KEY)); } catch {}
+  l = l || {};
+  for (const k of ['skus', 'pos', 'invoices', 'manifests']) if (!Array.isArray(l[k])) l[k] = [];
+  return l;
+}
+function ledgerRecord(kind, key, entry) {
+  try {
+    const l = loadLedger();
+    const arr = l[kind];
+    const now = new Date().toISOString();
+    const i = arr.findIndex(e => e._key === key);
+    if (i >= 0) arr[i] = { ...arr[i], ...entry, _key: key, lastAt: now };
+    else arr.unshift({ ...entry, _key: key, at: now, lastAt: now });
+    localStorage.setItem(LEDGER_KEY, JSON.stringify(l));
+  } catch {}
+}
+
+// Record a SKU push. `basis` captures how it was priced at push time:
+//   manifest → real manifest values · flat → salvage flat price · none → null
+//   values (no manifest fetched yet). A re-push after the manifest arrives
+//   upserts the same row and flips basis to "manifest".
+function recordLedgerSku(load, result) {
+  const env = loadEnv();
+  const sku = withEnvSuffix(load.sku || '');
+  const hasManifest = !!(load.manifestRows && load.manifestRows.length);
+  const hasFlat     = load.flatPrice != null;
+  const basis = hasManifest ? 'manifest' : (hasFlat ? 'flat' : 'none');
+  ledgerRecord('skus', env + '|' + sku, {
+    sku, env, supplier: load.supplierKey,
+    loadId: load.loadId, locCode: load.locCode, typeCode: load.typeCode,
+    productName: load.name || '',
+    basis, manifestRows: hasManifest ? load.manifestRows.length : 0,
+    flatPrice: hasFlat ? Number(load.flatPrice) : null,
+    erpId: result.erpId ?? load.productId ?? null,
+    updated: !!result.updated,
+  });
+}
+
 async function pushLoad(load) {
   if (!load.sku) return { ok: false, error: 'SKU not generated — fix location/type first.' };
 
@@ -2814,6 +2861,10 @@ function attachSamsManifestHandlers() {
         }
         diag.ok = true; stashSheetDiag(diag);
         load.manifestSentTo = j.updatedRange || j.tab || 'Sheet';
+        ledgerRecord('manifests', diag.env + '|' + diag.sku + '|' + diag.tab, {
+          sku: diag.sku, env: diag.env, supplier: load.supplierKey, tab: diag.tab,
+          rows: values.length, loadId: load.loadId,
+        });
         load.manifestError = null;
         load.manifestExpanded = false;
         setStatus($('push-status'), 'ok', `Sent ${values.length} row(s) to "${j.tab || diag.tab}"${j.createdTab ? ' (created tab)' : ''}.`);
@@ -3451,6 +3502,7 @@ async function doPush(indices, opts = {}) {
       load.erpResult = result.updated ? `Updated · ERP id: ${result.erpId ?? 'n/a'}` : `ERP id: ${result.erpId ?? 'n/a'}`;
       okCount++;
       recordPushSuccess();
+      recordLedgerSku(load, result);
     } else if (result.skipped) {
       load.status = 'dup';
       load.erpResult = result.error;
@@ -4416,6 +4468,10 @@ $('send-all-manifests-btn').onclick = async () => {
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
       l.manifestSentTo = j.updatedRange || j.tab || 'Sheet';
+      ledgerRecord('manifests', loadEnv() + '|' + withEnvSuffix(l.sku || '') + '|' + sup.sheetTab, {
+        sku: withEnvSuffix(l.sku || ''), env: loadEnv(), supplier: l.supplierKey,
+        tab: sup.sheetTab, rows: values.length, loadId: l.loadId,
+      });
       okCount++;
     } catch (err) {
       l.manifestError = `Send failed: ${err.message}`;
@@ -4869,6 +4925,13 @@ async function pushSinglePo(idx) {
     d.status = 'done';
     d.poId = poId;
     d.result = `Pushed · PO id: ${poId ?? 'n/a'}`;
+    ledgerRecord('pos', 'po|' + (poId ?? d.id), {
+      poId, poNumber: d.po_number || '', env: loadEnv(),
+      supplier: d.supplierKey || (loads[d.items?.[0]?.loadIdx]?.supplierKey) || activeSupplier,
+      loadIds: (d.items || []).map(it => it.loadId).filter(Boolean),
+      itemCount: (d.items || []).length, locCode: d.locCode || '',
+      facility: d.facility || '', statusId: d.status_id,
+    });
     // Gamify: same HUD / streak / particle burst the SKU push uses.
     const sb = getStats();
     recordPushSuccess();
@@ -6509,6 +6572,13 @@ async function pushSingleInvoice(idx) {
     d.status = 'done';
     d.invoiceId = invId;
     d.result = `Pushed · invoice id ${invId ?? '(check response)'}`;
+    ledgerRecord('invoices', 'inv|' + (invId ?? d.id), {
+      invoiceId: invId, env: loadEnv(),
+      supplier: (loads[d.items?.[0]?.loadIdx]?.supplierKey) || activeSupplier,
+      customer: d.customer?.name || d.customer?.email || '',
+      loadIds: (d.items || []).map(it => loads[it.loadIdx]?.loadId).filter(Boolean),
+      itemCount: (d.items || []).length,
+    });
     // Mark each underlying load as invoiced and bump the HUD gamification.
     d.items.forEach(it => {
       const l = loads[it.loadIdx];

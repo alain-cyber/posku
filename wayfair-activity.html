@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wayfair Activity — Posku</title>
+<style>
+  :root {
+    --bg: #0e0f13; --surface: #16181e; --surface2: #1b1e26; --border: #262a34;
+    --text: #e6e9ef; --text2: #aab2c0; --text3: #6f7891;
+    --green: #35c07f; --green-bg: rgba(53,192,127,0.14); --green-bd: rgba(53,192,127,0.4);
+    --amber: #e0a63a; --amber-bg: rgba(224,166,58,0.14); --amber-bd: rgba(224,166,58,0.4);
+    --blue: #55a6ff; --blue-bg: rgba(85,166,255,0.14); --blue-bd: rgba(85,166,255,0.4);
+    --red: #f0685f;
+    --accent: #ff7a3d;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: 'DM Mono', ui-monospace, Menlo, Consolas, monospace; background: var(--bg); color: var(--text); margin: 0; padding: 1.5rem clamp(1rem, 4vw, 3rem); }
+  h1 { font-size: 1.15rem; letter-spacing: 0.04em; margin: 0 0 0.15rem; display: flex; align-items: center; gap: 0.5rem; }
+  .sub { color: var(--text3); font-size: 0.72rem; margin-bottom: 1.2rem; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1.4rem; }
+  .btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 0.4rem 0.85rem; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 0.72rem; letter-spacing: 0.03em; transition: background 0.13s, color 0.13s; }
+  .btn:hover { background: #232733; color: #fff; }
+  .btn.on { background: var(--accent); border-color: var(--accent); color: #1a1206; font-weight: 600; }
+  .spacer { flex: 1; }
+  section { margin-bottom: 2rem; }
+  .sec-head { display: flex; align-items: baseline; gap: 0.6rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+  .sec-head h2 { font-size: 0.92rem; margin: 0; letter-spacing: 0.03em; }
+  .sec-head .count { color: var(--text3); font-size: 0.72rem; }
+  .chips { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .chip { font-size: 0.64rem; padding: 0.12rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); color: var(--text2); }
+  .chip.green { color: var(--green); background: var(--green-bg); border-color: var(--green-bd); }
+  .chip.amber { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-bd); }
+  .chip.blue  { color: var(--blue);  background: var(--blue-bg);  border-color: var(--blue-bd); }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.72rem; min-width: 640px; }
+  th { text-align: left; padding: 0.5rem 0.7rem; color: var(--text3); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.6rem; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface2); }
+  td { padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--border); color: var(--text2); white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+  .sku { color: var(--text); font-weight: 600; }
+  .badge { font-size: 0.62rem; padding: 0.14rem 0.5rem; border-radius: 5px; border: 1px solid; display: inline-block; }
+  .badge.manifest { color: var(--green); background: var(--green-bg); border-color: var(--green-bd); }
+  .badge.flat     { color: var(--blue);  background: var(--blue-bg);  border-color: var(--blue-bd); }
+  .badge.none     { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-bd); }
+  .muted { color: var(--text3); }
+  .empty { color: var(--text3); font-size: 0.74rem; padding: 1.2rem 0.7rem; }
+  .env-tag { font-size: 0.58rem; padding: 0.06rem 0.4rem; border-radius: 4px; background: var(--surface2); border: 1px solid var(--border); color: var(--text3); text-transform: uppercase; }
+</style>
+</head>
+<body>
+<h1>📋 Wayfair Activity</h1>
+<div class="sub" id="sub">Everything Posku has pushed for Wayfair — SKUs, purchase orders, invoices, and manifests sent to the Sheet.</div>
+
+<div class="toolbar">
+  <button class="btn on" data-env="all">All envs</button>
+  <button class="btn" data-env="test">Test</button>
+  <button class="btn" data-env="live">Live</button>
+  <span class="spacer"></span>
+  <button class="btn" id="refresh">Refresh</button>
+  <button class="btn" id="export">Export CSV</button>
+</div>
+
+<div id="root"></div>
+
+<script>
+const LEDGER_KEY = 'posku.ledger.v1';
+let envFilter = 'all';
+
+function loadLedger() {
+  let l; try { l = JSON.parse(localStorage.getItem(LEDGER_KEY)); } catch {}
+  l = l || {};
+  for (const k of ['skus','pos','invoices','manifests']) if (!Array.isArray(l[k])) l[k] = [];
+  return l;
+}
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const isWyf = e => (e.supplier || 'WYF') === 'WYF';
+const inEnv = e => envFilter === 'all' || (e.env || 'test') === envFilter;
+const fmt = iso => { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? '—' : d.toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }); };
+const BASIS = {
+  manifest: { cls: 'manifest', label: '✓ Manifest (priced)' },
+  flat:     { cls: 'flat',     label: 'Flat (salvage)' },
+  none:     { cls: 'none',     label: '⚠ No manifest (null values)' },
+};
+
+function rows(arr) { return arr.filter(e => isWyf(e) && inEnv(e)); }
+
+function render() {
+  const l = loadLedger();
+  const skus = rows(l.skus), pos = rows(l.pos), invs = rows(l.invoices), mans = rows(l.manifests);
+
+  const withMan = skus.filter(s => s.basis === 'manifest').length;
+  const flat    = skus.filter(s => s.basis === 'flat').length;
+  const nullv   = skus.filter(s => s.basis === 'none').length;
+
+  const skuChips = `
+    <span class="chip green">${withMan} with manifest</span>
+    <span class="chip blue">${flat} flat</span>
+    <span class="chip amber">${nullv} null (no manifest)</span>`;
+
+  document.getElementById('root').innerHTML = [
+    section('SKUs pushed to ERP', skus.length, skuChips, skuTable(skus)),
+    section('Purchase orders created', pos.length, '', poTable(pos)),
+    section('Invoices created', invs.length, '', invTable(invs)),
+    section('Manifests sent to Sheet', mans.length, '', manTable(mans)),
+  ].join('');
+}
+
+function section(title, count, chips, inner) {
+  return `<section>
+    <div class="sec-head">
+      <h2>${esc(title)}</h2>
+      <span class="count">${count} record${count === 1 ? '' : 's'}</span>
+      <div class="chips">${chips}</div>
+    </div>
+    ${inner}
+  </section>`;
+}
+
+function tableWrap(head, body, cols) {
+  if (!body) return `<div class="table-wrap"><div class="empty">Nothing recorded yet.</div></div>`;
+  return `<div class="table-wrap"><table><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+function skuTable(list) {
+  const body = list.map(s => {
+    const b = BASIS[s.basis] || BASIS.none;
+    return `<tr>
+      <td class="sku">${esc(s.sku)} <span class="env-tag">${esc(s.env || 'test')}</span></td>
+      <td>${esc(s.typeCode || '—')} / ${esc(s.locCode || '—')}</td>
+      <td><span class="badge ${b.cls}">${b.label}</span></td>
+      <td>${s.manifestRows ? esc(s.manifestRows) + ' lines' : (s.flatPrice != null ? '$' + esc(s.flatPrice) : '<span class="muted">—</span>')}</td>
+      <td>${s.erpId != null ? esc(s.erpId) : '<span class="muted">n/a</span>'}${s.updated ? ' <span class="muted">(upd)</span>' : ''}</td>
+      <td class="muted">${esc(s.loadId || '—')}</td>
+      <td class="muted">${fmt(s.at)}</td>
+      <td class="muted">${s.lastAt && s.lastAt !== s.at ? fmt(s.lastAt) : '—'}</td>
+    </tr>`;
+  }).join('');
+  return tableWrap(['SKU','Type/Loc','Pricing basis','Manifest','ERP id','Load','First push','Re-priced'], body);
+}
+
+function poTable(list) {
+  const body = list.map(p => `<tr>
+    <td class="sku">${esc(p.poNumber || p.poId || '—')} <span class="env-tag">${esc(p.env || 'test')}</span></td>
+    <td>${p.poId != null ? esc(p.poId) : '<span class="muted">n/a</span>'}</td>
+    <td>${esc(p.facility || '—')}</td>
+    <td>${esc(p.itemCount || 0)} load(s)</td>
+    <td class="muted">${esc((p.loadIds || []).join(', ') || '—')}</td>
+    <td class="muted">${fmt(p.at)}</td>
+  </tr>`).join('');
+  return tableWrap(['PO #','ERP id','Facility','Lines','Load/Manifest #s','Created'], body);
+}
+
+function invTable(list) {
+  const body = list.map(v => `<tr>
+    <td class="sku">${v.invoiceId != null ? esc(v.invoiceId) : '—'} <span class="env-tag">${esc(v.env || 'test')}</span></td>
+    <td>${esc(v.customer || '—')}</td>
+    <td>${esc(v.itemCount || 0)} line(s)</td>
+    <td class="muted">${esc((v.loadIds || []).join(', ') || '—')}</td>
+    <td class="muted">${fmt(v.at)}</td>
+  </tr>`).join('');
+  return tableWrap(['Invoice id','Customer','Lines','Load #s','Created'], body);
+}
+
+function manTable(list) {
+  const body = list.map(m => `<tr>
+    <td class="sku">${esc(m.sku)} <span class="env-tag">${esc(m.env || 'test')}</span></td>
+    <td>${esc(m.tab || '—')}</td>
+    <td>${esc(m.rows || 0)} rows</td>
+    <td class="muted">${esc(m.loadId || '—')}</td>
+    <td class="muted">${fmt(m.lastAt || m.at)}</td>
+  </tr>`).join('');
+  return tableWrap(['SKU','Sheet tab','Rows','Load #','Sent'], body);
+}
+
+// ── CSV export (SKU sheet — the one with the manifest-vs-null flag) ───────────
+function exportCsv() {
+  const l = loadLedger();
+  const list = rows(l.skus);
+  const head = ['sku','env','type','loc','pricing_basis','manifest_lines','flat_price','erp_id','load_id','first_push','re_priced'];
+  const lines = [head.join(',')].concat(list.map(s => [
+    s.sku, s.env, s.typeCode, s.locCode,
+    s.basis === 'manifest' ? 'manifest' : s.basis === 'flat' ? 'flat' : 'null_no_manifest',
+    s.manifestRows || '', s.flatPrice != null ? s.flatPrice : '', s.erpId ?? '',
+    s.loadId || '', s.at || '', (s.lastAt && s.lastAt !== s.at) ? s.lastAt : '',
+  ].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')));
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'wayfair-skus-activity.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+document.querySelectorAll('[data-env]').forEach(b => {
+  b.onclick = () => {
+    envFilter = b.dataset.env;
+    document.querySelectorAll('[data-env]').forEach(x => x.classList.toggle('on', x === b));
+    render();
+  };
+});
+document.getElementById('refresh').onclick = render;
+document.getElementById('export').onclick = exportCsv;
+render();
+</script>
+</body>
+</html>
