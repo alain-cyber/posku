@@ -790,8 +790,8 @@ textarea::placeholder { color: var(--text4); }
                 <th>Product name</th>
                 <th>FOB state</th>
                 <th>Status</th>
-                <th title="Loads sharing a PO # go on one purchase order (default: same club + received day)">PO #</th>
-                <th title="Loads sharing an Invoice # go on one invoice (default: same club + received day)">Inv #</th>
+                <th title="Loads sharing a PO # go on one purchase order (default: one number per load, no grouping). Edit to group.">PO #</th>
+                <th title="Loads sharing an Invoice # go on one invoice (default: one number per load, no grouping). Edit to group.">Inv #</th>
                 <th></th>
               </tr>
             </thead>
@@ -1056,6 +1056,10 @@ const SUPPLIERS = {
       LAY: 'Layton, UT',      RDL: 'Riverdale, UT',   PRO: 'Provo, UT',        LAR: 'Laredo, TX',
       MCA: 'McAllen, TX',     CAS: 'Casper, WY',      THO: 'Thornton, CO',
     },
+    // Optional per-club facility override for the PO `facility` text column.
+    // Empty = derive it from the club city (UPPERCASE, part before the comma).
+    // Fill a code here only when the ERP facility spelling differs from the city.
+    clubFacilities: {},
     // First 4 digits of manifest # → club code
     clubByManifest: {
       '4777':'DEN', '4786':'LOG', '4805':'BIL', '6269':'HAR', '6345':'IF',
@@ -1262,10 +1266,20 @@ PO_DEFAULTS.SMS = {
   billing_address:        '',                          // blank default for Sam's (was Wayfair's address)
   shipping_company_id:    null,                        // no proposed carrier for Sam's (was Wayfair's Santa Fe)
   shipping_address_byLoc: {},                          // Sam's → Via Trading DC; fill per club when known
-  facilityByLoc: Object.fromEntries(
-    Object.entries(SUPPLIERS.SMS.clubCities || {})
-      .map(([code, city]) => [code, String(city).split(',')[0].trim().toUpperCase()])
-  ),
+  // Live getter so it always reflects the current Sam's rules (clubCities +
+  // clubFacilities) even after a rules edit — no stale snapshot. An explicit
+  // clubFacilities[code] wins; otherwise fall back to the UPPERCASE city
+  // (part before the comma), matching how the ERP stores the facility text.
+  get facilityByLoc() {
+    const cities = SUPPLIERS.SMS.clubCities || {};
+    const over   = SUPPLIERS.SMS.clubFacilities || {};
+    const out = {};
+    for (const code of new Set([...Object.keys(cities), ...Object.keys(over)])) {
+      const o = String(over[code] || '').trim();
+      out[code] = o || String(cities[code] || '').split(',')[0].trim().toUpperCase();
+    }
+    return out;
+  },
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -1504,12 +1518,14 @@ function applySamsRulesOverride(s) {
     sms.clubMarkups = cleaned;
   }
   if (Array.isArray(s.clubs) && s.clubs.length) {
-    sms.fobIds = {}; sms.fobNames = {}; sms.clubCities = {}; sms.clubByManifest = {};
+    sms.fobIds = {}; sms.fobNames = {}; sms.clubCities = {}; sms.clubByManifest = {}; sms.clubFacilities = {};
     s.clubs.forEach(c => {
       if (!c.code) return;
       sms.fobIds[c.code]      = Number(c.fobId) || null;
       sms.fobNames[c.code]    = c.fobName || '';
       sms.clubCities[c.code]  = c.city || '';
+      const fac = String(c.facility || '').trim();
+      if (fac) sms.clubFacilities[c.code] = fac;   // blank = derive from city
       if (c.manifestPrefix)   sms.clubByManifest[String(c.manifestPrefix)] = c.code;
     });
   }
@@ -1551,9 +1567,10 @@ function currentSamsRulesAsEditable() {
   const clubs = [...codes].sort().map(code => ({
     code,
     manifestPrefix: (inv[code] || []).join(', '),
-    city:    s.clubCities?.[code] || '',
-    fobId:   s.fobIds[code]   ?? '',
-    fobName: s.fobNames[code] ?? '',
+    city:     s.clubCities?.[code] || '',
+    facility: s.clubFacilities?.[code] || '',
+    fobId:    s.fobIds[code]   ?? '',
+    fobName:  s.fobNames[code] ?? '',
   }));
   return {
     skuTemplate:           s.skuTemplate,
@@ -2816,11 +2833,16 @@ function fmtEmailDate(raw) {
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-// Keep the loads list grouped by location (alphabetical), then by load id —
-// so e.g. all Fullerton SMS loads sit together. Called after loads are added.
+// Order the loads list purely by the source email's date (oldest first), no
+// location grouping. Loads with no email date sort last, tie-broken by load id
+// so the order stays stable across re-renders.
 function sortLoads() {
+  const t = l => {
+    const d = l.emailDate ? new Date(l.emailDate).getTime() : NaN;
+    return isNaN(d) ? Infinity : d;
+  };
   loads.sort((a, b) =>
-    (a.locCode || '~').localeCompare(b.locCode || '~') ||
+    t(a) - t(b) ||
     String(a.loadId || '').localeCompare(String(b.loadId || '')));
 }
 
@@ -2835,26 +2857,17 @@ function receivedDay(load) {
   return load._addedDay;
 }
 
-// Default PO# / INVOICE# grouping for Sam's loads: same club + same received-day
-// share a group number (user can override per cell). Only fills blanks, so
-// manual edits and prior numbers are preserved when new loads arrive.
+// Default PO# / INVOICE# numbering for Sam's loads: NO grouping — each load
+// gets its own sequential number (1, 2, 3, …) following the current list order
+// (email date). Only fills blanks, so manual edits and prior numbers are
+// preserved when new loads arrive.
 function assignDefaultGroups() {
-  const keyToNum = new Map();
   let maxNum = 0;
-  for (const l of loads) {
-    if (l.supplierKey !== 'SMS') continue;
-    if (l.poGroup != null) {
-      const key = (l.locCode || '?') + '|' + receivedDay(l);
-      if (!keyToNum.has(key)) keyToNum.set(key, l.poGroup);
-    }
-    maxNum = Math.max(maxNum, l.poGroup || 0, l.invGroup || 0);
-  }
+  for (const l of loads) maxNum = Math.max(maxNum, l.poGroup || 0, l.invGroup || 0);
   for (const l of loads) {
     if (l.supplierKey !== 'SMS') continue;
     if (l.poGroup != null && l.invGroup != null) continue;
-    const key = (l.locCode || '?') + '|' + receivedDay(l);
-    let n = keyToNum.get(key);
-    if (n == null) { n = ++maxNum; keyToNum.set(key, n); }
+    const n = ++maxNum;                     // one fresh number per load
     if (l.poGroup == null)  l.poGroup = n;
     if (l.invGroup == null) l.invGroup = n;
   }
@@ -5029,6 +5042,7 @@ function drawCfgUISams() {
             <th class="narrow">Manifest prefix</th>
             <th class="narrow">Code</th>
             <th>City</th>
+            <th title="Text written to the PO facility field. Leave blank to auto-use the UPPERCASE city.">Facility (PO)</th>
             <th class="narrow">FOB state id</th>
             <th>FOB state name</th>
             <th class="x-col"></th>
@@ -5056,6 +5070,7 @@ function samsClubRow(c, i) {
     <td class="narrow"><input data-sck="manifestPrefix" value="${esc(c.manifestPrefix)}" placeholder="6345"></td>
     <td class="narrow"><input data-sck="code" value="${esc(c.code)}" placeholder="IF"></td>
     <td><input data-sck="city" value="${esc(c.city)}" placeholder="Idaho Falls, ID"></td>
+    <td><input data-sck="facility" value="${esc(c.facility)}" placeholder="(auto: IDAHO FALLS)"></td>
     <td class="narrow"><input data-sck="fobId" type="number" value="${esc(c.fobId)}"></td>
     <td><input data-sck="fobName" value="${esc(c.fobName)}" placeholder="Idaho"></td>
     <td class="x-col"><button class="x-btn" data-sms-club-del="${i}" title="Remove">×</button></td>
@@ -5161,7 +5176,7 @@ function bindCfgHandlersSams() {
     };
   });
   $('cfg-sms-add-club').onclick = () => {
-    cfgDraft.clubs.push({ manifestPrefix: '', code: '', city: '', fobId: '', fobName: '' });
+    cfgDraft.clubs.push({ manifestPrefix: '', code: '', city: '', facility: '', fobId: '', fobName: '' });
     drawCfgUI();
   };
 
