@@ -61,6 +61,10 @@
 <body>
 <h1><a href="index.html" title="Back to Posku home">🪑 Wayfair Loads <span class="home-hint">↩ home</span></a></h1>
 <div class="sub">Every Wayfair SKU — retrieved, created, pending manifest, or priced — joined to its Drive manifest and any PO / invoice. Retrieve pulls manifests live from Drive.</div>
+<div style="border:1px solid var(--amber-bd);background:var(--amber-bg);color:var(--amber);border-radius:8px;padding:0.55rem 0.9rem;font-size:0.7rem;margin-bottom:1rem;">
+  This page is a <strong>read-only tracker</strong> — nothing is pushed automatically.
+  Push SKUs, POs, invoices &amp; manifests from the <a href="index.html" style="color:inherit;font-weight:600;">Posku app → Wayfair</a>, which now uses this same table format with the action buttons.
+</div>
 
 <div class="toolbar">
   <span class="lbl">Retrieve from Drive</span>
@@ -96,9 +100,9 @@ let stageFilter = 'all';
 const skuErpStatus = new Map();   // env|sku → true (in ERP) / false (not) / undefined (unchecked)
 
 // Does this SKU exist in the ERP right now? GET /api/products?sku= via the proxy.
-async function skuInErp(sku) {
+async function skuInErp(sku, env) {
   try {
-    const res = await fetch('/api/products?sku=' + encodeURIComponent(sku), { headers: { 'X-Posku-Env': pageEnv() }, cache: 'no-store' });
+    const res = await fetch('/api/products?sku=' + encodeURIComponent(sku), { headers: { 'X-Posku-Env': env || pageEnv() }, cache: 'no-store' });
     if (res.status === 404) return false;
     if (!res.ok) return null;
     const j = await res.json().catch(() => null);
@@ -107,11 +111,11 @@ async function skuInErp(sku) {
   } catch { return null; }
 }
 
-// Is a row pushed? ERP check wins; otherwise a ledger row means we pushed it.
+// Is a row pushed? ONLY the ERP's answer counts — a ledger row proves we pushed
+// once, not that the SKU still exists (it may have been deleted since).
 function pushedState(s) {
   if (skuErpStatus.has(s._key)) return skuErpStatus.get(s._key);
-  if (s.source === 'ledger') return true;
-  return null;   // drive row, not yet verified against ERP
+  return null;   // not verified against the ERP yet
 }
 
 // Verify the given rows against the ERP (4 at a time), then re-render.
@@ -124,7 +128,7 @@ async function checkErp(rows) {
   let done = 0;
   for (let i = 0; i < todo.length; i += 4) {
     await Promise.all(todo.slice(i, i + 4).map(async s => {
-      skuErpStatus.set(s._key, await skuInErp(s.sku));
+      skuErpStatus.set(s._key, await skuInErp(s.sku, s.env));
       done++;
     }));
     if (st) st.textContent = `Checked ${done}/${todo.length} against ERP…`;
@@ -402,6 +406,9 @@ function setRange(days) {
 document.querySelectorAll('[data-range]').forEach(b => { b.onclick = () => setRange(+b.dataset.range); });
 setRange(7);   // default window
 render();
+// Verify pushed-state against the ERP automatically so the marks reflect the
+// ERP's CURRENT truth (a SKU deleted from the ERP flips to "not pushed").
+checkErp(currentRows());
 </script>
 </body>
 </html>
