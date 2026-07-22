@@ -673,9 +673,15 @@ textarea::placeholder { color: var(--text4); }
   <div class="cfg-section" id="cfg-section" style="display:none;"></div>
 
   <!-- Inbox fetch card -->
-  <div class="card input-card" id="inbox-card">
-    <div class="card-title">Fetch from inbox</div>
-    <div class="card-sub" id="inbox-card-sub">Pulls Gmail messages with the configured label, parses, and pre-fills loads — review before push</div>
+  <div class="card input-card collapsible collapsed" id="inbox-card">
+    <div class="card-header-row" data-card-toggle>
+      <div>
+        <div class="card-title">Fetch from inbox</div>
+        <div class="card-sub" id="inbox-card-sub">Pulls Gmail messages with the configured label, parses, and pre-fills loads — review before push</div>
+      </div>
+      <span class="card-toggle">▾</span>
+    </div>
+    <div class="card-body">
     <div class="po-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;align-items:end;gap:0.75rem;">
       <div class="po-field">
         <label>Gmail label</label>
@@ -699,12 +705,19 @@ textarea::placeholder { color: var(--text4); }
       </div>
     </div>
     <div id="inbox-status" class="status" style="margin-top:0.75rem;"></div>
+    </div>
   </div>
 
   <!-- Manifest fetcher (Wayfair, Drive-driven) -->
-  <div class="card input-card" id="manifest-fetch-card" style="display:none;">
-    <div class="card-title">Fetch manifests from Drive</div>
-    <div class="card-sub">Find Wayfair manifests by upload date, parse, update SKU prices, and append to the Load Center sheet</div>
+  <div class="card input-card collapsible collapsed" id="manifest-fetch-card" style="display:none;">
+    <div class="card-header-row" data-card-toggle>
+      <div>
+        <div class="card-title">Fetch manifests from Drive</div>
+        <div class="card-sub">Find Wayfair manifests by upload date, parse, update SKU prices, and append to the Load Center sheet</div>
+      </div>
+      <span class="card-toggle">▾</span>
+    </div>
+    <div class="card-body">
     <div class="po-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;align-items:end;gap:0.75rem;">
       <div class="po-field">
         <label>Source folder</label>
@@ -736,6 +749,7 @@ textarea::placeholder { color: var(--text4); }
     </div>
     <div id="mfetch-status" class="status" style="margin-top:0.75rem;"></div>
     <div id="mfetch-results" style="margin-top:0.6rem;"></div>
+    </div>
   </div>
 
   <!-- Input card — collapsible, defaults to closed so it doesn't dominate
