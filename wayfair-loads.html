@@ -26,6 +26,9 @@
   .btn.on { background: var(--accent); border-color: var(--accent); color: #1a1206; font-weight: 600; }
   input.search { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 0.4rem 0.7rem; border-radius: 6px; font-family: inherit; font-size: 0.72rem; min-width: 200px; }
   input.search::placeholder { color: var(--text3); }
+  input.date { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 0.35rem 0.5rem; border-radius: 6px; font-family: inherit; font-size: 0.7rem; }
+  .lbl { color: var(--text3); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  .src-drive { font-size: 0.54rem; padding: 0.04rem 0.3rem; border-radius: 4px; background: var(--amber-bg); border: 1px solid var(--amber-bd); color: var(--amber); text-transform: uppercase; margin-left: 0.35rem; }
   .spacer { flex: 1; }
   .count { color: var(--text3); font-size: 0.72rem; margin-bottom: 0.5rem; }
   .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
@@ -41,19 +44,40 @@
   .pill { font-size: 0.6rem; padding: 0.1rem 0.45rem; border-radius: 5px; border: 1px solid; white-space: nowrap; }
   .pill.yes  { color: var(--green); background: var(--green-bg); border-color: var(--green-bd); }
   .pill.no   { color: var(--text3); background: transparent; border-color: var(--border); }
+  .stage { font-size: 0.6rem; padding: 0.14rem 0.5rem; border-radius: 5px; border: 1px solid; white-space: nowrap; display: inline-block; }
+  .stage.grey  { color: var(--text3); background: transparent; border-color: var(--border); }
+  .stage.amber { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-bd); }
+  .stage.blue  { color: var(--blue);  background: var(--blue-bg);  border-color: var(--blue-bd); }
+  .stage.green { color: var(--green); background: var(--green-bg); border-color: var(--green-bd); }
+  .reprice { display:block; margin-top:0.2rem; font-size: 0.56rem; color: var(--amber); }
+  .filters { display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.8rem; }
+  .fchip { font-size: 0.66rem; padding: 0.25rem 0.6rem; border-radius: 999px; border: 1px solid var(--border); color: var(--text2); background: var(--surface2); cursor: pointer; }
+  .fchip.on { border-color: var(--accent); color: #fff; background: rgba(255,122,61,0.14); }
+  .fchip b { color: var(--text); }
   .empty { color: var(--text3); font-size: 0.74rem; padding: 1.4rem 0.7rem; }
   .env-tag { font-size: 0.56rem; padding: 0.05rem 0.35rem; border-radius: 4px; background: var(--surface2); border: 1px solid var(--border); color: var(--text3); text-transform: uppercase; margin-left: 0.35rem; }
 </style>
 </head>
 <body>
 <h1><a href="index.html" title="Back to Posku home">🪑 Wayfair Loads <span class="home-hint">↩ home</span></a></h1>
-<div class="sub">One row per pushed Wayfair SKU, joined to its Drive manifest and any PO / invoice created for it.</div>
+<div class="sub">Every Wayfair SKU — retrieved, created, pending manifest, or priced — joined to its Drive manifest and any PO / invoice. Retrieve pulls manifests live from Drive.</div>
+
+<div class="toolbar">
+  <span class="lbl">Retrieve from Drive</span>
+  <input type="date" class="date" id="from" title="From (file upload date)">
+  <input type="date" class="date" id="to" title="To (file upload date)">
+  <button class="btn" data-range="0">Today</button>
+  <button class="btn" data-range="7">7d</button>
+  <button class="btn" data-range="30">30d</button>
+  <button class="btn" id="retrieve">Retrieve manifests + SKUs</button>
+  <span id="retrieve-status" class="muted" style="font-size:0.68rem;"></span>
+</div>
 
 <div class="toolbar">
   <button class="btn on" data-env="all">All envs</button>
   <button class="btn" data-env="test">Test</button>
   <button class="btn" data-env="live">Live</button>
-  <input class="search" id="search" placeholder="filter by SKU, load id, location…">
+  <input class="search" id="search" placeholder="filter by SKU, load id, location, customer…">
   <span class="spacer"></span>
   <button class="btn" id="refresh">Refresh</button>
   <button class="btn" id="export">Export CSV</button>
@@ -65,6 +89,105 @@
 const LEDGER_KEY = 'posku.ledger.v1';
 let envFilter = 'all';
 let q = '';
+let retrieved = [];   // Drive-derived rows from the last Retrieve (this session)
+let stageFilter = 'all';
+
+// Lifecycle stage of a WYF SKU:
+//   retrieved → manifest seen in Drive but SKU not pushed to ERP yet
+//   pending   → SKU created in ERP with null values, awaiting its manifest
+//   flat      → flat-priced (liquidation/salvage) — no manifest needed
+//   priced    → manifest received, values populated
+function rowStage(s) {
+  if (s.source === 'drive') return 'retrieved';
+  if (s.basis === 'manifest') return 'priced';
+  if (s.basis === 'flat') return 'flat';
+  return 'pending';
+}
+const STAGES = {
+  retrieved: { label: 'Retrieved (Drive)',  cls: 'grey'  },
+  pending:   { label: '⏳ Pending manifest', cls: 'amber' },
+  flat:      { label: 'Flat priced',         cls: 'blue'  },
+  priced:    { label: '✓ Priced',            cls: 'green' },
+};
+
+// ── Ported WYF filename → SKU parser (kept in sync with index.html) ──────────
+const WYF_LOC_MAP = {
+  'perris':'PR','perris, ca':'PR','lathrop':'LA','lathrop, ca':'LA',
+  'jacksonville':'JFL','jacksonville, fl':'JFL','aberdeen':'AMD','aberdeen, md':'AMD',
+  'romeoville':'RIL','romeoville, il':'RIL','lancaster':'LTX','lancaster, tx':'LTX',
+  'kent':'KWA','kent, wa':'KWA','erlanger':'EKY','kentucky':'EKY',
+  'mcdonough':'MCDO','mcdonough, ga':'MCDO','city of industry':'CI','city of industry, ca':'CI',
+  'portland':'POR','portland, or':'POR','mississauga':'MGA','mississauga, on':'MGA',
+};
+const WYF_FOB = { PR:'California',LA:'California',JFL:'Florida',AMD:'Maryland',RIL:'Illinois',LTX:'Texas',KWA:'Washington',EKY:'Kentucky',MCDO:'Georgia',CI:'CA-Los Angeles',POR:'Oregon' };
+function wyfTypeFromWords(s){s=String(s).toLowerCase();if(/liquidation/.test(s))return'LQ';if(/salvage/.test(s))return'S';if(/aged/.test(s))return'A';if(/\bqc\b/.test(s))return'QC';return null;}
+function wyfLocCodeFromCity(city){
+  const raw=String(city||'').trim().toLowerCase(); if(!raw)return null;
+  if(WYF_LOC_MAP[raw])return WYF_LOC_MAP[raw];
+  const compact=raw.replace(/\s+/g,''); const stripped=compact.replace(/(smallparcel|largeparcel|smallpackage|largepackage|distributioncenter|sp|lp|dc)$/i,'');
+  if(WYF_LOC_MAP[stripped])return WYF_LOC_MAP[stripped];
+  for(const c of Object.keys(WYF_LOC_MAP).sort((a,b)=>b.length-a.length)){const k=c.replace(/\s+/g,'');if(compact.startsWith(k)||stripped.startsWith(k))return WYF_LOC_MAP[c];}
+  return null;
+}
+function wyfProductName(t,loc){
+  if(t==='S')return'WYF Salvage Loads'; if(t==='A')return'WYF Excess & Aged Inventory';
+  if(t==='QC')return'WYF QC Imperfection Loads'; if(t==='HDO'||t==='PG')return'WYF Liquidation Returns - Larger Items';
+  if(loc==='PR')return'WYF Liquidation Returns - Smaller Items'; if(loc==='KWA')return'WYF Liquidation Returns - Larger Items';
+  return'WYF Liquidation Returns - Smaller & Larger Items';
+}
+function deriveWyfSkuFromFilename(filename, tree){
+  if(!filename)return null; const name=filename;
+  const TW='(?:QC|Liquidation|Salvage|Aged(?:\\s+Inventory)?)';
+  let m=name.match(new RegExp(`^([A-Za-z\\s]+?)\\s+(${TW}(?:\\s+${TW})?)\\s+Load\\s+([A-Za-z]{0,4}\\d{1,6})\\s+Manifest(?:\\.(xlsx|csv))?$`,'i'));
+  if(m){const t=wyfTypeFromWords(m[2]);const loc=wyfLocCodeFromCity(m[1].trim());const id=m[3].toUpperCase();const num=id.replace(/^[A-Za-z]+/,'')||id;if(!t||!loc)return{sku:null,loadType:t,locCode:null,loadId:id};return{sku:`WYF${loc}${t}${num}`,loadType:t,locCode:loc,loadId:id};}
+  m=name.match(new RegExp(`^(${TW}(?:\\s+${TW})?)\\s+Load\\s+([A-Za-z]{0,4}\\d{4,6})\\s+([A-Za-z\\s]+?)\\.(xlsx|csv)$`,'i'));
+  if(m){const t=wyfTypeFromWords(m[1]);const loc=wyfLocCodeFromCity(m[3].trim());const id=m[2].toUpperCase();const num=id.replace(/^[A-Za-z]+/,'')||id;if(!t||!loc)return{sku:null,loadType:t,locCode:null,loadId:id};return{sku:`WYF${loc}${t}${num}`,loadType:t,locCode:loc,loadId:id};}
+  m=name.match(/^(.+?)\s+Liquidation\s+Manifest\s+LQ(\d{4,6})\.(xlsx|csv)$/i);
+  if(m&&tree==='HDO'){const loc=wyfLocCodeFromCity(m[1]);if(!loc)return{sku:null,loadType:'HDO',locCode:null,loadId:m[2]};return{sku:`WYF${loc}HDO${m[2]}`,loadType:'HDO',locCode:loc,loadId:m[2]};}
+  m=name.match(/^\s*LQ(\d{4,6})\s+PG\d?\s+([A-Za-z\s]+?)\s+Liquidation/i);
+  if(m&&tree==='Perigold'){const loc=wyfLocCodeFromCity(m[2]);if(!loc)return{sku:null,loadType:'PG',locCode:null,loadId:m[1]};return{sku:`WYF${loc}PG${m[1]}`,loadType:'PG',locCode:loc,loadId:m[1]};}
+  return null;
+}
+function pageEnv(){const v=localStorage.getItem('posku.env.v1');return v==='live'?'live':'test';}
+function withEnvSuffix(sku){if(!sku)return sku;const isTest=pageEnv()==='test';const has=sku.endsWith('-test');if(isTest)return has?sku:sku+'-test';return has?sku.slice(0,-5):sku;}
+
+// Pull WYF manifests from Drive for a date range, derive each SKU, and merge
+// them into the table. Files that don't resolve to a SKU are counted, not shown.
+async function retrieveFromDrive() {
+  const st = document.getElementById('retrieve-status');
+  const btn = document.getElementById('retrieve');
+  const after = document.getElementById('from').value;
+  const before = document.getElementById('to').value;
+  const params = new URLSearchParams({ tree: 'all' });
+  if (after) params.set('after', after);
+  if (before) params.set('before', before);
+  btn.disabled = true; st.textContent = 'Searching Drive…';
+  let j;
+  try {
+    const res = await fetch('/api/drive/list?' + params, { cache: 'no-store' });
+    j = await res.json().catch(() => null);
+    if (!res.ok || !j || !j.ok) { st.textContent = `Drive error: HTTP ${res.status}${j && j.error ? ' — ' + j.error : ''}`; btn.disabled = false; return; }
+  } catch (e) { st.textContent = 'Network error: ' + e.message; btn.disabled = false; return; }
+  const env = pageEnv();
+  const byKey = new Map();
+  let unresolved = 0;
+  for (const f of (j.files || [])) {
+    const d = deriveWyfSkuFromFilename(f.name, f.tree);
+    if (!d || !d.sku) { unresolved++; continue; }
+    const sku = withEnvSuffix(d.sku);
+    byKey.set(env + '|' + sku, {
+      _key: env + '|' + sku, sku, env, supplier: 'WYF',
+      loadId: d.loadId || '', locCode: d.locCode, typeCode: d.loadType,
+      productName: wyfProductName(d.loadType, d.locCode), fobName: WYF_FOB[d.locCode] || '',
+      manifestFilename: f.name, manifestFileDate: f.createdTime || f.modifiedTime || '',
+      source: 'drive',
+    });
+  }
+  retrieved = [...byKey.values()];
+  st.textContent = `Retrieved ${retrieved.length} manifest(s) from Drive (env ${env})${unresolved ? ` · ${unresolved} file(s) unrecognized` : ''}.`;
+  btn.disabled = false;
+  render();
+}
 
 function loadLedger() {
   let l; try { l = JSON.parse(localStorage.getItem(LEDGER_KEY)); } catch {}
@@ -96,11 +219,40 @@ function buildJoins(l) {
 function currentRows() {
   const l = loadLedger();
   const { poByLoad, invByLoad, custByLoad } = buildJoins(l);
-  let list = l.skus.filter(s => isWyf(s) && inEnv(s));
+  // Union of pushed SKUs (ledger) and manifests retrieved from Drive this
+  // session, keyed by env|sku. Ledger wins; retrieved fills the manifest
+  // filename/date/product when the pushed row lacks them, and adds rows for
+  // manifests that haven't been pushed yet.
+  const byKey = new Map();
+  for (const s of l.skus) {
+    if (!isWyf(s) && s.supplier) continue;
+    if (!inEnv(s)) continue;
+    byKey.set(s._key || (s.env + '|' + s.sku), { ...s, source: 'ledger' });
+  }
+  for (const r of retrieved) {
+    if (!inEnv(r)) continue;
+    const ex = byKey.get(r._key);
+    if (ex) {
+      ex.manifestFilename = ex.manifestFilename || r.manifestFilename;
+      ex.manifestFileDate = ex.manifestFileDate || r.manifestFileDate;
+      ex.productName = ex.productName || r.productName;
+      ex.fobName = ex.fobName || r.fobName;
+      ex.locCode = ex.locCode || r.locCode;
+    } else {
+      byKey.set(r._key, r);
+    }
+  }
+  let list = [...byKey.values()].map(s => ({ ...s, stage: rowStage(s) }));
   if (q) {
     const needle = q.toLowerCase();
     list = list.filter(s => [s.sku, s.loadId, s.locCode, s.productName, s.fobName, custByLoad[s.loadId]].some(v => String(v || '').toLowerCase().includes(needle)));
   }
+  // Newest first by email date, else file date.
+  list.sort((a, b) => {
+    const da = new Date(a.emailDate || a.manifestFileDate || 0).getTime() || 0;
+    const db = new Date(b.emailDate || b.manifestFileDate || 0).getTime() || 0;
+    return db - da;
+  });
   return list.map(s => ({
     ...s,
     poNum:    poByLoad[s.loadId]  || '',
@@ -110,34 +262,54 @@ function currentRows() {
 }
 
 function render() {
-  const rows = currentRows();
-  document.getElementById('count').textContent = `${rows.length} load${rows.length === 1 ? '' : 's'}`;
+  const all = currentRows();                 // env + search filtered, stage attached
+  // Stage counts (before the stage filter) drive the filter chips.
+  const counts = { all: all.length, retrieved: 0, pending: 0, flat: 0, priced: 0 };
+  all.forEach(s => counts[s.stage]++);
+  const chip = (key, label) => `<span class="fchip ${stageFilter === key ? 'on' : ''}" data-stage="${key}"><b>${counts[key] || 0}</b> ${label}</span>`;
+  document.getElementById('count').innerHTML = `<div class="filters">
+    ${chip('all', 'all')}
+    ${chip('pending', '⏳ pending manifest')}
+    ${chip('priced', '✓ priced')}
+    ${chip('flat', 'flat')}
+    ${chip('retrieved', 'retrieved (not pushed)')}
+  </div>`;
+  document.querySelectorAll('[data-stage]').forEach(c => c.onclick = () => { stageFilter = c.dataset.stage; render(); });
+
+  const rows = stageFilter === 'all' ? all : all.filter(s => s.stage === stageFilter);
   if (!rows.length) {
-    document.getElementById('root').innerHTML = `<div class="table-wrap"><div class="empty">No Wayfair loads recorded yet. Push a Wayfair SKU and it will appear here.</div></div>`;
+    document.getElementById('root').innerHTML = `<div class="table-wrap"><div class="empty">No Wayfair loads to show. Pick a date range and hit <strong>Retrieve manifests + SKUs</strong> to pull them from Drive, or push a Wayfair SKU from the app.</div></div>`;
     return;
   }
-  const head = ['Load ID','Email date','Location','Generated SKU','Product name','FOB state','Filename (Drive)','Date of file','Invoice #','Customer','PO #'];
-  const body = rows.map(s => `<tr>
+  const head = ['Status','Load ID','Email date','Location','Generated SKU','Product name','FOB state','Filename (Drive)','Date of file','Invoice #','Customer','PO #'];
+  const body = rows.map(s => {
+    const st = STAGES[s.stage] || STAGES.pending;
+    // An invoice created before the manifest priced the SKU carries a
+    // provisional price — flag it so it gets repriced once manifested.
+    const needsReprice = s.invNum && (s.stage === 'pending');
+    return `<tr>
+    <td class="nowrap"><span class="stage ${st.cls}">${st.label}</span></td>
     <td class="nowrap">${esc(s.loadId || '—')}</td>
     <td class="nowrap muted">${esc(fmtDate(s.emailDate)) || '—'}</td>
     <td class="nowrap">${esc(s.locCode || '—')}</td>
-    <td class="sku">${esc(s.sku)}<span class="env-tag">${esc(s.env || 'test')}</span></td>
+    <td class="sku">${esc(s.sku)}<span class="env-tag">${esc(s.env || 'test')}</span>${s.source === 'drive' ? '<span class="src-drive" title="From Drive — not pushed to ERP yet">drive</span>' : ''}</td>
     <td>${esc(s.productName || '—')}</td>
     <td class="nowrap">${esc(s.fobName || '—')}</td>
     <td class="file" title="${esc(s.manifestFilename || '')}">${esc(s.manifestFilename || '—')}</td>
     <td class="nowrap muted">${esc(fmtDate(s.manifestFileDate)) || '—'}</td>
-    <td class="nowrap">${s.invNum ? `<span class="pill yes">${esc(s.invNum)}</span>` : '<span class="pill no">—</span>'}</td>
+    <td class="nowrap">${s.invNum ? `<span class="pill yes">${esc(s.invNum)}</span>${needsReprice ? '<span class="reprice" title="Invoice was created before the manifest — reprice once values are populated">⚠ reprice pending</span>' : ''}` : '<span class="pill no">—</span>'}</td>
     <td>${esc(s.customer || '—')}</td>
     <td class="nowrap">${s.poNum ? `<span class="pill yes">${esc(s.poNum)}</span>` : '<span class="pill no">—</span>'}</td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
   document.getElementById('root').innerHTML = `<div class="table-wrap"><table><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 function exportCsv() {
   const rows = currentRows();
-  const head = ['load_id','email_date','location','generated_sku','env','product_name','fob_state','filename','date_of_file','invoice_no','customer','po_no'];
+  const head = ['status','load_id','email_date','location','generated_sku','env','product_name','fob_state','filename','date_of_file','invoice_no','customer','po_no'];
   const lines = [head.join(',')].concat(rows.map(s => [
-    s.loadId, s.emailDate, s.locCode, s.sku, s.env, s.productName, s.fobName,
+    s.stage, s.loadId, s.emailDate, s.locCode, s.sku, s.env, s.productName, s.fobName,
     s.manifestFilename, s.manifestFileDate, s.invNum, s.customer, s.poNum,
   ].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')));
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
@@ -158,6 +330,18 @@ document.querySelectorAll('[data-env]').forEach(b => {
 document.getElementById('search').addEventListener('input', e => { q = e.target.value.trim(); render(); });
 document.getElementById('refresh').onclick = render;
 document.getElementById('export').onclick = exportCsv;
+document.getElementById('retrieve').onclick = retrieveFromDrive;
+
+// Date-range shortcuts (local YYYY-MM-DD).
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function setRange(days) {
+  const to = new Date();
+  const from = new Date(); from.setDate(from.getDate() - days);
+  document.getElementById('from').value = ymd(from);
+  document.getElementById('to').value = ymd(to);
+}
+document.querySelectorAll('[data-range]').forEach(b => { b.onclick = () => setRange(+b.dataset.range); });
+setRange(7);   // default window
 render();
 </script>
 </body>
