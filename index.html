@@ -598,8 +598,8 @@ textarea::placeholder { color: var(--text4); }
 
     <div class="sidebar-section">
       <div class="sidebar-section-title">Tools</div>
-      <a class="nav-item" href="wayfair-loads.html" target="_blank" title="Wayfair loads — one row per SKU with manifest, PO & invoice"><span class="nav-icon">🪑</span><span class="nav-label">WYF loads</span></a>
-      <a class="nav-item" href="wayfair-activity.html" target="_blank" title="Wayfair activity — SKUs, POs, invoices, manifests"><span class="nav-icon">📋</span><span class="nav-label">WYF activity</span></a>
+      <a class="nav-item" href="wayfair-loads.html" target="_blank" title="Wayfair loads — retrieve, status, manifest, PO & invoice"><span class="nav-icon">🪑</span><span class="nav-label">Wayfair loads</span></a>
+      <a class="nav-item" href="wayfair-activity.html" target="_blank" title="Legacy Wayfair activity — SKUs, POs, invoices, manifests"><span class="nav-icon">🗂️</span><span class="nav-label">WYF activity <span class="soon-pill">legacy</span></span></a>
       <a class="nav-item" href="diagnostic.html" target="_blank" title="Diagnostics"><span class="nav-icon">🩺</span><span class="nav-label">Diagnostics</span></a>
       <a class="nav-item" href="whats-new.html" target="_blank" title="What's new"><span class="nav-icon">✨</span><span class="nav-label">What's new</span></a>
     </div>
@@ -3098,10 +3098,16 @@ function renderLoads() {
       <td>${load.supplierKey === 'SMS' ? `<input type="number" min="1" class="grp-input" data-grp-po="${idx}" value="${esc(load.poGroup ?? '')}" title="PO group">` : '<span class="mono" style="color:var(--text4);">—</span>'}</td>
       <td>${load.supplierKey === 'SMS' ? `<input type="number" min="1" class="grp-input" data-grp-inv="${idx}" value="${esc(load.invGroup ?? '')}" title="Invoice group">` : '<span class="mono" style="color:var(--text4);">—</span>'}</td>
       <td style="white-space:nowrap;">
-        ${load.status !== 'done' && load.status !== 'pushing' && load.status !== 'dup' ? `
-          <button class="btn small" data-push="${idx}" ${!load.sku ? 'disabled' : ''}>Push</button>
-          <button class="btn ghost small" data-edit="${idx}">Edit</button>
-        ` : ''}
+        ${load.status !== 'done' && load.status !== 'pushing' && load.status !== 'dup' ? (
+          load._skuExists === true
+            // SKU already in the ERP → don't offer a create (it'd dup). Prompt to
+            // reprice from the manifest, and to push the manifest to the sheet.
+            ? `<button class="btn small" data-repush="${idx}" title="SKU already in ERP — update its price & values from the manifest">Reprice</button>
+               ${load.manifestRows?.length ? `<button class="btn small ghost" data-sams-mani-send="${idx}" title="Push this manifest to the Load Center sheet"${load.manifestSentTo ? ' disabled' : ''}>${load.manifestSentTo ? 'Sent ✓' : 'Push to Sheet'}</button>` : ''}
+               <button class="btn ghost small" data-edit="${idx}">Edit</button>`
+            : `<button class="btn small" data-push="${idx}" ${!load.sku ? 'disabled' : ''}>Push</button>
+               <button class="btn ghost small" data-edit="${idx}">Edit</button>`
+        ) : ''}
         ${(load.status === 'done' || load.status === 'dup') && (load.manifestRows?.length || load.flatPrice != null) ? `<button class="btn small" data-repush="${idx}" title="Re-push the manifest list price to this SKU in the ERP">Re-push price</button>` : ''}
         ${load.status === 'dup' ? `<button class="btn ghost small" data-edit="${idx}">Edit</button>` : ''}
         <button class="btn danger small" data-remove="${idx}">×</button>
