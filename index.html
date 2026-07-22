@@ -588,7 +588,7 @@ textarea::placeholder { color: var(--text4); }
 
     <div class="sidebar-section">
       <div class="sidebar-section-title">Suppliers</div>
-      <button class="nav-item active" data-supplier="WYF" title="Wayfair"><span class="nav-icon">🪑</span><span class="nav-label">Wayfair</span></button>
+      <button class="nav-item active" data-supplier="WYF" data-wyf-view="new" title="Wayfair — new table format"><span class="nav-icon">🪑</span><span class="nav-label">Wayfair</span></button>
       <button class="nav-item" data-supplier="SMS" title="Sam's Club"><span class="nav-icon">🛒</span><span class="nav-label">Sam's Club</span></button>
       <button class="nav-item" disabled title="Harbor Freight (soon)"><span class="nav-icon">🔧</span><span class="nav-label">Harbor Freight<span class="soon-pill">soon</span></span></button>
       <button class="nav-item" disabled title="Amazon (soon)"><span class="nav-icon">📦</span><span class="nav-label">Amazon<span class="soon-pill">soon</span></span></button>
@@ -598,7 +598,7 @@ textarea::placeholder { color: var(--text4); }
 
     <div class="sidebar-section">
       <div class="sidebar-section-title">Tools</div>
-      <a class="nav-item" href="wayfair-loads.html" target="_blank" title="Wayfair loads — retrieve, status, manifest, PO & invoice"><span class="nav-icon">🪑</span><span class="nav-label">Wayfair loads</span></a>
+      <button class="nav-item" data-supplier="WYF" data-wyf-view="legacy" title="Wayfair — legacy table columns"><span class="nav-icon">🪑</span><span class="nav-label">Wayfair<span class="soon-pill">legacy</span></span></button>
       <a class="nav-item" href="wayfair-activity.html" target="_blank" title="Wayfair activity — SKUs, POs, invoices, manifests"><span class="nav-icon">📋</span><span class="nav-label">WYF activity</span></a>
       <a class="nav-item" href="diagnostic.html" target="_blank" title="Diagnostics"><span class="nav-icon">🩺</span><span class="nav-label">Diagnostics</span></a>
       <a class="nav-item" href="whats-new.html" target="_blank" title="What's new"><span class="nav-icon">✨</span><span class="nav-label">What's new</span></a>
@@ -3127,7 +3127,7 @@ function renderLoads() {
   if (legacyBtn) {
     legacyBtn.style.display = activeSupplier === 'WYF' ? '' : 'none';
     legacyBtn.textContent = wyfLegacyView ? 'New view' : 'Legacy view';
-    legacyBtn.onclick = () => { wyfLegacyView = !wyfLegacyView; renderLoads(); };
+    legacyBtn.onclick = () => { wyfLegacyView = !wyfLegacyView; renderLoads(); applySupplierUI(); };
   }
   const body = $('loads-body');
   body.innerHTML = '';
@@ -5898,9 +5898,12 @@ function applySupplierUI() {
     titleEl.style.color = brandColors[activeSupplier] || '';
   }
   if (eyebrowEl) eyebrowEl.textContent = `${label} · load SKU builder`;
-  // Sidebar active state
+  // Sidebar active state. WYF has two entries (new format under Suppliers,
+  // legacy under Tools) — only the one matching the current view lights up.
   document.querySelectorAll('.nav-item[data-supplier]').forEach(n => {
-    n.classList.toggle('active', n.dataset.supplier === activeSupplier);
+    let on = n.dataset.supplier === activeSupplier;
+    if (on && n.dataset.wyfView) on = (n.dataset.wyfView === 'legacy') === wyfLegacyView;
+    n.classList.toggle('active', on);
   });
   // Manifest fetch panel is Wayfair-only for now (Sam's manifests come with
   // the email so the fetch-from-drive flow doesn't apply).
@@ -5920,7 +5923,14 @@ document.querySelectorAll('[data-supplier]').forEach(tab => {
   tab.onclick = () => {
     if (tab.disabled) return;
     const next = tab.dataset.supplier;
-    if (next === activeSupplier) return;
+    // WYF has two entry points: Suppliers → new table format, Tools → legacy.
+    if (tab.dataset.wyfView) wyfLegacyView = tab.dataset.wyfView === 'legacy';
+    if (next === activeSupplier) {
+      // Same supplier, possibly a view change — re-render, don't clear loads.
+      applySupplierUI();
+      if (loads.length) renderLoads();
+      return;
+    }
     // Clear loads + any open drafts when switching suppliers so SMS drafts
     // never bleed into the Wayfair view (and vice-versa).
     const hasState = loads.length || poDrafts.length || invoiceDrafts.length;
@@ -5938,8 +5948,62 @@ document.querySelectorAll('[data-supplier]').forEach(tab => {
     }
     activeSupplier = next;
     applySupplierUI();
+    // Wayfair view boots pre-populated from the ledger (pushed SKUs reappear
+    // with Reprice / Push-to-Sheet actions instead of an empty table).
+    if (next === 'WYF') hydrateWyfLedgerLoads();
   };
 });
+
+// Rebuild WYF loads from the activity ledger so the table is populated without
+// re-fetching the inbox: one row per SKU pushed in the current env. Manifest
+// line items aren't persisted, so a Reprice after reload needs the manifest
+// re-processed from Drive first (the fetch card above does that).
+function hydrateWyfLedgerLoads() {
+  try {
+    const led = loadLedger();
+    const env = loadEnv();
+    const sup = SUPPLIERS.WYF;
+    let added = 0;
+    for (const s of (led.skus || [])) {
+      if ((s.supplier || 'WYF') !== 'WYF') continue;
+      if ((s.env || 'test') !== env) continue;
+      const baseSku = String(s.sku || '').replace(/-test$/i, '');
+      if (!baseSku) continue;
+      if (loads.some(l => l.sku && withEnvSuffix(l.sku).toUpperCase() === withEnvSuffix(baseSku).toUpperCase())) continue;
+      const typeCode = s.typeCode || null, locCode = s.locCode || null;
+      loads.push({
+        id: 'load_led_' + Math.random().toString(36).slice(2),
+        supplierKey: 'WYF',
+        loadId: s.loadId || '', locCode, typeCode, sku: baseSku,
+        name: s.productName || ((typeCode && locCode) ? sup.getProductName(typeCode, locCode) : 'Wayfair load'),
+        fobId: locCode ? sup.fobIds[locCode] : null,
+        fobName: (locCode && sup.fobNames[locCode]) || '—',
+        condTrait: typeCode ? sup.conditionTraits[typeCode] : null,
+        condName: (typeCode && sup.conditionNames[typeCode]) || '—',
+        manifestTrait: typeCode ? (sup.manifestTraits[typeCode] || 603) : 603,
+        manifestName: typeCode ? (sup.manifestNames[typeCode] || 'Manifested') : 'Manifested',
+        emailDate: s.emailDate || '',
+        manifestFilename: s.manifestFilename || '',
+        manifestFileDate: s.manifestFileDate || '',
+        flatPrice: s.basis === 'flat' ? (s.price != null ? Number(s.price) : wyfFlatPrice(locCode, sup)) : null,
+        flags: [], status: 'ready', erpResult: null,
+        _hydrated: true,
+      });
+      added++;
+    }
+    if (added) {
+      sortLoads();
+      $('loads-section').style.display = '';
+      renderLoads();
+      markExistingSkus();   // real ERP check → Reprice vs Push per row
+    }
+    return added;
+  } catch { return 0; }
+}
+// Boot: the app opens on Wayfair — populate it right away. Deferred a tick so
+// every top-level declaration below (invoiceDrafts etc.) exists before the
+// first render touches it.
+setTimeout(() => { if (activeSupplier === 'WYF') hydrateWyfLedgerLoads(); }, 0);
 
 // ════════════════════════════════════════════════════════════════════════════
 // INVOICE FLOW
