@@ -323,23 +323,28 @@ function render() {
     document.getElementById('root').innerHTML = `<div class="table-wrap"><div class="empty">No Wayfair loads to show. Pick a date range and hit <strong>Retrieve manifests + SKUs</strong> to pull them from Drive, or push a Wayfair SKU from the app.</div></div>`;
     return;
   }
-  const head = ['Pushed?','Status','Load ID','Email date','Location','Generated SKU','Product name','FOB state','Filename (Drive)','Date of file','Invoice #','Customer','PO #'];
+  const head = ['Status','Load ID','Email date','Location','Generated SKU','Price','Product name','FOB state','Filename (Drive)','Date of file','Invoice #','Customer','PO #'];
   const body = rows.map(s => {
     const st = STAGES[s.stage] || STAGES.pending;
+    // Pushed-state marker lives INSIDE the SKU cell — it's the SKU that gets
+    // pushed, so that's where the answer belongs.
     const p = pushedState(s);
-    const pushedCell = p === true  ? '<span class="pill yes" title="SKU exists in the ERP">✓ pushed</span>'
-                     : p === false ? '<span class="stage amber" title="SKU NOT found in the ERP">✗ not pushed</span>'
-                     : '<span class="pill no" title="Not verified — hit Check pushed in ERP">?</span>';
+    const pushedMark = p === true  ? '<div style="font-size:0.58rem;color:var(--green);margin-top:2px;" title="SKU exists in the ERP">✓ SKU pushed</div>'
+                     : p === false ? '<div style="font-size:0.58rem;color:var(--amber);margin-top:2px;" title="SKU NOT found in the ERP">✗ SKU not pushed</div>'
+                     : '<div style="font-size:0.58rem;color:var(--text3);margin-top:2px;" title="Not verified — hit Check pushed in ERP">? unverified</div>';
+    const priceCell = s.price != null
+      ? `<span style="color:var(--green);">$${Number(s.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`
+      : '<span class="muted" title="No price yet — pending manifest">—</span>';
     // An invoice created before the manifest priced the SKU carries a
     // provisional price — flag it so it gets repriced once manifested.
     const needsReprice = s.invNum && (s.stage === 'pending');
     return `<tr>
-    <td class="nowrap">${pushedCell}</td>
     <td class="nowrap"><span class="stage ${st.cls}">${st.label}</span></td>
     <td class="nowrap">${esc(s.loadId || '—')}</td>
     <td class="nowrap muted">${esc(fmtDate(s.emailDate)) || '—'}</td>
     <td class="nowrap">${esc(s.locCode || '—')}</td>
-    <td class="sku">${esc(s.sku)}<span class="env-tag">${esc(s.env || 'test')}</span>${s.source === 'drive' ? '<span class="src-drive" title="From Drive — not pushed to ERP yet">drive</span>' : ''}</td>
+    <td class="sku">${esc(s.sku)}<span class="env-tag">${esc(s.env || 'test')}</span>${s.source === 'drive' ? '<span class="src-drive" title="Found in Drive this session">drive</span>' : ''}${pushedMark}</td>
+    <td class="nowrap">${priceCell}</td>
     <td>${esc(s.productName || '—')}</td>
     <td class="nowrap">${esc(s.fobName || '—')}</td>
     <td class="file" title="${esc(s.manifestFilename || '')}">${esc(s.manifestFilename || '—')}</td>
@@ -354,12 +359,14 @@ function render() {
 
 function exportCsv() {
   const rows = currentRows();
-  const head = ['pushed','status','load_id','email_date','location','generated_sku','env','product_name','fob_state','filename','date_of_file','invoice_no','customer','po_no'];
+  const head = ['sku_pushed','status','load_id','email_date','location','generated_sku','env','price','product_name','fob_state','filename','date_of_file','invoice_no','customer','po_no'];
   const lines = [head.join(',')].concat(rows.map(s => {
     const p = pushedState(s);
     return [
       p === true ? 'yes' : p === false ? 'no' : 'unchecked',
-      s.stage, s.loadId, s.emailDate, s.locCode, s.sku, s.env, s.productName, s.fobName,
+      s.stage, s.loadId, s.emailDate, s.locCode, s.sku, s.env,
+      s.price != null ? s.price : '',
+      s.productName, s.fobName,
       s.manifestFilename, s.manifestFileDate, s.invNum, s.customer, s.poNum,
     ].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',');
   }));

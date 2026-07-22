@@ -2684,7 +2684,10 @@ function recordLedgerSku(load, result) {
   const hasManifest = !!(load.manifestRows && load.manifestRows.length);
   const hasFlat     = load.flatPrice != null;
   const basis = hasManifest ? 'manifest' : (hasFlat ? 'flat' : 'none');
+  let pushedPrice = null;
+  try { const t = buildLoadTotals(load); if (t && t.price != null) pushedPrice = Number(t.price); } catch {}
   ledgerRecord('skus', env + '|' + sku, {
+    price: pushedPrice,
     sku, env, supplier: load.supplierKey,
     loadId: load.loadId, locCode: load.locCode, typeCode: load.typeCode,
     productName: load.name || '',
@@ -2781,7 +2784,7 @@ function buildSamsManifestRow(load, idx) {
     ? `${load.manifestRows.length} line item(s) · ${load.manifestPalletIds?.length || 0} pallet(s)`
     : 'No manifest attached yet';
   const sku = load.sku ? withEnvSuffix(load.sku) : '(SKU pending)';
-  tr.innerHTML = `<td colspan="11" style="padding:0.55rem 0.8rem;background:var(--surface2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
+  tr.innerHTML = `<td colspan="${loadsColspan()}" style="padding:0.55rem 0.8rem;background:var(--surface2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
     <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
       <span style="font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text3);letter-spacing:0.1em;text-transform:uppercase;">Load-center manifest for ${esc(sku)}</span>
       <span style="font-family:'DM Mono',monospace;font-size:0.66rem;color:var(--text4);">manifest #${esc(manId)} · ${esc(summary)}</span>
@@ -3074,6 +3077,12 @@ function wyfJoins(load) {
 // Whether the WYF table uses the new format (default) or the legacy columns.
 let wyfLegacyView = false;
 
+// Sub-rows (edit / details / manifest / message) must span the full table width;
+// the WYF new format has 12 columns, everything else 11.
+function loadsColspan() {
+  return (activeSupplier === 'WYF' && !wyfLegacyView) ? 12 : 11;
+}
+
 const LOADS_HEAD_SMS = `
   <th class="select-col"><input type="checkbox" id="select-all"></th>
   <th>Load ID</th>
@@ -3094,6 +3103,7 @@ const LOADS_HEAD_WYF = `
   <th>Product name</th>
   <th>FOB state</th>
   <th title="Drive manifest this load was parsed from (filename + upload date)">Manifest (Drive)</th>
+  <th title="The SKU sell price — from the manifest totals, or the flat salvage price. Empty until the manifest lands.">Price</th>
   <th>Status</th>
   <th>Inv # / Customer</th>
   <th>PO #</th>
@@ -3199,6 +3209,14 @@ function renderLoads() {
       const fileCell = load.manifestFilename
         ? `<div style="max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.68rem;" title="${esc(load.manifestFilename)}">${esc(load.manifestFilename)}</div>${load.manifestFileDate ? `<div style="font-size:0.6rem;color:var(--text3);font-family:'DM Mono',monospace;">${esc(String(load.manifestFileDate).slice(0, 10))}</div>` : ''}`
         : `<span class="mono" style="color:var(--text4);">—</span>`;
+      // SKU sell price: manifest totals (or flat salvage $); blank until priced.
+      let priceCell;
+      try {
+        const totals = buildLoadTotals(load);
+        priceCell = (totals && totals.price != null)
+          ? `<span class="mono" style="color:var(--green);font-size:0.74rem;" title="${lc.key === 'flat' ? 'Flat salvage price' : 'Total sell from manifest'}">$${Number(totals.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`
+          : `<span class="mono" style="color:var(--text4);" title="No price yet — pending manifest">—</span>`;
+      } catch { priceCell = `<span class="mono" style="color:var(--text4);">—</span>`; }
       const invCell = joins.invId
         ? `<span class="mono-green" style="font-size:0.72rem;">${esc(joins.invId)}</span>${joins.customer ? `<div style="font-size:0.62rem;color:var(--text2);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(joins.customer)}">${esc(joins.customer)}</div>` : ''}${(joins.invId && lc.key === 'pending') ? `<div style="font-size:0.58rem;color:var(--amber,#d6a23a);" title="Invoice was created before the manifest — reprice it once values land">⚠ reprice pending</div>` : ''}`
         : `<span class="mono" style="color:var(--text4);">—</span>`;
@@ -3213,6 +3231,7 @@ function renderLoads() {
         <td style="font-size:0.72rem;color:var(--text2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(load.name || '')}">${esc(load.name || '—')}</td>
         <td class="mono" style="font-size:0.72rem;">${esc(load.fobName)}</td>
         <td>${fileCell}</td>
+        <td>${priceCell}</td>
         <td>${statusCell}</td>
         <td>${invCell}</td>
         <td>${poCell}</td>
@@ -3240,7 +3259,7 @@ function renderLoads() {
     const isSams = load.supplierKey === 'SMS';
     const condOpts  = Object.entries(sup.conditionTraits).map(([tc, id]) =>
       `<option value="${tc}" ${load.typeCode === tc ? 'selected' : ''}>${tc} → id ${id} (${sup.conditionNames[tc]})</option>`).join('');
-    er.innerHTML = `<td colspan="11" style="padding:0;">
+    er.innerHTML = `<td colspan="${loadsColspan()}" style="padding:0;">
       <div style="background:var(--surface2);border-bottom:1px solid var(--border2);padding:1rem 1.1rem;">
 
         <div style="font-family:'DM Mono',monospace;font-size:0.62rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--text3);margin-bottom:0.8rem;">
@@ -3391,7 +3410,7 @@ function renderLoads() {
     const sup2 = SUPPLIERS[load.supplierKey] || SUPPLIERS.WYF;
     const finalSku = load.sku ? withEnvSuffix(load.sku) : null;
     const slug = finalSku ? finalSku.toLowerCase().replace(/[^a-z0-9]+/g, '-') : '—';
-    dr.innerHTML = `<td colspan="11" class="details-strip">
+    dr.innerHTML = `<td colspan="${loadsColspan()}" class="details-strip">
       <div class="chips-wrap">
         <span class="chip-mini"><b>active</b> <i>${load.active ?? 1}</i> <em>(${(load.active ?? 1) ? 'Active' : 'Inactive'})</em></span>
         <span class="chip-mini"><b>packing</b> <i>${sup2.packingTrait}</i> <em>(${load.supplierKey==='SMS'?'LTL':'Load'})</em></span>
@@ -3441,7 +3460,7 @@ function renderLoads() {
 
     if ((load.status === 'failed' || load.status === 'dup') && load.erpResult) {
       const msgRow = document.createElement('tr');
-      msgRow.innerHTML = `<td colspan="11" style="padding:0.5rem 0.8rem;background:${load.status==='failed'?'var(--red-dim)':'var(--surface2)'};border-bottom:1px solid var(--border);">
+      msgRow.innerHTML = `<td colspan="${loadsColspan()}" style="padding:0.5rem 0.8rem;background:${load.status==='failed'?'var(--red-dim)':'var(--surface2)'};border-bottom:1px solid var(--border);">
         <span class="mono" style="color:${load.status==='failed'?'var(--red)':'var(--text2)'};font-size:0.74rem;">
           ${load.status==='failed' ? '✗' : 'ℹ'} ${esc(load.erpResult)}
         </span>
