@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wayfair Loads — Posku</title>
+<style>
+  :root {
+    --bg: #0e0f13; --surface: #16181e; --surface2: #1b1e26; --border: #262a34;
+    --text: #e6e9ef; --text2: #aab2c0; --text3: #6f7891;
+    --green: #35c07f; --green-bg: rgba(53,192,127,0.14); --green-bd: rgba(53,192,127,0.4);
+    --amber: #e0a63a; --amber-bg: rgba(224,166,58,0.14); --amber-bd: rgba(224,166,58,0.4);
+    --blue: #55a6ff; --blue-bg: rgba(85,166,255,0.14); --blue-bd: rgba(85,166,255,0.4);
+    --accent: #ff7a3d;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: 'DM Mono', ui-monospace, Menlo, Consolas, monospace; background: var(--bg); color: var(--text); margin: 0; padding: 1.5rem clamp(1rem, 3vw, 2.5rem); }
+  h1 { font-size: 1.15rem; letter-spacing: 0.04em; margin: 0 0 0.15rem; }
+  .sub { color: var(--text3); font-size: 0.72rem; margin-bottom: 1.2rem; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
+  .btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 0.4rem 0.85rem; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 0.72rem; letter-spacing: 0.03em; transition: background 0.13s, color 0.13s; }
+  .btn:hover { background: #232733; color: #fff; }
+  .btn.on { background: var(--accent); border-color: var(--accent); color: #1a1206; font-weight: 600; }
+  input.search { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 0.4rem 0.7rem; border-radius: 6px; font-family: inherit; font-size: 0.72rem; min-width: 200px; }
+  input.search::placeholder { color: var(--text3); }
+  .spacer { flex: 1; }
+  .count { color: var(--text3); font-size: 0.72rem; margin-bottom: 0.5rem; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.71rem; min-width: 1100px; }
+  th { text-align: left; padding: 0.5rem 0.65rem; color: var(--text3); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.58rem; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface2); white-space: nowrap; }
+  td { padding: 0.5rem 0.65rem; border-bottom: 1px solid var(--border); color: var(--text2); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+  .sku { color: var(--text); font-weight: 600; white-space: nowrap; }
+  .nowrap { white-space: nowrap; }
+  .muted { color: var(--text3); }
+  .file { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill { font-size: 0.6rem; padding: 0.1rem 0.45rem; border-radius: 5px; border: 1px solid; white-space: nowrap; }
+  .pill.yes  { color: var(--green); background: var(--green-bg); border-color: var(--green-bd); }
+  .pill.no   { color: var(--text3); background: transparent; border-color: var(--border); }
+  .empty { color: var(--text3); font-size: 0.74rem; padding: 1.4rem 0.7rem; }
+  .env-tag { font-size: 0.56rem; padding: 0.05rem 0.35rem; border-radius: 4px; background: var(--surface2); border: 1px solid var(--border); color: var(--text3); text-transform: uppercase; margin-left: 0.35rem; }
+</style>
+</head>
+<body>
+<h1>🪑 Wayfair Loads</h1>
+<div class="sub">One row per pushed Wayfair SKU, joined to its Drive manifest and any PO / invoice created for it.</div>
+
+<div class="toolbar">
+  <button class="btn on" data-env="all">All envs</button>
+  <button class="btn" data-env="test">Test</button>
+  <button class="btn" data-env="live">Live</button>
+  <input class="search" id="search" placeholder="filter by SKU, load id, location…">
+  <span class="spacer"></span>
+  <button class="btn" id="refresh">Refresh</button>
+  <button class="btn" id="export">Export CSV</button>
+</div>
+<div class="count" id="count"></div>
+<div id="root"></div>
+
+<script>
+const LEDGER_KEY = 'posku.ledger.v1';
+let envFilter = 'all';
+let q = '';
+
+function loadLedger() {
+  let l; try { l = JSON.parse(localStorage.getItem(LEDGER_KEY)); } catch {}
+  l = l || {};
+  for (const k of ['skus','pos','invoices','manifests']) if (!Array.isArray(l[k])) l[k] = [];
+  return l;
+}
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const isWyf = e => (e.supplier || 'WYF') === 'WYF';
+const inEnv = e => envFilter === 'all' || (e.env || 'test') === envFilter;
+const fmtDate = v => {
+  if (!v) return '';
+  const d = new Date(v);
+  return isNaN(d) ? String(v) : d.toLocaleDateString('en-US', { year:'2-digit', month:'short', day:'numeric' });
+};
+
+// Build loadId → PO# / invoice# lookups (a PO/invoice can cover several loads).
+function buildJoins(l) {
+  const poByLoad = {}, invByLoad = {};
+  for (const p of l.pos)      if (isWyf(p) && inEnv(p)) for (const lid of (p.loadIds || [])) poByLoad[lid]  = p.poNumber || p.poId || '✓';
+  for (const v of l.invoices) if (isWyf(v) && inEnv(v)) for (const lid of (v.loadIds || [])) invByLoad[lid] = v.invoiceId || '✓';
+  return { poByLoad, invByLoad };
+}
+
+function currentRows() {
+  const l = loadLedger();
+  const { poByLoad, invByLoad } = buildJoins(l);
+  let list = l.skus.filter(s => isWyf(s) && inEnv(s));
+  if (q) {
+    const needle = q.toLowerCase();
+    list = list.filter(s => [s.sku, s.loadId, s.locCode, s.productName, s.fobName].some(v => String(v || '').toLowerCase().includes(needle)));
+  }
+  return list.map(s => ({
+    ...s,
+    poNum:  poByLoad[s.loadId]  || '',
+    invNum: invByLoad[s.loadId] || '',
+  }));
+}
+
+function render() {
+  const rows = currentRows();
+  document.getElementById('count').textContent = `${rows.length} load${rows.length === 1 ? '' : 's'}`;
+  if (!rows.length) {
+    document.getElementById('root').innerHTML = `<div class="table-wrap"><div class="empty">No Wayfair loads recorded yet. Push a Wayfair SKU and it will appear here.</div></div>`;
+    return;
+  }
+  const head = ['Load ID','Email date','Location','Generated SKU','Product name','FOB state','Filename (Drive)','Date of file','Invoice #','PO #'];
+  const body = rows.map(s => `<tr>
+    <td class="nowrap">${esc(s.loadId || '—')}</td>
+    <td class="nowrap muted">${esc(fmtDate(s.emailDate)) || '—'}</td>
+    <td class="nowrap">${esc(s.locCode || '—')}</td>
+    <td class="sku">${esc(s.sku)}<span class="env-tag">${esc(s.env || 'test')}</span></td>
+    <td>${esc(s.productName || '—')}</td>
+    <td class="nowrap">${esc(s.fobName || '—')}</td>
+    <td class="file" title="${esc(s.manifestFilename || '')}">${esc(s.manifestFilename || '—')}</td>
+    <td class="nowrap muted">${esc(fmtDate(s.manifestFileDate)) || '—'}</td>
+    <td class="nowrap">${s.invNum ? `<span class="pill yes">${esc(s.invNum)}</span>` : '<span class="pill no">—</span>'}</td>
+    <td class="nowrap">${s.poNum ? `<span class="pill yes">${esc(s.poNum)}</span>` : '<span class="pill no">—</span>'}</td>
+  </tr>`).join('');
+  document.getElementById('root').innerHTML = `<div class="table-wrap"><table><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+function exportCsv() {
+  const rows = currentRows();
+  const head = ['load_id','email_date','location','generated_sku','env','product_name','fob_state','filename','date_of_file','invoice_no','po_no'];
+  const lines = [head.join(',')].concat(rows.map(s => [
+    s.loadId, s.emailDate, s.locCode, s.sku, s.env, s.productName, s.fobName,
+    s.manifestFilename, s.manifestFileDate, s.invNum, s.poNum,
+  ].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')));
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'wayfair-loads.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+document.querySelectorAll('[data-env]').forEach(b => {
+  b.onclick = () => {
+    envFilter = b.dataset.env;
+    document.querySelectorAll('[data-env]').forEach(x => x.classList.toggle('on', x === b));
+    render();
+  };
+});
+document.getElementById('search').addEventListener('input', e => { q = e.target.value.trim(); render(); });
+document.getElementById('refresh').onclick = render;
+document.getElementById('export').onclick = exportCsv;
+render();
+</script>
+</body>
+</html>

@@ -598,6 +598,7 @@ textarea::placeholder { color: var(--text4); }
 
     <div class="sidebar-section">
       <div class="sidebar-section-title">Tools</div>
+      <a class="nav-item" href="wayfair-loads.html" target="_blank" title="Wayfair loads — one row per SKU with manifest, PO & invoice"><span class="nav-icon">🪑</span><span class="nav-label">WYF loads</span></a>
       <a class="nav-item" href="wayfair-activity.html" target="_blank" title="Wayfair activity — SKUs, POs, invoices, manifests"><span class="nav-icon">📋</span><span class="nav-label">WYF activity</span></a>
       <a class="nav-item" href="diagnostic.html" target="_blank" title="Diagnostics"><span class="nav-icon">🩺</span><span class="nav-label">Diagnostics</span></a>
       <a class="nav-item" href="whats-new.html" target="_blank" title="What's new"><span class="nav-icon">✨</span><span class="nav-label">What's new</span></a>
@@ -2175,6 +2176,10 @@ async function processWayfairManifestFile(fileId) {
   const typeCode = d?.loadType || null;
   const locCode  = d?.locCode || null;
   const manifestTrait = typeCode ? (sup.manifestTraits[typeCode] || 603) : 603;
+  // The Drive file this manifest came from — filename + upload date, surfaced
+  // on the Wayfair loads page.
+  const manifestFilename = f.name || '';
+  const manifestFileDate = f.createdTime || f.modifiedTime || '';
 
   // Find-or-create the load up front so both branches (manifested / salvage)
   // share the same identity-building code.
@@ -2205,6 +2210,9 @@ async function processWayfairManifestFile(fileId) {
     load.manifestPalletIds = [];
     load.flatPrice = wyfFlatPrice(locCode, sup);
     load.manifestExpanded = false;
+    load.manifestFilename = manifestFilename;
+    load.manifestFileDate = manifestFileDate;
+    ledgerAttachFile(finalSku, manifestFilename, manifestFileDate);
     return { ok: true, msg: `unmanifested — flat $${load.flatPrice} (manifest disregarded)`, sku: finalSku };
   }
 
@@ -2215,6 +2223,9 @@ async function processWayfairManifestFile(fileId) {
   load.manifestRows = res.rows;
   load.manifestPalletIds = res.palletIds || [];
   load.manifestExpanded = true;
+  load.manifestFilename = manifestFilename;
+  load.manifestFileDate = manifestFileDate;
+  ledgerAttachFile(finalSku, manifestFilename, manifestFileDate);
   return { ok: true, msg: `${res.rows.length} line(s)`, sku: finalSku };
 }
 
@@ -2676,11 +2687,28 @@ function recordLedgerSku(load, result) {
     sku, env, supplier: load.supplierKey,
     loadId: load.loadId, locCode: load.locCode, typeCode: load.typeCode,
     productName: load.name || '',
+    emailDate: load.emailDate || '', fobName: load.fobName || '',
+    manifestFilename: load.manifestFilename || '', manifestFileDate: load.manifestFileDate || '',
     basis, manifestRows: hasManifest ? load.manifestRows.length : 0,
     flatPrice: hasFlat ? Number(load.flatPrice) : null,
     erpId: result.erpId ?? load.productId ?? null,
     updated: !!result.updated,
   });
+}
+
+// Patch an already-recorded SKU row with the Drive manifest file it came from,
+// so the loads page shows the filename/date even when the manifest was attached
+// without a re-push. No-op if the SKU hasn't been pushed (no row yet).
+function ledgerAttachFile(sku, filename, fileDate) {
+  try {
+    const l = loadLedger();
+    const key = loadEnv() + '|' + sku;
+    const e = l.skus.find(x => x._key === key);
+    if (!e) return;
+    e.manifestFilename = filename || e.manifestFilename || '';
+    e.manifestFileDate = fileDate || e.manifestFileDate || '';
+    localStorage.setItem(LEDGER_KEY, JSON.stringify(l));
+  } catch {}
 }
 
 async function pushLoad(load) {
