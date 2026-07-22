@@ -79,6 +79,8 @@
   <button class="btn" data-env="live">Live</button>
   <input class="search" id="search" placeholder="filter by SKU, load id, location, customer…">
   <span class="spacer"></span>
+  <button class="btn" id="check-erp" title="Verify each SKU against the ERP — did it actually get pushed?">Check pushed in ERP</button>
+  <span id="erp-status" class="muted" style="font-size:0.68rem;"></span>
   <button class="btn" id="refresh">Refresh</button>
   <button class="btn" id="export">Export CSV</button>
 </div>
@@ -91,6 +93,46 @@ let envFilter = 'all';
 let q = '';
 let retrieved = [];   // Drive-derived rows from the last Retrieve (this session)
 let stageFilter = 'all';
+const skuErpStatus = new Map();   // env|sku → true (in ERP) / false (not) / undefined (unchecked)
+
+// Does this SKU exist in the ERP right now? GET /api/products?sku= via the proxy.
+async function skuInErp(sku) {
+  try {
+    const res = await fetch('/api/products?sku=' + encodeURIComponent(sku), { headers: { 'X-Posku-Env': pageEnv() }, cache: 'no-store' });
+    if (res.status === 404) return false;
+    if (!res.ok) return null;
+    const j = await res.json().catch(() => null);
+    const arr = (j && (j.data || j.products)) || (Array.isArray(j) ? j : []);
+    return Array.isArray(arr) && arr.some(p => String(p.sku || '').toUpperCase() === String(sku).toUpperCase());
+  } catch { return null; }
+}
+
+// Is a row pushed? ERP check wins; otherwise a ledger row means we pushed it.
+function pushedState(s) {
+  if (skuErpStatus.has(s._key)) return skuErpStatus.get(s._key);
+  if (s.source === 'ledger') return true;
+  return null;   // drive row, not yet verified against ERP
+}
+
+// Verify the given rows against the ERP (4 at a time), then re-render.
+async function checkErp(rows) {
+  const st = document.getElementById('erp-status');
+  const todo = rows.filter(s => !skuErpStatus.has(s._key));
+  if (!todo.length) { if (st) st.textContent = 'All rows already checked.'; return; }
+  const btn = document.getElementById('check-erp');
+  if (btn) btn.disabled = true;
+  let done = 0;
+  for (let i = 0; i < todo.length; i += 4) {
+    await Promise.all(todo.slice(i, i + 4).map(async s => {
+      skuErpStatus.set(s._key, await skuInErp(s.sku));
+      done++;
+    }));
+    if (st) st.textContent = `Checked ${done}/${todo.length} against ERP…`;
+    render();
+  }
+  if (st) st.textContent = `Checked ${todo.length} SKU(s) against the ERP.`;
+  if (btn) btn.disabled = false;
+}
 
 // Lifecycle stage of a WYF SKU:
 //   retrieved → manifest seen in Drive but SKU not pushed to ERP yet
@@ -281,13 +323,18 @@ function render() {
     document.getElementById('root').innerHTML = `<div class="table-wrap"><div class="empty">No Wayfair loads to show. Pick a date range and hit <strong>Retrieve manifests + SKUs</strong> to pull them from Drive, or push a Wayfair SKU from the app.</div></div>`;
     return;
   }
-  const head = ['Status','Load ID','Email date','Location','Generated SKU','Product name','FOB state','Filename (Drive)','Date of file','Invoice #','Customer','PO #'];
+  const head = ['Pushed?','Status','Load ID','Email date','Location','Generated SKU','Product name','FOB state','Filename (Drive)','Date of file','Invoice #','Customer','PO #'];
   const body = rows.map(s => {
     const st = STAGES[s.stage] || STAGES.pending;
+    const p = pushedState(s);
+    const pushedCell = p === true  ? '<span class="pill yes" title="SKU exists in the ERP">✓ pushed</span>'
+                     : p === false ? '<span class="stage amber" title="SKU NOT found in the ERP">✗ not pushed</span>'
+                     : '<span class="pill no" title="Not verified — hit Check pushed in ERP">?</span>';
     // An invoice created before the manifest priced the SKU carries a
     // provisional price — flag it so it gets repriced once manifested.
     const needsReprice = s.invNum && (s.stage === 'pending');
     return `<tr>
+    <td class="nowrap">${pushedCell}</td>
     <td class="nowrap"><span class="stage ${st.cls}">${st.label}</span></td>
     <td class="nowrap">${esc(s.loadId || '—')}</td>
     <td class="nowrap muted">${esc(fmtDate(s.emailDate)) || '—'}</td>
@@ -307,11 +354,15 @@ function render() {
 
 function exportCsv() {
   const rows = currentRows();
-  const head = ['status','load_id','email_date','location','generated_sku','env','product_name','fob_state','filename','date_of_file','invoice_no','customer','po_no'];
-  const lines = [head.join(',')].concat(rows.map(s => [
-    s.stage, s.loadId, s.emailDate, s.locCode, s.sku, s.env, s.productName, s.fobName,
-    s.manifestFilename, s.manifestFileDate, s.invNum, s.customer, s.poNum,
-  ].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')));
+  const head = ['pushed','status','load_id','email_date','location','generated_sku','env','product_name','fob_state','filename','date_of_file','invoice_no','customer','po_no'];
+  const lines = [head.join(',')].concat(rows.map(s => {
+    const p = pushedState(s);
+    return [
+      p === true ? 'yes' : p === false ? 'no' : 'unchecked',
+      s.stage, s.loadId, s.emailDate, s.locCode, s.sku, s.env, s.productName, s.fobName,
+      s.manifestFilename, s.manifestFileDate, s.invNum, s.customer, s.poNum,
+    ].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',');
+  }));
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -331,6 +382,7 @@ document.getElementById('search').addEventListener('input', e => { q = e.target.
 document.getElementById('refresh').onclick = render;
 document.getElementById('export').onclick = exportCsv;
 document.getElementById('retrieve').onclick = retrieveFromDrive;
+document.getElementById('check-erp').onclick = () => checkErp(currentRows());
 
 // Date-range shortcuts (local YYYY-MM-DD).
 const ymd = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;

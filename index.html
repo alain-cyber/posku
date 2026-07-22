@@ -599,7 +599,7 @@ textarea::placeholder { color: var(--text4); }
     <div class="sidebar-section">
       <div class="sidebar-section-title">Tools</div>
       <a class="nav-item" href="wayfair-loads.html" target="_blank" title="Wayfair loads — retrieve, status, manifest, PO & invoice"><span class="nav-icon">🪑</span><span class="nav-label">Wayfair loads</span></a>
-      <a class="nav-item" href="wayfair-activity.html" target="_blank" title="Legacy Wayfair activity — SKUs, POs, invoices, manifests"><span class="nav-icon">🗂️</span><span class="nav-label">WYF activity <span class="soon-pill">legacy</span></span></a>
+      <a class="nav-item" href="wayfair-activity.html" target="_blank" title="Wayfair activity — SKUs, POs, invoices, manifests"><span class="nav-icon">📋</span><span class="nav-label">WYF activity</span></a>
       <a class="nav-item" href="diagnostic.html" target="_blank" title="Diagnostics"><span class="nav-icon">🩺</span><span class="nav-label">Diagnostics</span></a>
       <a class="nav-item" href="whats-new.html" target="_blank" title="What's new"><span class="nav-icon">✨</span><span class="nav-label">What's new</span></a>
     </div>
@@ -774,6 +774,7 @@ textarea::placeholder { color: var(--text4); }
           <button class="btn" id="push-all-btn">Push all ready to ERP</button>
           <button class="btn ghost" id="send-all-manifests-btn" style="display:none;">Send all manifests to Sheet</button>
           <button class="btn ghost" id="download-loads-btn" title="Download all detected loads as CSV">Download CSV</button>
+          <button class="btn ghost" id="wyf-legacy-toggle" style="display:none;" title="Switch between the new Wayfair table format and the legacy columns">Legacy view</button>
           <button class="btn ghost" id="clear-loads-btn">Clear loads</button>
         </div>
       </div>
@@ -783,7 +784,7 @@ textarea::placeholder { color: var(--text4); }
         <div class="table-wrap">
           <table class="table">
             <thead>
-              <tr>
+              <tr id="loads-head-row">
                 <th class="select-col"><input type="checkbox" id="select-all"></th>
                 <th>Load ID</th>
                 <th>Location</th>
@@ -3032,10 +3033,92 @@ function typePill(code) {
   return `<span class="type-pill ${String(code).toLowerCase()}">${esc(code)}</span>`;
 }
 
+// ── Wayfair lifecycle helpers (new-format table) ─────────────────────────────
+// Where a WYF load is in its life: not pushed → pending manifest → flat/priced.
+function wyfLifecycle(load) {
+  const pushed = load.status === 'done' || load.status === 'dup' || load._skuExists === true;
+  if (!pushed) return { key: 'notpushed', label: 'Not pushed', style: 'color:var(--text3);border-color:var(--border2);' };
+  if (load.manifestRows?.length) return { key: 'priced', label: '✓ Priced', style: 'color:var(--green);background:rgba(30,127,86,0.12);border-color:rgba(30,127,86,0.4);' };
+  if (load.flatPrice != null)    return { key: 'flat', label: 'Flat priced', style: 'color:var(--blue,#55a6ff);background:rgba(85,166,255,0.1);border-color:rgba(85,166,255,0.35);' };
+  return { key: 'pending', label: '⏳ Pending manifest', style: 'color:var(--amber,#d6a23a);background:rgba(214,162,58,0.1);border-color:rgba(214,162,58,0.4);' };
+}
+
+// Invoice / PO joins for a load: prefer live drafts, fall back to the ledger
+// (earlier sessions). Returns display strings, '' when none.
+function wyfJoins(load) {
+  const finalSku = load.sku ? withEnvSuffix(load.sku) : null;
+  let invId = load.invoiceId || null, customer = '';
+  const inv = (typeof invoiceDrafts !== 'undefined' ? invoiceDrafts : [])
+    .find(d => d.status === 'done' && d.items?.some(it => it.sku === finalSku));
+  if (inv) { invId = invId || inv.invoiceId; customer = inv.customer?.name || inv.customer?.email || ''; }
+  let poNum = '';
+  const po = (typeof poDrafts !== 'undefined' ? poDrafts : [])
+    .find(p => p.status === 'done' && (p.items || []).some(it => it.sku === load.sku));
+  if (po) poNum = po.po_number || po.poId || '✓';
+  if ((!invId || !customer || !poNum) && load.loadId) {
+    try {
+      const led = loadLedger();
+      if (!invId || !customer) {
+        const v = led.invoices.find(v => (v.env || 'test') === loadEnv() && (v.loadIds || []).includes(load.loadId));
+        if (v) { invId = invId || v.invoiceId; customer = customer || v.customer || ''; }
+      }
+      if (!poNum) {
+        const p = led.pos.find(p => (p.env || 'test') === loadEnv() && (p.loadIds || []).includes(load.loadId));
+        if (p) poNum = p.poNumber || p.poId || '✓';
+      }
+    } catch {}
+  }
+  return { invId: invId || '', customer, poNum };
+}
+
+// Whether the WYF table uses the new format (default) or the legacy columns.
+let wyfLegacyView = false;
+
+const LOADS_HEAD_SMS = `
+  <th class="select-col"><input type="checkbox" id="select-all"></th>
+  <th>Load ID</th>
+  <th>Location</th>
+  <th>Type</th>
+  <th>Generated SKU</th>
+  <th>Product name</th>
+  <th>FOB state</th>
+  <th>Status</th>
+  <th title="Loads sharing a PO # go on one purchase order (default: one number per load, no grouping). Edit to group.">PO #</th>
+  <th title="Loads sharing an Invoice # go on one invoice (default: one number per load, no grouping). Edit to group.">Inv #</th>
+  <th></th>`;
+const LOADS_HEAD_WYF = `
+  <th class="select-col"><input type="checkbox" id="select-all"></th>
+  <th>Load ID</th>
+  <th>Location</th>
+  <th>Generated SKU</th>
+  <th>Product name</th>
+  <th>FOB state</th>
+  <th title="Drive manifest this load was parsed from (filename + upload date)">Manifest (Drive)</th>
+  <th>Status</th>
+  <th>Inv # / Customer</th>
+  <th>PO #</th>
+  <th></th>`;
+
 function renderLoads() {
   assignDefaultGroups();
   renderLoadsFilter();
   const filterActive = loadLocationFilter && loadLocationFilter.size > 0;
+  // New-format table for Wayfair (legacy view still reachable via toggle).
+  const wyfFormat = activeSupplier === 'WYF' && !wyfLegacyView;
+  const headRow = $('loads-head-row');
+  const wantHead = wyfFormat ? LOADS_HEAD_WYF : LOADS_HEAD_SMS;
+  if (headRow && headRow.dataset.format !== (wyfFormat ? 'wyf' : 'sms')) {
+    headRow.innerHTML = wantHead;
+    headRow.dataset.format = wyfFormat ? 'wyf' : 'sms';
+    bindSelectAll();   // the swap recreated the select-all checkbox
+  }
+  // Legacy-view toggle only applies to Wayfair.
+  const legacyBtn = $('wyf-legacy-toggle');
+  if (legacyBtn) {
+    legacyBtn.style.display = activeSupplier === 'WYF' ? '' : 'none';
+    legacyBtn.textContent = wyfLegacyView ? 'New view' : 'Legacy view';
+    legacyBtn.onclick = () => { wyfLegacyView = !wyfLegacyView; renderLoads(); };
+  }
   const body = $('loads-body');
   body.innerHTML = '';
   let visRow = 0;   // counts visible main rows for zebra striping
@@ -3086,18 +3169,9 @@ function renderLoads() {
       </span>`;
     };
 
-    tr.innerHTML = `
-      <td class="select-col">${load.status === 'done' ? `<input type="checkbox" data-select="${idx}" ${load.selected ? 'checked' : ''}>` : ''}</td>
-      <td class="mono"><span class="row-exp" data-details-toggle="${idx}" title="Show / hide all push fields">${load.detailsExpanded ? '▾' : '▸'}</span>${esc(load.loadId)}${load.emailDate ? `<div style="font-size:0.6rem;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px;white-space:nowrap;" title="Email received${load.emailFrom ? ' from ' + esc(load.emailFrom) : ''}">✉ ${esc(fmtEmailDate(load.emailDate))}</div>` : ''}${(load._skuExists && load.status !== 'done' && load.status !== 'dup') ? `<div style="font-size:0.6rem;color:var(--amber,#d6a23a);font-family:'DM Mono',monospace;margin-top:2px;white-space:nowrap;" title="A product with this SKU already exists in the ERP (${esc(loadEnv())}) — it was pushed before">⚠ SKU already pushed</div>` : ''}</td>
-      <td><span class="mono">${esc(load.locCode || '—')}</span></td>
-      <td>${typePill(load.typeCode)}</td>
-      <td>${load.sku ? `<span class="mono-green">${esc(withEnvSuffix(load.sku))}</span>` : `<span class="mono-amber">—</span>`}</td>
-      <td style="font-size:0.72rem;color:var(--text2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(load.name || '')}">${esc(load.name || '—')}</td>
-      <td class="mono" style="font-size:0.72rem;">${esc(load.fobName)}</td>
-      <td>${statusChip()}</td>
-      <td>${load.supplierKey === 'SMS' ? `<input type="number" min="1" class="grp-input" data-grp-po="${idx}" value="${esc(load.poGroup ?? '')}" title="PO group">` : '<span class="mono" style="color:var(--text4);">—</span>'}</td>
-      <td>${load.supplierKey === 'SMS' ? `<input type="number" min="1" class="grp-input" data-grp-inv="${idx}" value="${esc(load.invGroup ?? '')}" title="Invoice group">` : '<span class="mono" style="color:var(--text4);">—</span>'}</td>
-      <td style="white-space:nowrap;">
+    // Shared cell fragments
+    const loadIdCell = `<td class="mono"><span class="row-exp" data-details-toggle="${idx}" title="Show / hide all push fields">${load.detailsExpanded ? '▾' : '▸'}</span>${esc(load.loadId)}${load.emailDate ? `<div style="font-size:0.6rem;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px;white-space:nowrap;" title="Email received${load.emailFrom ? ' from ' + esc(load.emailFrom) : ''}">✉ ${esc(fmtEmailDate(load.emailDate))}</div>` : ''}${(load._skuExists && load.status !== 'done' && load.status !== 'dup') ? `<div style="font-size:0.6rem;color:var(--amber,#d6a23a);font-family:'DM Mono',monospace;margin-top:2px;white-space:nowrap;" title="A product with this SKU already exists in the ERP (${esc(loadEnv())}) — it was pushed before">⚠ SKU already pushed</div>` : ''}</td>`;
+    const actionsCell = `<td style="white-space:nowrap;">
         ${load.status !== 'done' && load.status !== 'pushing' && load.status !== 'dup' ? (
           load._skuExists === true
             // SKU already in the ERP → don't offer a create (it'd dup). Prompt to
@@ -3112,6 +3186,51 @@ function renderLoads() {
         ${load.status === 'dup' ? `<button class="btn ghost small" data-edit="${idx}">Edit</button>` : ''}
         <button class="btn danger small" data-remove="${idx}">×</button>
       </td>`;
+    const selectCell = `<td class="select-col">${load.status === 'done' ? `<input type="checkbox" data-select="${idx}" ${load.selected ? 'checked' : ''}>` : ''}</td>`;
+
+    if (wyfFormat) {
+      // ── New Wayfair format: lifecycle + manifest file + inv/customer + PO ──
+      const lc = wyfLifecycle(load);
+      const joins = wyfJoins(load);
+      const lifecyclePill = `<span style="display:inline-block;font-size:0.62rem;font-family:'DM Mono',monospace;padding:0.14rem 0.5rem;border-radius:5px;border:1px solid;${lc.style}">${lc.label}</span>`;
+      const statusCell = (load.status === 'failed' || load.status === 'pushing' || load.status === 'review')
+        ? `${statusChip()}<div style="margin-top:3px;">${lifecyclePill}</div>`
+        : (load.status === 'done' ? `${lifecyclePill}<div style="margin-top:3px;">${statusChip()}</div>` : lifecyclePill);
+      const fileCell = load.manifestFilename
+        ? `<div style="max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.68rem;" title="${esc(load.manifestFilename)}">${esc(load.manifestFilename)}</div>${load.manifestFileDate ? `<div style="font-size:0.6rem;color:var(--text3);font-family:'DM Mono',monospace;">${esc(String(load.manifestFileDate).slice(0, 10))}</div>` : ''}`
+        : `<span class="mono" style="color:var(--text4);">—</span>`;
+      const invCell = joins.invId
+        ? `<span class="mono-green" style="font-size:0.72rem;">${esc(joins.invId)}</span>${joins.customer ? `<div style="font-size:0.62rem;color:var(--text2);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(joins.customer)}">${esc(joins.customer)}</div>` : ''}${(joins.invId && lc.key === 'pending') ? `<div style="font-size:0.58rem;color:var(--amber,#d6a23a);" title="Invoice was created before the manifest — reprice it once values land">⚠ reprice pending</div>` : ''}`
+        : `<span class="mono" style="color:var(--text4);">—</span>`;
+      const poCell = joins.poNum
+        ? `<span class="mono-green" style="font-size:0.72rem;">${esc(joins.poNum)}</span>`
+        : `<span class="mono" style="color:var(--text4);">—</span>`;
+      tr.innerHTML = `
+        ${selectCell}
+        ${loadIdCell}
+        <td><span class="mono">${esc(load.locCode || '—')}</span></td>
+        <td>${load.sku ? `<span class="mono-green">${esc(withEnvSuffix(load.sku))}</span>` : `<span class="mono-amber">—</span>`} ${typePill(load.typeCode)}</td>
+        <td style="font-size:0.72rem;color:var(--text2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(load.name || '')}">${esc(load.name || '—')}</td>
+        <td class="mono" style="font-size:0.72rem;">${esc(load.fobName)}</td>
+        <td>${fileCell}</td>
+        <td>${statusCell}</td>
+        <td>${invCell}</td>
+        <td>${poCell}</td>
+        ${actionsCell}`;
+    } else {
+      tr.innerHTML = `
+      ${selectCell}
+      ${loadIdCell}
+      <td><span class="mono">${esc(load.locCode || '—')}</span></td>
+      <td>${typePill(load.typeCode)}</td>
+      <td>${load.sku ? `<span class="mono-green">${esc(withEnvSuffix(load.sku))}</span>` : `<span class="mono-amber">—</span>`}</td>
+      <td style="font-size:0.72rem;color:var(--text2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(load.name || '')}">${esc(load.name || '—')}</td>
+      <td class="mono" style="font-size:0.72rem;">${esc(load.fobName)}</td>
+      <td>${statusChip()}</td>
+      <td>${load.supplierKey === 'SMS' ? `<input type="number" min="1" class="grp-input" data-grp-po="${idx}" value="${esc(load.poGroup ?? '')}" title="PO group">` : '<span class="mono" style="color:var(--text4);">—</span>'}</td>
+      <td>${load.supplierKey === 'SMS' ? `<input type="number" min="1" class="grp-input" data-grp-inv="${idx}" value="${esc(load.invGroup ?? '')}" title="Invoice group">` : '<span class="mono" style="color:var(--text4);">—</span>'}</td>
+      ${actionsCell}`;
+    }
 
     // edit / review row — shows ALL fields being pushed
     const er = document.createElement('tr');
@@ -3502,11 +3621,16 @@ function attachHandlers() {
   });
 }
 
-$('select-all').onchange = () => {
-  const checked = $('select-all').checked;
-  loads.forEach(l => { if (l.status === 'done') l.selected = checked; });
-  renderLoads();
-};
+function bindSelectAll() {
+  const el = $('select-all');
+  if (!el) return;
+  el.onchange = () => {
+    const checked = el.checked;
+    loads.forEach(l => { if (l.status === 'done') l.selected = checked; });
+    renderLoads();
+  };
+}
+bindSelectAll();
 
 async function doPush(indices, opts = {}) {
   const cfg = loadCfg();
