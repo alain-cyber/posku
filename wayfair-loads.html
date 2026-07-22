@@ -16,6 +16,9 @@
   * { box-sizing: border-box; }
   body { font-family: 'DM Mono', ui-monospace, Menlo, Consolas, monospace; background: var(--bg); color: var(--text); margin: 0; padding: 1.5rem clamp(1rem, 3vw, 2.5rem); }
   h1 { font-size: 1.15rem; letter-spacing: 0.04em; margin: 0 0 0.15rem; }
+  h1 a { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; }
+  h1 a:hover { color: var(--accent); }
+  h1 .home-hint { font-size: 0.6rem; color: var(--text3); border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.4rem; letter-spacing: 0.05em; }
   .sub { color: var(--text3); font-size: 0.72rem; margin-bottom: 1.2rem; }
   .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
   .btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 0.4rem 0.85rem; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 0.72rem; letter-spacing: 0.03em; transition: background 0.13s, color 0.13s; }
@@ -43,7 +46,7 @@
 </style>
 </head>
 <body>
-<h1>🪑 Wayfair Loads</h1>
+<h1><a href="index.html" title="Back to Posku home">🪑 Wayfair Loads <span class="home-hint">↩ home</span></a></h1>
 <div class="sub">One row per pushed Wayfair SKU, joined to its Drive manifest and any PO / invoice created for it.</div>
 
 <div class="toolbar">
@@ -78,26 +81,31 @@ const fmtDate = v => {
   return isNaN(d) ? String(v) : d.toLocaleDateString('en-US', { year:'2-digit', month:'short', day:'numeric' });
 };
 
-// Build loadId → PO# / invoice# lookups (a PO/invoice can cover several loads).
+// Build loadId → PO# / invoice# / customer lookups (a PO/invoice can cover
+// several loads).
 function buildJoins(l) {
-  const poByLoad = {}, invByLoad = {};
+  const poByLoad = {}, invByLoad = {}, custByLoad = {};
   for (const p of l.pos)      if (isWyf(p) && inEnv(p)) for (const lid of (p.loadIds || [])) poByLoad[lid]  = p.poNumber || p.poId || '✓';
-  for (const v of l.invoices) if (isWyf(v) && inEnv(v)) for (const lid of (v.loadIds || [])) invByLoad[lid] = v.invoiceId || '✓';
-  return { poByLoad, invByLoad };
+  for (const v of l.invoices) if (isWyf(v) && inEnv(v)) for (const lid of (v.loadIds || [])) {
+    invByLoad[lid]  = v.invoiceId || '✓';
+    custByLoad[lid] = v.customer || '';
+  }
+  return { poByLoad, invByLoad, custByLoad };
 }
 
 function currentRows() {
   const l = loadLedger();
-  const { poByLoad, invByLoad } = buildJoins(l);
+  const { poByLoad, invByLoad, custByLoad } = buildJoins(l);
   let list = l.skus.filter(s => isWyf(s) && inEnv(s));
   if (q) {
     const needle = q.toLowerCase();
-    list = list.filter(s => [s.sku, s.loadId, s.locCode, s.productName, s.fobName].some(v => String(v || '').toLowerCase().includes(needle)));
+    list = list.filter(s => [s.sku, s.loadId, s.locCode, s.productName, s.fobName, custByLoad[s.loadId]].some(v => String(v || '').toLowerCase().includes(needle)));
   }
   return list.map(s => ({
     ...s,
-    poNum:  poByLoad[s.loadId]  || '',
-    invNum: invByLoad[s.loadId] || '',
+    poNum:    poByLoad[s.loadId]  || '',
+    invNum:   invByLoad[s.loadId] || '',
+    customer: custByLoad[s.loadId] || '',
   }));
 }
 
@@ -108,7 +116,7 @@ function render() {
     document.getElementById('root').innerHTML = `<div class="table-wrap"><div class="empty">No Wayfair loads recorded yet. Push a Wayfair SKU and it will appear here.</div></div>`;
     return;
   }
-  const head = ['Load ID','Email date','Location','Generated SKU','Product name','FOB state','Filename (Drive)','Date of file','Invoice #','PO #'];
+  const head = ['Load ID','Email date','Location','Generated SKU','Product name','FOB state','Filename (Drive)','Date of file','Invoice #','Customer','PO #'];
   const body = rows.map(s => `<tr>
     <td class="nowrap">${esc(s.loadId || '—')}</td>
     <td class="nowrap muted">${esc(fmtDate(s.emailDate)) || '—'}</td>
@@ -119,6 +127,7 @@ function render() {
     <td class="file" title="${esc(s.manifestFilename || '')}">${esc(s.manifestFilename || '—')}</td>
     <td class="nowrap muted">${esc(fmtDate(s.manifestFileDate)) || '—'}</td>
     <td class="nowrap">${s.invNum ? `<span class="pill yes">${esc(s.invNum)}</span>` : '<span class="pill no">—</span>'}</td>
+    <td>${esc(s.customer || '—')}</td>
     <td class="nowrap">${s.poNum ? `<span class="pill yes">${esc(s.poNum)}</span>` : '<span class="pill no">—</span>'}</td>
   </tr>`).join('');
   document.getElementById('root').innerHTML = `<div class="table-wrap"><table><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
@@ -126,10 +135,10 @@ function render() {
 
 function exportCsv() {
   const rows = currentRows();
-  const head = ['load_id','email_date','location','generated_sku','env','product_name','fob_state','filename','date_of_file','invoice_no','po_no'];
+  const head = ['load_id','email_date','location','generated_sku','env','product_name','fob_state','filename','date_of_file','invoice_no','customer','po_no'];
   const lines = [head.join(',')].concat(rows.map(s => [
     s.loadId, s.emailDate, s.locCode, s.sku, s.env, s.productName, s.fobName,
-    s.manifestFilename, s.manifestFileDate, s.invNum, s.poNum,
+    s.manifestFilename, s.manifestFileDate, s.invNum, s.customer, s.poNum,
   ].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')));
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
   const a = document.createElement('a');
