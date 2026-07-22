@@ -788,6 +788,7 @@ textarea::placeholder { color: var(--text4); }
           <button class="btn" id="push-all-btn">Push all ready to ERP</button>
           <button class="btn ghost" id="send-all-manifests-btn" style="display:none;">Send all manifests to Sheet</button>
           <button class="btn ghost" id="download-loads-btn" title="Download all detected loads as CSV">Download CSV</button>
+          <button class="btn ghost" id="recheck-erp-btn" style="display:none;" title="Re-verify every SKU against the ERP — a deleted SKU flips back to Not pushed">Re-check ERP</button>
           <button class="btn ghost" id="wyf-legacy-toggle" style="display:none;" title="Switch between the new Wayfair table format and the legacy columns">Legacy view</button>
           <button class="btn ghost" id="clear-loads-btn">Clear loads</button>
         </div>
@@ -3037,13 +3038,22 @@ function renderLoadsFilter() {
 // are env-specific (re-run when the TEST/LIVE switch changes).
 async function markExistingSkus() {
   const env = loadEnv();
-  const pending = loads.filter(l => l.sku && l.status !== 'done' && l._skuCheckedEnv !== env);
+  // Done/dup loads are re-checked too (unless verified this env already) so a
+  // SKU deleted from the ERP flips back to "Not pushed" with a Push button.
+  const pending = loads.filter(l => l.sku && l._skuCheckedEnv !== env);
   if (!pending.length) return;
   const CHUNK = 5;
   for (let i = 0; i < pending.length; i += CHUNK) {
     await Promise.all(pending.slice(i, i + CHUNK).map(async l => {
-      try { const r = await checkSKUExists(withEnvSuffix(l.sku)); l._skuExists = (r.exists === true); }
-      catch { l._skuExists = false; }
+      try {
+        const r = await checkSKUExists(withEnvSuffix(l.sku));
+        if (r.error) return;   // check failed — leave the load's state unknown, retry next render
+        l._skuExists = (r.exists === true);
+        if (!l._skuExists && (l.status === 'done' || l.status === 'dup')) {
+          l.status = 'ready';   // it was pushed once but no longer exists in the ERP
+          l.erpResult = null;
+        }
+      } catch { return; }
       l._skuCheckedEnv = env;
     }));
     renderLoads();
@@ -3059,7 +3069,10 @@ function typePill(code) {
 // ── Wayfair lifecycle helpers (new-format table) ─────────────────────────────
 // Where a WYF load is in its life: not pushed → pending manifest → flat/priced.
 function wyfLifecycle(load) {
-  const pushed = load.status === 'done' || load.status === 'dup' || load._skuExists === true;
+  // The ERP is the source of truth: a verified "not in ERP" (_skuExists false)
+  // overrides a stale session 'done' — e.g. the user deleted the SKU in the ERP.
+  const pushed = load._skuExists === true
+    || ((load.status === 'done' || load.status === 'dup') && load._skuExists !== false);
   if (!pushed) return { key: 'notpushed', label: 'Not pushed', style: 'color:var(--text3);border-color:var(--border2);' };
   if (load.manifestRows?.length) return { key: 'priced', label: '✓ Priced', style: 'color:var(--green);background:rgba(30,127,86,0.12);border-color:rgba(30,127,86,0.4);' };
   if (load.flatPrice != null)    return { key: 'flat', label: 'Flat priced', style: 'color:var(--blue,#55a6ff);background:rgba(85,166,255,0.1);border-color:rgba(85,166,255,0.35);' };
@@ -3092,6 +3105,17 @@ function wyfJoins(load) {
     } catch {}
   }
   return { invId: invId || '', customer, poNum };
+}
+
+// Per-row follow-up actions for a PUSHED Wayfair load: send the manifest to
+// the sheet, and create a PO / invoice draft when none exists yet.
+function wyfRowExtraActions(load, idx) {
+  const joins = wyfJoins(load);
+  const parts = [];
+  if (load.manifestRows?.length) parts.push(`<button class="btn small ghost" data-sams-mani-send="${idx}"${load.manifestSentTo ? ' disabled' : ''} title="Push this manifest to the Load Center sheet">${load.manifestSentTo ? 'Sent ✓' : 'Sheet'}</button>`);
+  if (!joins.poNum) parts.push(`<button class="btn small ghost" data-po-gen="${idx}" title="Create a PO draft for this load">+ PO</button>`);
+  if (!joins.invId) parts.push(`<button class="btn small ghost" data-inv-gen="${idx}" title="Create an invoice draft for this load">+ Inv</button>`);
+  return parts.join('');
 }
 
 // Whether the WYF table uses the new format (default) or the legacy columns.
@@ -3143,6 +3167,15 @@ function renderLoads() {
     bindSelectAll();   // the swap recreated the select-all checkbox
   }
   // Legacy-view toggle only applies to Wayfair.
+  const recheckBtn = $('recheck-erp-btn');
+  if (recheckBtn) {
+    recheckBtn.style.display = loads.length ? '' : 'none';
+    recheckBtn.onclick = () => {
+      loads.forEach(l => { delete l._skuCheckedEnv; });
+      recheckBtn.disabled = true; recheckBtn.textContent = 'Checking…';
+      Promise.resolve(markExistingSkus()).finally(() => { recheckBtn.disabled = false; recheckBtn.textContent = 'Re-check ERP'; });
+    };
+  }
   const legacyBtn = $('wyf-legacy-toggle');
   if (legacyBtn) {
     legacyBtn.style.display = activeSupplier === 'WYF' ? '' : 'none';
@@ -3213,6 +3246,7 @@ function renderLoads() {
                <button class="btn ghost small" data-edit="${idx}">Edit</button>`
         ) : ''}
         ${(load.status === 'done' || load.status === 'dup') && (load.manifestRows?.length || load.flatPrice != null) ? `<button class="btn small" data-repush="${idx}" title="Re-push the manifest list price to this SKU in the ERP">Re-push price</button>` : ''}
+        ${load.status === 'done' && load.supplierKey === 'WYF' ? wyfRowExtraActions(load, idx) : ''}
         ${load.status === 'dup' ? `<button class="btn ghost small" data-edit="${idx}">Edit</button>` : ''}
         <button class="btn danger small" data-remove="${idx}">×</button>
       </td>`;
@@ -3489,6 +3523,17 @@ function renderLoads() {
     }
   });
 
+  // Empty state — keep the table (headers = the new format) visible and say
+  // where rows come from instead of showing a blank page.
+  if (!body.children.length) {
+    const er0 = document.createElement('tr');
+    er0.innerHTML = `<td colspan="${loadsColspan()}" style="padding:1.1rem 1rem;color:var(--text3);font-size:0.78rem;">
+      No loads yet. Expand <strong>Fetch from inbox</strong> or <strong>Fetch manifests from Drive</strong> above to retrieve —
+      or push a SKU and it will appear here (your push history auto-loads on open).
+    </td>`;
+    body.appendChild(er0);
+  }
+
   updateSummary();
   attachHandlers();
   updatePoActionRow();
@@ -3508,16 +3553,6 @@ function updatePoActionRow() {
     ? `${selCount} of ${pushedCount} pushed SKUs selected`
     : `Select pushed SKUs to generate POs (${pushedCount} available)`;
   $('generate-po-btn').disabled = selCount === 0;
-  // Empty state — keep the table (headers = the new format) visible and say
-  // where rows come from instead of showing a blank page.
-  if (!body.children.length) {
-    const er0 = document.createElement('tr');
-    er0.innerHTML = `<td colspan="${loadsColspan()}" style="padding:1.1rem 1rem;color:var(--text3);font-size:0.78rem;">
-      No loads yet. Expand <strong>Fetch from inbox</strong> or <strong>Fetch manifests from Drive</strong> above to retrieve —
-      or push a SKU and it will appear here (your push history auto-loads on open).
-    </td>`;
-    body.appendChild(er0);
-  }
   // sync select-all
   $('select-all').checked = pushedCount > 0 && selCount === pushedCount;
 
@@ -3578,6 +3613,24 @@ function attachHandlers() {
       const idx = +b.dataset.repush;
       _lastPushClick = b;
       await doPush([idx], { force: true });
+    };
+  });
+  // Per-row "+ PO" / "+ Inv": select just this load, then run the normal
+  // draft generators (same engine as the bulk buttons below the table).
+  $('loads-body').querySelectorAll('[data-po-gen]').forEach(b => {
+    b.onclick = () => {
+      const i = +b.dataset.poGen;
+      loads.forEach((l, j) => { if (l.status === 'done') l.selected = (j === i); });
+      renderLoads();
+      generatePoDrafts();
+    };
+  });
+  $('loads-body').querySelectorAll('[data-inv-gen]').forEach(b => {
+    b.onclick = () => {
+      const i = +b.dataset.invGen;
+      loads.forEach((l, j) => { if (l.status === 'done') l.selected = (j === i); });
+      renderLoads();
+      generateInvoiceDrafts();
     };
   });
   $('loads-body').querySelectorAll('[data-edit]').forEach(b => {
@@ -3706,6 +3759,7 @@ async function doPush(indices, opts = {}) {
       load.status = 'done';
       load.selected = true;  // auto-select so Generate PO is ready without a second click
       load.productId = result.erpId;
+      load._skuExists = true; load._skuCheckedEnv = loadEnv();  // just verified by pushing
       load.erpResult = result.updated ? `Updated · ERP id: ${result.erpId ?? 'n/a'}` : `ERP id: ${result.erpId ?? 'n/a'}`;
       okCount++;
       recordPushSuccess();
