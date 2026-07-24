@@ -1775,24 +1775,30 @@ function extractLoadIds(text) {
   //    TIERED: the first pattern that yields anything wins — the later, looser
   //    patterns (bare 5-6 digit numbers) otherwise scoop up ZIP codes from
   //    pickup addresses and Wayfair's Boston signature (02116 / 98032).
+  //    Every tier is anchored to load context — there is deliberately NO bare
+  //    "any 5-6 digit number" tier: scheduling/offer emails without a load id
+  //    were yielding ZIP codes (Boston 02116 signature, pickup addresses).
+  //    An email with no recognizable load id now yields NO loads.
   const patterns = [
+    // "Loads 50544 50545 50546" — one or more numbers following the word
+    // Load(s), e.g. .msg filenames. Captures the whole run, split below.
+    // Runs FIRST so a list isn't truncated to its first number.
+    /\bloads?\s*[:#\-]?\s+((?:[A-Z]{0,3}\d{4,6}[\s,;&/]+)*[A-Z]{0,3}\d{4,6})\b/gi,
     // "Load ID: 50544" / "Load #50544" / "Load Number 50544"
-    /\bload\s+(?:id|number|no\.?|#)?\s*[:\-#]?\s*([A-Z]{0,3}\d{4,6})\b/gi,
+    /\bloads?\s+(?:id|number|no\.?|#)?\s*[:\-#]?\s*([A-Z]{0,3}\d{4,6})\b/gi,
     // standalone load numbers in context
     /\b((?:LQ|SL|QC|AG)\d{3,6})\b/gi,
     // "#50544"
     /#\s*(\d{4,6})\b/g,
-    // "Load 50544"
-    /\bload\s+(\d{4,6})\b/gi,
-    // standalone 5-6 digit numbers (e.g. from .msg filename: "Loads 50544 50545 50546")
-    /\b(\d{5,6})\b/g,
   ];
   for (const rx of patterns) {
     const ids = new Set();
     let m;
     while ((m = rx.exec(text)) !== null) {
-      const id = m[1].trim().toUpperCase();
-      if (id.length >= 4) ids.add(id);
+      for (const part of m[1].split(/[\s,;&/]+/)) {
+        const id = part.trim().toUpperCase();
+        if (id.length >= 4 && /^[A-Z]{0,3}\d{3,6}$/.test(id)) ids.add(id);
+      }
     }
     if (ids.size) return [...ids];
   }
