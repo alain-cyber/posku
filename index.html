@@ -898,8 +898,10 @@ const SUPPLIERS = {
       PR: 5, LA: 5, JFL: 9, AMD: 20, RIL: 13,
       LTX: 43, KWA: 47, EKY: 17, MCDO: 10,
       CI: 51, POR: 37,
+      ORL: 9, AGA: 10,   // Wayfair Outlet stores: Orlando FL, Augusta GA
     },
     fobNames: {
+      ORL: 'Florida', AGA: 'Georgia',
       PR: 'California', LA: 'California', JFL: 'Florida', AMD: 'Maryland',
       RIL: 'Illinois', LTX: 'Texas', KWA: 'Washington', EKY: 'Kentucky',
       MCDO: 'Georgia', CI: 'CA-Los Angeles', POR: 'Oregon',
@@ -992,6 +994,9 @@ const SUPPLIERS = {
       { patterns: ['portland, or', 'portland or', 'portland'],                        code: 'POR',  label: 'Portland OR' },
       { patterns: ['mcdonough, ga', 'mcdonough ga', 'mcdonough'],                     code: 'MCDO', label: 'McDonough GA' },
       { patterns: ['kentucky', 'hebron', 'erlanger', 'walton', 'florence, ky', 'edgewood'], code: 'EKY', label: 'Kentucky' },
+      // Wayfair Outlet stores (loads announced via Drive-share emails; ids OUTQ/OUTLQ###)
+      { patterns: ['orlando'],                                                       code: 'ORL',  label: 'Orlando FL Outlet' },
+      { patterns: ['augusta'],                                                       code: 'AGA',  label: 'Augusta GA Outlet' },
     ],
 
     // Load type detection patterns
@@ -1769,6 +1774,10 @@ function extractLoadIds(text) {
   // "Load Type: LQ" never matches.
   const explicit = [...text.matchAll(/\bLoad(?:\s*ID\s*[:#\-]?|\s*[:#\-])\s*([A-Z]{2,4}\d{1,6}|\d{4,6})\b/gi)]
     .map(m => m[1].trim().toUpperCase());
+  // Wayfair Outlet ids (OUTQ014 / OUTLQ027) arrive via Drive-share notification
+  // emails ('Spreadsheet shared with you: "LQ-SLVG Manifest OUTLQ027 Orlando
+  // Outlet"') — the id appears bare in the subject, no "Load ID:" prefix.
+  explicit.push(...[...text.matchAll(/\b(OUT[A-Z]{0,2}\d{2,5})\b/gi)].map(m => m[1].trim().toUpperCase()));
   if (explicit.length) return [...new Set(explicit)];
 
   // 2. Fallbacks for older / looser formats (e.g. .msg filenames listing loads).
@@ -4334,10 +4343,12 @@ function setMfetchRange(daysBack) {
 // before 'aged', so → S; this helper must also return S. Returns null if none.
 function wyfTypeFromWords(s) {
   s = String(s).toLowerCase();
-  if (/liquidation/.test(s)) return 'LQ';
-  if (/salvage/.test(s))     return 'S';
-  if (/aged/.test(s))        return 'A';
-  if (/\bqc\b/.test(s))      return 'QC';
+  // Abbreviations included: Outlet manifests use "LQ-SLVG" (mixed load → LQ,
+  // matching detectType where 'lq-' hits before salvage).
+  if (/liquidation|\blq\b|\bliq\b/.test(s)) return 'LQ';
+  if (/salvage|\bslvg\b/.test(s))           return 'S';
+  if (/aged/.test(s))                        return 'A';
+  if (/\bqc\b/.test(s))                      return 'QC';
   return null;
 }
 
@@ -4401,10 +4412,23 @@ function deriveWyfSkuFromFilename(filename, tree, path) {
     return { sku: `WYF${locCode}PG${m[1]}`, loadType: 'PG', locCode, loadId: m[1] };
   }
   // ── Outlet ────────────────────────────────────────────────────────────────
-  // "Hanover Outlet OUTQ014 - Sheet1.csv"
-  m = name.match(/^(.+?)\s+Outlet\s+OUTQ(\d{2,5})/i);
+  // "LQ-SLVG Manifest OUTLQ027 Orlando Outlet" (type first, city last)
+  m = name.match(/^([A-Za-z\s\-\/&]+?)\s+Manifest\s+(OUT[A-Z]{0,2}\d{2,5})\s+(.+?)\s+Outlet\b/i);
   if (m && tree === 'Outlet') {
-    return { sku: null, loadType: 'OUT', locCode: null, loadId: m[2], reason: 'Outlet SKU naming not yet defined' };
+    const loadType = wyfTypeFromWords(m[1]);
+    const locCode  = wyfLocCodeFromCity(m[3]);
+    const loadId   = m[2].toUpperCase();
+    const skuNum   = loadId.replace(/^[A-Za-z]+/, '') || loadId;   // OUTLQ027 → 027
+    if (!loadType || !locCode) return { sku: null, loadType, locCode: null, loadId, reason: `Unknown ${!locCode ? 'location "' + m[3] + '"' : 'type "' + m[1] + '"'}` };
+    return { sku: `WYF${locCode}${loadType}${skuNum}`, loadType, locCode, loadId };
+  }
+  // "Hanover Outlet OUTQ014 - Sheet1.csv" (city first, no type in the name —
+  // the type comes from the email, so we can't derive a full SKU here)
+  m = name.match(/^(.+?)\s+Outlet\s+(OUT[A-Z]{0,2}\d{2,5})/i);
+  if (m && tree === 'Outlet') {
+    const locCode = wyfLocCodeFromCity(m[1]);
+    const loadId  = m[2].toUpperCase();
+    return { sku: null, loadType: null, locCode, loadId, reason: 'No load type in the filename — SKU comes from the email (or type it here)' };
   }
   return null;
 }
@@ -4429,6 +4453,7 @@ function wyfLocCodeFromCity(city) {
     'mcdonough': 'MCDO', 'mcdonough, ga': 'MCDO',
     'city of industry': 'CI', 'city of industry, ca': 'CI', 'portland': 'POR', 'portland, or': 'POR',
     'mississauga': 'MGA', 'mississauga, on': 'MGA',
+    'orlando': 'ORL', 'orlando, fl': 'ORL', 'augusta': 'AGA', 'augusta, ga': 'AGA',
     // TBD codes — added when user confirms
     // 'houston': 'HTX', 'west palm beach': 'WPB',
   };
