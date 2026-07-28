@@ -1751,7 +1751,23 @@ function detectLocation(text, sup) {
 }
 
 function detectType(text, sup) {
-  const lower = text.toLowerCase();
+  let lower = text.toLowerCase();
+  // 1. An explicit "Load Type: SLVG / LIQ / …" line is authoritative — it
+  //    beats every loose pattern (Aberdeen sends these on every load).
+  const lt = lower.match(/load\s*type\s*[:\-]\s*([a-z][a-z \-]{0,30})/);
+  if (lt) {
+    const w = lt[1];
+    if (/\bqc\b/.test(w))            return 'QC';
+    if (/salvage|slvg/.test(w))      return 'S';
+    if (/aged/.test(w))              return 'A';
+    if (/liq/.test(w))               return 'LQ';
+    if (/hdo/.test(w))               return 'HDO';
+    if (/perigold|\bpg\b/.test(w))   return 'PG';
+  }
+  // 2. Strip Wayfair's signature block before pattern matching — it contains
+  //    "Wayfair Liquidation Team", which made the LQ pattern match EVERY email
+  //    and classify salvage loads as liquidation.
+  lower = lower.split('wayfair liquidation team')[0];
   // Type comes purely from the email text — nothing is forced from location.
   // Check Perigold first since its emails also say "Liquidation" (which would
   // otherwise match LQ before we ever see the Perigold facility name).
