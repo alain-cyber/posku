@@ -3268,9 +3268,10 @@ function renderLoads() {
     const actionsCell = `<td style="white-space:nowrap;">
         ${load.status !== 'done' && load.status !== 'pushing' && load.status !== 'dup' ? (
           load._skuExists === true
-            // SKU already in the ERP → don't offer a create (it'd dup). Prompt to
-            // reprice from the manifest, and to push the manifest to the sheet.
-            ? `<button class="btn small" data-repush="${idx}" title="SKU already in ERP — update its price & values from the manifest">Reprice</button>
+            // SKU already in the ERP → don't offer a create (it'd dup). Reprice
+            // only appears once there's a price source (manifest or flat $) —
+            // without one it has nothing to push, so it isn't an option.
+            ? `${(load.manifestRows?.length || load.flatPrice != null) ? `<button class="btn small" data-repush="${idx}" title="SKU already in ERP — update its price & values from the manifest">Reprice</button>` : ''}
                ${load.manifestRows?.length ? `<button class="btn small ghost" data-sams-mani-send="${idx}" title="Push this manifest to the Load Center sheet"${load.manifestSentTo ? ' disabled' : ''}>${load.manifestSentTo ? 'Sent ✓' : 'Push to Sheet'}</button>` : ''}
                <button class="btn ghost small" data-edit="${idx}">Edit</button>`
             : `<button class="btn small" data-push="${idx}" ${!load.sku ? 'disabled' : ''}>Push</button>
