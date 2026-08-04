@@ -2767,6 +2767,17 @@ function ledgerAttachFile(sku, filename, fileDate) {
   } catch {}
 }
 
+// ERP error payloads are sometimes objects ({ errors: {...} }) — stringify them
+// so the UI shows the actual reason instead of "[object Object]".
+function fmtApiErr(x) {
+  if (x == null || x === '') return '';
+  if (typeof x === 'string') return x;
+  try { return JSON.stringify(x); } catch { return String(x); }
+}
+function apiErrMsg(r) {
+  return fmtApiErr(r.data?.message) || fmtApiErr(r.data?.error) || fmtApiErr(r.data?.errors) || fmtApiErr(r.error) || `HTTP ${r.status}`;
+}
+
 async function pushLoad(load) {
   if (!load.sku) return { ok: false, error: 'SKU not generated — fix location/type first.' };
 
@@ -2793,7 +2804,7 @@ async function pushLoad(load) {
       localStorage.setItem('posku.push.history.v1', JSON.stringify(history));
     } catch {}
     if (ur.ok) return { ok: true, updated: true, erpId: dup.id };
-    return { ok: false, error: `Update failed: ${ur.data?.message || ur.data?.error || ur.error || 'HTTP ' + ur.status}` };
+    return { ok: false, error: `Update failed: ${apiErrMsg(ur)}` };
   }
 
   // 2. Create
@@ -2821,7 +2832,7 @@ async function pushLoad(load) {
     const erpId = r.data?.newProductId ?? r.data?.id ?? r.data?.data?.id ?? r.data?.product_id ?? null;
     return { ok: true, erpId, raw: r.data };
   }
-  const errMsg = r.data?.message || r.data?.error || (r.error) || `HTTP ${r.status}`;
+  const errMsg = apiErrMsg(r);
   return { ok: false, error: errMsg };
 }
 
@@ -5255,7 +5266,7 @@ async function pushSinglePo(idx) {
     celebratePush(document.querySelector(`[data-po-push="${idx}"]`), 1, sb);
   } else {
     d.status = 'failed';
-    d.result = r.data?.message || r.data?.error || r.error || `HTTP ${r.status}`;
+    d.result = apiErrMsg(r);
     recordPushFailure();
   }
   renderPoDrafts();
@@ -6932,7 +6943,7 @@ async function appendInvoice(d, idx) {
     bumpInvoiceHud(d.items.length, document.querySelector(`[data-inv-push="${idx}"]`));
   } else {
     d.status = 'failed';
-    d.result = `Append failed: ${r.data?.message || r.data?.error || r.error || 'HTTP ' + r.status} (needs EDIT_ORDERS).`;
+    d.result = `Append failed: ${apiErrMsg(r)} (needs EDIT_ORDERS).`;
   }
   renderInvoiceDrafts();
   renderLoads();
@@ -6977,7 +6988,7 @@ async function pushSingleInvoice(idx) {
     bumpInvoiceHud(d.items.length, document.querySelector(`[data-inv-push="${idx}"]`));
   } else {
     d.status = 'failed';
-    d.result = r.data?.message || r.data?.error || r.error || `HTTP ${r.status}`;
+    d.result = apiErrMsg(r);
   }
   renderInvoiceDrafts();
   renderLoads();  // refresh the tri-chip strip so the INV stage flips
