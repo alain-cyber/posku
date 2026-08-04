@@ -2792,13 +2792,20 @@ async function pushLoad(load) {
     const upd = buildUpdatePayload(load);
     if (!upd) return { ok: false, skipped: true, error: `${liveSku} is already in the ERP — attach its manifest, then Reprice to fill price & qty.` };
     if (!dup.id) return { ok: false, error: `SKU ${liveSku} exists but couldn't read its product id to update.` };
-    console.log('[Posku] PUT /api/products/' + dup.id + ' payload:', JSON.stringify(upd, null, 2));
-    const ur = await erpRequest('PUT', `/api/products/${dup.id}`, upd);
+    // The ERP's PUT validates the FULL required field set ("Missing required
+    // fields" when only price/qty are sent) — send the complete product payload
+    // with the fresh totals merged over it. `active` is dropped so a reprice
+    // never flips a product that was activated in the ERP after creation.
+    const full = buildPayload(load);
+    const merged = { data: { ...full.data, ...upd.data } };
+    delete merged.data.active;
+    console.log('[Posku] PUT /api/products/' + dup.id + ' payload:', JSON.stringify(merged, null, 2));
+    const ur = await erpRequest('PUT', `/api/products/${dup.id}`, merged);
     console.log('[Posku] PUT response:', JSON.stringify(ur, null, 2));
     try {
       const history = JSON.parse(localStorage.getItem('posku.push.history.v1') || '[]');
       history.unshift({ at: new Date().toISOString(), env: loadEnv(), sku: liveSku, supplier: load.supplierKey,
-        request: { method: 'PUT', path: `/api/products/${dup.id}`, body: upd },
+        request: { method: 'PUT', path: `/api/products/${dup.id}`, body: merged },
         response: { ok: ur.ok, status: ur.status, error: ur.error, data: ur.data } });
       while (history.length > 10) history.pop();
       localStorage.setItem('posku.push.history.v1', JSON.stringify(history));
@@ -3310,9 +3317,22 @@ function renderLoads() {
       let priceCell;
       try {
         const totals = buildLoadTotals(load);
-        priceCell = (totals && totals.price != null)
-          ? `<span class="mono" style="color:var(--green);font-size:0.74rem;" title="${lc.key === 'flat' ? 'Flat salvage price' : 'Total sell from manifest'}">$${Number(totals.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`
-          : `<span class="mono" style="color:var(--text4);" title="No price yet — pending manifest">—</span>`;
+        if (totals && totals.price != null) {
+          // Was THIS price already pushed? Compare against the ledger record of
+          // the last push — makes clear whether the ERP has it or a (re)push
+          // is still needed.
+          let note = '';
+          try {
+            const e = loadLedger().skus.find(x => x._key === loadEnv() + '|' + withEnvSuffix(load.sku || ''));
+            const pushed = e && e.price != null ? Number(e.price) : null;
+            note = (pushed != null && Math.abs(pushed - Number(totals.price)) < 0.005)
+              ? `<div style="font-size:0.58rem;color:var(--green);">✓ in ERP</div>`
+              : `<div style="font-size:0.58rem;color:var(--amber,#d6a23a);" title="This price hasn't been pushed to the ERP — hit ${load._skuExists ? 'Reprice' : 'Push'}">⚠ not pushed yet</div>`;
+          } catch {}
+          priceCell = `<span class="mono" style="color:var(--green);font-size:0.74rem;" title="${lc.key === 'flat' ? 'Flat salvage price' : 'Total sell from manifest'}">$${Number(totals.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>${note}`;
+        } else {
+          priceCell = `<span class="mono" style="color:var(--text4);" title="No price yet — pending manifest">—</span>`;
+        }
       } catch { priceCell = `<span class="mono" style="color:var(--text4);">—</span>`; }
       const invCell = joins.invId
         ? `<span class="mono-green" style="font-size:0.72rem;">${esc(joins.invId)}</span>${joins.customer ? `<div style="font-size:0.62rem;color:var(--text2);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(joins.customer)}">${esc(joins.customer)}</div>` : ''}${(joins.invId && lc.key === 'pending') ? `<div style="font-size:0.58rem;color:var(--amber,#d6a23a);" title="Invoice was created before the manifest — reprice it once values land">⚠ reprice pending</div>` : ''}`
