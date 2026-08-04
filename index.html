@@ -2779,7 +2779,7 @@ async function pushLoad(load) {
   if (dup.error) return { ok: false, error: dup.error };
   if (dup.exists) {
     const upd = buildUpdatePayload(load);
-    if (!upd) return { ok: false, skipped: true, error: `SKU ${liveSku} exists; attach a manifest to update its price/qty.` };
+    if (!upd) return { ok: false, skipped: true, error: `${liveSku} is already in the ERP — attach its manifest, then Reprice to fill price & qty.` };
     if (!dup.id) return { ok: false, error: `SKU ${liveSku} exists but couldn't read its product id to update.` };
     console.log('[Posku] PUT /api/products/' + dup.id + ' payload:', JSON.stringify(upd, null, 2));
     const ur = await erpRequest('PUT', `/api/products/${dup.id}`, upd);
@@ -3234,7 +3234,7 @@ function renderLoads() {
       if (load.status === 'failed')  return `<span class="st-pill failed"><span class="d"></span>failed</span>`;
       if (load.status === 'review')  return `<span class="st-pill review"><span class="d"></span>review</span>`;
       if (load.status === 'pushing') return `<span class="st-pill pushing"><span class="d"></span>pushing…</span>`;
-      if (load.status === 'dup')     return `<span class="st-pill dup" title="A product with this SKU already exists in the ERP — cannot push">✗ duplicate in ERP</span>`;
+      if (load.status === 'dup')     return `<span class="st-pill dup" title="A product with this SKU already exists in the ERP — attach a manifest and Reprice to update its price/qty">already in ERP</span>`;
       if (load.status !== 'done')    return `<span class="st-pill ready"><span class="d"></span>ready</span>`;
 
       // SKU done → render the three-stage progress strip.
@@ -3642,6 +3642,14 @@ function attachHandlers() {
   $('loads-body').querySelectorAll('[data-repush]').forEach(b => {
     b.onclick = async () => {
       const idx = +b.dataset.repush;
+      const load = loads[idx];
+      // Repricing NEEDS a price source. Without a manifest (or flat price)
+      // there's nothing to send — guide instead of erroring out as "duplicate".
+      if (load && !(load.manifestRows?.length) && load.flatPrice == null) {
+        setStatus($('push-status'), 'warn',
+          `${withEnvSuffix(load.sku || '')} is already in the ERP — attach its manifest first (Fetch manifests from Drive above), then Reprice pushes the price & qty.`);
+        return;
+      }
       _lastPushClick = b;
       await doPush([idx], { force: true });
     };
