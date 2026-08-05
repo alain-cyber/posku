@@ -1470,6 +1470,8 @@ function applyRulesOverride() {
         const v = Number(x.value);
         if (Number.isFinite(v)) { out.mode = x.mode === 'flat' ? 'flat' : 'percent'; out.value = v; }
       }
+      const pay = Number(x.payment);
+      if (Number.isFinite(pay) && pay > 0) out.payment = pay;
       return out;
     }).filter(Boolean);
   }
@@ -5808,10 +5810,11 @@ function drawCfgUIWyf() {
             <th>Customer email</th>
             <th class="narrow">Price type</th>
             <th class="narrow">Value</th>
+            <th class="narrow" title="Payment method pre-filled on the invoice draft for this deal. Default: Wire Transfer.">Payment</th>
             <th class="x-col"></th>
           </tr></thead>
           <tbody id="cfg-wyf-invcust-body">
-            ${(d.invoiceDeals || []).map((dl, i) => wyfInvCustomerRow(dl.loc || '', dl.type || '', dl.email || '', dl.mode, dl.value, i)).join('')}
+            ${(d.invoiceDeals || []).map((dl, i) => wyfInvCustomerRow(dl.loc || '', dl.type || '', dl.email || '', dl.mode, dl.value, i, dl.payment)).join('')}
           </tbody>
         </table>
       </div>
@@ -5857,10 +5860,13 @@ function locRow(loc, i) {
   </tr>`;
 }
 
-function wyfInvCustomerRow(loc, type, email, mode, value, i) {
+function wyfInvCustomerRow(loc, type, email, mode, value, i, payment) {
   const m = mode === 'flat' ? 'flat' : 'percent';
   const disp = (value == null || value === '') ? ''
              : (m === 'flat' ? String(value) : String(+(Number(value) * 100).toFixed(4)));
+  const pay = Number(payment) || 5;   // default Wire Transfer
+  const payOpts = INV_PAYMENT_METHODS.map(o =>
+    `<option value="${o.id}" ${o.id === pay ? 'selected' : ''}>${o.id} — ${esc(o.name)}</option>`).join('');
   return `<tr data-wici="${i}">
     <td class="narrow"><input data-wicik="loc"   value="${esc(loc)}"   placeholder="PR" style="text-transform:uppercase;"></td>
     <td class="narrow"><input data-wicik="type"  value="${esc(type)}"  placeholder="LQ" style="text-transform:uppercase;"></td>
@@ -5870,6 +5876,7 @@ function wyfInvCustomerRow(loc, type, email, mode, value, i) {
       <option value="flat" ${m === 'flat' ? 'selected' : ''}>Flat ($)</option>
     </select></td>
     <td class="narrow"><input data-wicik="value" type="number" step="any" value="${esc(disp)}" placeholder="${m === 'flat' ? '$' : '%'}"></td>
+    <td class="narrow"><select data-wicik="payment">${payOpts}</select></td>
     <td class="x-col"><button class="x-btn" data-wyf-invcust-del="${i}" title="Remove">×</button></td>
   </tr>`;
 }
@@ -6012,6 +6019,8 @@ function bindCfgHandlers() {
         const num = Number(rawV);
         if (Number.isFinite(num)) { deal.mode = mode; deal.value = mode === 'flat' ? num : Number((num / 100).toFixed(5)); }
       }
+      const pay = Number(tr.querySelector('select[data-wicik="payment"]')?.value);
+      if (Number.isFinite(pay) && pay > 0) deal.payment = pay;
       deals.push(deal);
     });
     cfgDraft.invoiceDeals = deals;
@@ -6405,14 +6414,16 @@ function generateInvoiceDrafts() {
     const supKey = g.loads[0].supplierKey;
     // Per-club default shipping method (Sam's), else the supplier default.
     const clubShip = (SUPPLIERS[supKey]?.invoiceShippingByLoc || {})[g.loads[0].locCode];
+    const dealCandidates = dealCandidatesForLoads(g.loads);   // rotating deal customers; first = default
     return {
       id:                'd' + i + '_' + Date.now(),
       supplierKey:       supKey,
       customer:          null,   // {customer_id, email, name, billing_address, shipping_address}
       ruleEmail:         g.ruleEmail || '',
-      dealCandidates:    dealCandidatesForLoads(g.loads),   // rotating deal customers; first = default
+      dealCandidates,
       order_type_id:     INV_DEFAULT_ORDER_TYPE,
-      payment_method_id: INV_DEFAULT_PAYMENT,
+      // Deal-configured payment method wins; global default (Wire Transfer) otherwise.
+      payment_method_id: dealCandidates[0]?.payment || INV_DEFAULT_PAYMENT,
       shipping_method_id: clubShip || INV_DEFAULT_SHIPPING[supKey] || 94,
       salesrep_id:       '',
       promo_code:        '',
