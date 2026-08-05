@@ -5818,6 +5818,24 @@ function drawCfgUIWyf() {
       <div style="margin-top:0.5rem;"><button class="btn ghost" id="cfg-wyf-add-invcust">+ Add row</button></div>
     </div>
 
+    <div class="cfg-block">
+      <h3>Hardcoded rules (code-level — not editable here)</h3>
+      <div class="cfg-hint">Logic baked into the app rather than this config. Changing any of these requires a code change.</div>
+      <ul style="font-size:0.78rem;line-height:1.7;color:var(--text2);margin:0.4rem 0 0;padding-left:1.2rem;">
+        <li><b>City of Industry → always HDO.</b> CI emails say "Liquidation" but every CI load is typed HDO (SKU <code>WYFCIHDO…</code>). <b>Exception: Perigold</b> — same facility, but any email mentioning Perigold/PG is typed PG first (SKU <code>WYFCIPG…</code>).</li>
+        <li><b>Perigold is checked before all other types</b>, so the word "Liquidation" in a PG email never wins. The word "perigold" also resolves the location to CI.</li>
+        <li><b>An explicit "Load Type: SLVG/LIQ/…" line is authoritative</b> — it beats every loose pattern. Wayfair's "Liquidation Team" signature is stripped before pattern matching so it can't classify everything as LQ.</li>
+        <li><b>Load ids</b>: taken from "Load ID:"/"Load:" lines (Kent's no-colon "Load ID LQ8214" included) and Outlet ids (OUTQ/OUTLQ###). Bare numbers only count directly after the word "Load(s)" — never from addresses/ZIPs. No id in the email → no load created.</li>
+        <li><b>SKU number slot strips letter prefixes</b>: ABD205 → 205, OUTLQ027 → 027 (the location code already carries the place).</li>
+        <li><b>Compound types</b> resolve first-match LQ &gt; Salvage &gt; Aged &gt; QC — "Aged Salvage" → S, "QC Liquidation" → QC per patterns, "LQ-SLVG" → LQ.</li>
+        <li><b>Salvage sells flat</b> (Unmanifested 514): flat $ from the pricing matrix, manifest disregarded for pricing.</li>
+        <li><b>Product names</b>: S → "WYF Salvage Loads" · A → "WYF Excess &amp; Aged Inventory" · QC → "WYF QC Imperfection Loads" · HDO/PG → "WYF Liquidation Returns - Larger Items" · LQ → Smaller (PR) / Larger (KWA) / Smaller &amp; Larger (rest).</li>
+        <li><b>Deal-matched loads push inactive</b> (active=0) — they're pre-sold to the deal customer above.</li>
+        <li><b>PO &amp; invoice defaults (WYF)</b>: shipping method Direct Truckload (65); PO status Pending; PO# defaults to the first SKU; due date +7 / delivery +10 days.</li>
+        <li><b>TEST env appends "-test"</b> to every SKU; LIVE strips it.</li>
+      </ul>
+    </div>
+
     <div class="cfg-actions">
       <button class="btn" id="cfg-save-btn">Save rules</button>
       <button class="btn ghost" id="cfg-reset-btn" ${hasOverride ? '' : 'disabled'}>Reset to defaults</button>
