@@ -1472,6 +1472,8 @@ function applyRulesOverride() {
       }
       const pay = Number(x.payment);
       if (Number.isFinite(pay) && pay > 0) out.payment = pay;
+      const fee = Number(x.ccFee);
+      if (Number.isFinite(fee) && fee >= 0) out.ccFee = fee;
       return out;
     }).filter(Boolean);
   }
@@ -5811,10 +5813,11 @@ function drawCfgUIWyf() {
             <th class="narrow">Price type</th>
             <th class="narrow">Value</th>
             <th class="narrow" title="Payment method pre-filled on the invoice draft for this deal. Default: Wire Transfer.">Payment</th>
+            <th class="narrow" title="Credit card fee % for this customer — shown on the draft when payment is Credit Card / PayPal. Default 3%.">CC fee %</th>
             <th class="x-col"></th>
           </tr></thead>
           <tbody id="cfg-wyf-invcust-body">
-            ${(d.invoiceDeals || []).map((dl, i) => wyfInvCustomerRow(dl.loc || '', dl.type || '', dl.email || '', dl.mode, dl.value, i, dl.payment)).join('')}
+            ${(d.invoiceDeals || []).map((dl, i) => wyfInvCustomerRow(dl.loc || '', dl.type || '', dl.email || '', dl.mode, dl.value, i, dl.payment, dl.ccFee)).join('')}
           </tbody>
         </table>
       </div>
@@ -5860,11 +5863,12 @@ function locRow(loc, i) {
   </tr>`;
 }
 
-function wyfInvCustomerRow(loc, type, email, mode, value, i, payment) {
+function wyfInvCustomerRow(loc, type, email, mode, value, i, payment, ccFee) {
   const m = mode === 'flat' ? 'flat' : 'percent';
   const disp = (value == null || value === '') ? ''
              : (m === 'flat' ? String(value) : String(+(Number(value) * 100).toFixed(4)));
   const pay = Number(payment) || 5;   // default Wire Transfer
+  const fee = (ccFee == null || ccFee === '') ? 3 : Number(ccFee);   // default 3%
   const payOpts = INV_PAYMENT_METHODS.map(o =>
     `<option value="${o.id}" ${o.id === pay ? 'selected' : ''}>${o.id} — ${esc(o.name)}</option>`).join('');
   return `<tr data-wici="${i}">
@@ -5877,6 +5881,7 @@ function wyfInvCustomerRow(loc, type, email, mode, value, i, payment) {
     </select></td>
     <td class="narrow"><input data-wicik="value" type="number" step="any" value="${esc(disp)}" placeholder="${m === 'flat' ? '$' : '%'}"></td>
     <td class="narrow"><select data-wicik="payment">${payOpts}</select></td>
+    <td class="narrow"><input data-wicik="ccFee" type="number" step="0.1" min="0" max="15" value="${esc(fee)}" title="Credit card fee % for this customer (applies when payment is Credit Card / PayPal)"></td>
     <td class="x-col"><button class="x-btn" data-wyf-invcust-del="${i}" title="Remove">×</button></td>
   </tr>`;
 }
@@ -6021,6 +6026,8 @@ function bindCfgHandlers() {
       }
       const pay = Number(tr.querySelector('select[data-wicik="payment"]')?.value);
       if (Number.isFinite(pay) && pay > 0) deal.payment = pay;
+      const fee = Number(tr.querySelector('input[data-wicik="ccFee"]')?.value);
+      if (Number.isFinite(fee) && fee >= 0) deal.ccFee = fee;
       deals.push(deal);
     });
     cfgDraft.invoiceDeals = deals;
@@ -6424,6 +6431,7 @@ function generateInvoiceDrafts() {
       order_type_id:     INV_DEFAULT_ORDER_TYPE,
       // Deal-configured payment method wins; global default (Wire Transfer) otherwise.
       payment_method_id: dealCandidates[0]?.payment || INV_DEFAULT_PAYMENT,
+      cc_fee_pct:        dealCandidates[0]?.ccFee ?? 3,   // reference only — not applied to prices
       shipping_method_id: clubShip || INV_DEFAULT_SHIPPING[supKey] || 94,
       salesrep_id:       '',
       promo_code:        '',
@@ -6557,6 +6565,11 @@ function renderInvoiceDrafts() {
               ${INV_PAYMENT_METHODS.map(o => `<option value="${o.id}" ${d.payment_method_id === o.id ? 'selected' : ''}>${o.id} — ${esc(o.name)}</option>`).join('')}
             </select>
           </div>
+          ${(d.payment_method_id === 15 || d.payment_method_id === 16) ? `
+          <div class="inv-field">
+            <label title="Customer's card fee % from the deal rules — reference only, line prices are pushed unchanged">CC fee %</label>
+            <input type="number" step="0.1" min="0" max="15" data-inv-h="${idx}" data-k="cc_fee_pct" value="${esc(d.cc_fee_pct ?? 3)}">
+          </div>` : ''}
           <div class="inv-field">
             <label>Shipping method</label>
             <select data-inv-h="${idx}" data-k="shipping_method_id">
