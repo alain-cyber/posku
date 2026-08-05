@@ -1841,7 +1841,11 @@ function parseEmail(text, supplierKey) {
   if (supplierKey === 'SMS') return parseSamsEmail(text, sup);
 
   const locCode  = detectLocation(text, sup);
-  const typeCode = detectType(text, sup);
+  let typeCode = detectType(text, sup);
+  // City of Industry runs the HDO program — its emails say "Liquidation" but
+  // the loads are always HDO. Perigold is the one exception (same facility,
+  // detected first by detectType).
+  if (locCode === 'CI' && typeCode !== 'PG') typeCode = 'HDO';
   const rawIds   = extractLoadIds(text);
 
   if (!rawIds.length) return [];
@@ -4424,9 +4428,10 @@ function deriveWyfSkuFromFilename(filename, tree, path) {
   const TYPEWORDS = '(?:QC|Liquidation|Salvage|Aged(?:\\s+Inventory)?)';
   let m = name.match(new RegExp(`^([A-Za-z\\s]+?)\\s+(${TYPEWORDS}(?:\\s+${TYPEWORDS})?)\\s+Load\\s+([A-Za-z]{0,4}\\d{1,6})\\s+Manifest(?:\\.(xlsx|csv))?$`, 'i'));
   if (m) {
-    const loadType = wyfTypeFromWords(m[2]);
     const location = m[1].trim();
     const locCode = wyfLocCodeFromCity(location);
+    // CI is always HDO (mirrors the email parser's hardcode).
+    const loadType = locCode === 'CI' ? 'HDO' : wyfTypeFromWords(m[2]);
     const loadId = m[3].toUpperCase();                         // ABD205
     const skuNum = loadId.replace(/^[A-Za-z]+/, '') || loadId; // 205
     if (!loadType || !locCode) return { sku: null, loadType, locCode: null, loadId, reason: `Unknown location "${location}"` };
@@ -4437,9 +4442,9 @@ function deriveWyfSkuFromFilename(filename, tree, path) {
   // "Aged Load NNNNN Location.xlsx", etc.
   m = name.match(new RegExp(`^(${TYPEWORDS}(?:\\s+${TYPEWORDS})?)\\s+Load\\s+([A-Za-z]{0,4}\\d{4,6})\\s+([A-Za-z\\s]+?)\\.(xlsx|csv)$`, 'i'));
   if (m) {
-    const loadType = wyfTypeFromWords(m[1]);
     const location = m[3].trim();
     const locCode = wyfLocCodeFromCity(location);
+    const loadType = locCode === 'CI' ? 'HDO' : wyfTypeFromWords(m[1]);
     const loadId = m[2].toUpperCase();
     const skuNum = loadId.replace(/^[A-Za-z]+/, '') || loadId;
     if (!loadType || !locCode) return { sku: null, loadType, locCode: null, loadId, reason: `Unknown location "${location}"` };
