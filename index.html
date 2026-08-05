@@ -1218,7 +1218,7 @@ const PO_DEFAULTS = {
     user_name:         'posku_api',
     supplier_id:       770,
     legacy_user_id:    179,
-    defaultStatusId:   2,    // Pending (Wayfair default)
+    defaultStatusId:   6,    // Released (PO default — same as Sam's)
     shipping_method_id: 65,  // Direct Truckload (PO default)
     shipping_company_id: null, // no proposed carrier by default (was 393 Santa Fe)
     billing_address:   'Wayfair Inc., 4 Copley Place, 7th Floor, Boston, MA 02116',
@@ -5831,7 +5831,7 @@ function drawCfgUIWyf() {
         <li><b>Salvage sells flat</b> (Unmanifested 514): flat $ from the pricing matrix, manifest disregarded for pricing.</li>
         <li><b>Product names</b>: S → "WYF Salvage Loads" · A → "WYF Excess &amp; Aged Inventory" · QC → "WYF QC Imperfection Loads" · HDO/PG → "WYF Liquidation Returns - Larger Items" · LQ → Smaller (PR) / Larger (KWA) / Smaller &amp; Larger (rest).</li>
         <li><b>Deal-matched loads push inactive</b> (active=0) — they're pre-sold to the deal customer above.</li>
-        <li><b>PO &amp; invoice defaults (WYF)</b>: shipping method Direct Truckload (65); PO status Pending; PO# defaults to the first SKU; due date +7 / delivery +10 days.</li>
+        <li><b>PO &amp; invoice defaults (WYF)</b>: shipping method Direct Truckload (65); PO status Released (6); PO# defaults to the first SKU; due date +7 / delivery +10 days.</li>
         <li><b>TEST env appends "-test"</b> to every SKU; LIVE strips it.</li>
       </ul>
     </div>
