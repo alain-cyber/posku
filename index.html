@@ -788,6 +788,8 @@ textarea::placeholder { color: var(--text4); }
           <button class="btn" id="push-all-btn">Push all ready to ERP</button>
           <button class="btn ghost" id="send-all-manifests-btn" style="display:none;">Send all manifests to Sheet</button>
           <button class="btn ghost" id="download-loads-btn" title="Download all detected loads as CSV">Download CSV</button>
+          <button class="btn ghost" id="filter-pushed-btn" style="display:none;" title="Show only loads whose SKU is already in the ERP">Pushed only</button>
+          <button class="btn ghost" id="remove-pushed-btn" style="display:none;" title="Remove every already-pushed load from this list (nothing is deleted from the ERP) — prevents duplicate POs/invoices">Remove pushed</button>
           <button class="btn ghost" id="recheck-erp-btn" style="display:none;" title="Re-verify every SKU against the ERP — a deleted SKU flips back to Not pushed">Re-check ERP</button>
           <button class="btn ghost" id="wyf-legacy-toggle" style="display:none;" title="Switch between the new Wayfair table format and the legacy columns">Legacy view</button>
           <button class="btn ghost" id="clear-loads-btn">Clear loads</button>
@@ -3060,6 +3062,15 @@ function assignDefaultGroups() {
 
 // Location filter: a Set of locCodes to SHOW. Empty/null = show all.
 let loadLocationFilter = null;
+// "Pushed only" view — shows just the loads whose SKU is already in the ERP so
+// they can be reviewed / removed in one go (avoids duplicate POs & invoices).
+let showPushedOnly = false;
+
+// Is this load's SKU in the ERP? Verified _skuExists wins; a session push
+// (done/dup) counts unless the ERP check said it's gone.
+function loadIsPushed(l) {
+  return l._skuExists === true || ((l.status === 'done' || l.status === 'dup') && l._skuExists !== false);
+}
 
 function renderLoadsFilter() {
   const el = $('loads-filter');
@@ -3227,6 +3238,28 @@ function renderLoads() {
     bindSelectAll();   // the swap recreated the select-all checkbox
   }
   // Legacy-view toggle only applies to Wayfair.
+  const pushedNow = loads.filter(loadIsPushed).length;
+  const filterPushedBtn = $('filter-pushed-btn');
+  if (filterPushedBtn) {
+    filterPushedBtn.style.display = pushedNow ? '' : 'none';
+    filterPushedBtn.textContent = showPushedOnly ? `Showing pushed (${pushedNow}) ✓` : `Pushed only (${pushedNow})`;
+    filterPushedBtn.classList.toggle('active', showPushedOnly);
+    filterPushedBtn.onclick = () => { showPushedOnly = !showPushedOnly; renderLoads(); };
+  }
+  const removePushedBtn = $('remove-pushed-btn');
+  if (removePushedBtn) {
+    removePushedBtn.style.display = pushedNow ? '' : 'none';
+    removePushedBtn.textContent = `Remove pushed (${pushedNow})`;
+    removePushedBtn.onclick = () => {
+      const n = loads.filter(loadIsPushed).length;
+      if (!n) return;
+      if (!confirm(`Remove ${n} already-pushed load(s) from this list?\n\nNothing is deleted from the ERP — this just clears them here so you don't create duplicate POs or invoices.`)) return;
+      loads = loads.filter(l => !loadIsPushed(l));
+      showPushedOnly = false;
+      renderLoads();
+      setStatus($('push-status'), 'ok', `Removed ${n} already-pushed load(s) — remaining loads are all unpushed.`);
+    };
+  }
   const recheckBtn = $('recheck-erp-btn');
   if (recheckBtn) {
     recheckBtn.style.display = loads.length ? '' : 'none';
@@ -3249,6 +3282,7 @@ function renderLoads() {
     // Location filter — skip rows not in the active set (idx stays the true
     // array index so all row handlers keep pointing at the right load).
     if (filterActive && !loadLocationFilter.has(load.locCode)) return;
+    if (showPushedOnly && !loadIsPushed(load)) return;
     // main row
     const tr = document.createElement('tr');
     tr.id = 'row-' + idx;
