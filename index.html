@@ -6434,9 +6434,9 @@ function generateInvoiceDrafts() {
       order_type_id:     INV_DEFAULT_ORDER_TYPE,
       // Deal-configured payment method wins; global default (Wire Transfer) otherwise.
       payment_method_id: dealCandidates[0]?.payment || INV_DEFAULT_PAYMENT,
-      cc_fee_pct:        dealCandidates[0]?.ccFee ?? 3,   // reference only — not applied to prices
+      cc_fee_pct:        dealCandidates[0]?.ccFee ?? 3,   // applied to grand_total when payment is CC/PayPal
       pickup_date:       '',        // scheduled pickup — user fills before push
-      ship_from:         'Other',   // ship-from default per user request
+      ship_from_id:      3,         // 3 = Other (verified: what deal-customer invoices use)
       shipping_method_id: clubShip || INV_DEFAULT_SHIPPING[supKey] || 94,
       salesrep_id:       '',
       promo_code:        '',
@@ -6572,7 +6572,7 @@ function renderInvoiceDrafts() {
           </div>
           ${(d.payment_method_id === 15 || d.payment_method_id === 16) ? `
           <div class="inv-field">
-            <label title="Customer's card fee % from the deal rules — reference only, line prices are pushed unchanged">CC fee %</label>
+            <label title="Card fee % from the deal rules — pushed as cc_fee_rate and added to the grand total (line prices unchanged)">CC fee %</label>
             <input type="number" step="0.1" min="0" max="15" data-inv-h="${idx}" data-k="cc_fee_pct" value="${esc(d.cc_fee_pct ?? 3)}">
           </div>` : ''}
           <div class="inv-field">
@@ -6582,12 +6582,16 @@ function renderInvoiceDrafts() {
             </select>
           </div>
           <div class="inv-field">
-            <label title="Scheduled pickup — fill in before pushing. Also written into the order note.">Scheduled pickup date</label>
+            <label title="Scheduled pickup — fill in before pushing. Maps to the order's scheduled_pickup_date.">Scheduled pickup date</label>
             <input type="date" data-inv-h="${idx}" data-k="pickup_date" value="${esc(d.pickup_date || '')}">
           </div>
           <div class="inv-field">
-            <label title="Ship-from shown on the invoice. Defaults to Other; also written into the order note.">Ship from</label>
-            <input type="text" data-inv-h="${idx}" data-k="ship_from" value="${esc(d.ship_from ?? 'Other')}" placeholder="Other">
+            <label title="Order ship_from_id. 3 = Other (what load invoices use in the ERP).">Ship from</label>
+            <select data-inv-h="${idx}" data-k="ship_from_id">
+              <option value="3" ${Number(d.ship_from_id ?? 3) === 3 ? 'selected' : ''}>3 — Other</option>
+              <option value="1" ${Number(d.ship_from_id) === 1 ? 'selected' : ''}>1 — Via warehouse</option>
+              <option value="2" ${Number(d.ship_from_id) === 2 ? 'selected' : ''}>2 — Warehouse #2</option>
+            </select>
           </div>
           <div class="inv-field">
             <label>Sales rep id</label>
@@ -6744,7 +6748,7 @@ function attachInvoiceHandlers() {
       const k = el.dataset.k;
       const d = invoiceDrafts[idx];
       if (!d) return;
-      d[k] = ['order_type_id','payment_method_id','shipping_method_id'].includes(k) ? Number(el.value) : el.value;
+      d[k] = ['order_type_id','payment_method_id','shipping_method_id','ship_from_id'].includes(k) ? Number(el.value) : el.value;
       if (rerender) renderInvoiceDrafts();
     };
     el.oninput  = () => apply(false);
@@ -6923,7 +6927,13 @@ function buildInvoicePayload(d) {
   const shipping = Number(d.shipping_cost) || 0;
   const taxRate  = Number(d.tax_rate) || 0;
   const taxAmt   = subTotal * (taxRate / 100);
-  const grand    = subTotal + shipping + taxAmt;
+  // CC fee — semantics verified against real airbyte_sync.orders rows:
+  // fee = rate% × (sub + shipping + tax), added on top of grand_total, sent as
+  // cc_fee ($), cc_fee_rate (%), cc_fee_percent (true). Only when the payment
+  // method is Credit Card (15) or PayPal (16).
+  const ccRate = (d.payment_method_id === 15 || d.payment_method_id === 16) ? (Number(d.cc_fee_pct) || 0) : 0;
+  const ccFee  = ccRate > 0 ? (subTotal + shipping + taxAmt) * (ccRate / 100) : 0;
+  const grand    = subTotal + shipping + taxAmt + ccFee;
   const data = {
     user_id:            d.customer.customer_id,
     salesrep_id:        d.salesrep_id ? Number(d.salesrep_id) : null,
@@ -6952,13 +6962,15 @@ function buildInvoicePayload(d) {
     })),
     payments: [],  // always empty per current spec
   };
-  // Scheduled pickup + ship-from: sent as fields (harmless if the ERP ignores
-  // them) AND folded into the note so they land visibly either way.
-  const extras = [];
-  if (d.pickup_date) { data.scheduled_pickup_date = d.pickup_date; extras.push(`Scheduled pickup: ${d.pickup_date}`); }
-  if (d.ship_from)   { data.ship_from = d.ship_from;               extras.push(`Ship from: ${d.ship_from}`); }
-  const note = [d.note, extras.join(' · ')].filter(Boolean).join(' — ');
-  if (note) data.note = note;
+  // Real order columns (names verified against airbyte_sync.orders).
+  if (d.pickup_date) data.scheduled_pickup_date = d.pickup_date;
+  data.ship_from_id = Number(d.ship_from_id ?? 3) || 3;   // 3 = Other
+  if (ccRate > 0) {
+    data.cc_fee         = ccFee.toFixed(2);
+    data.cc_fee_rate    = String(ccRate);
+    data.cc_fee_percent = true;
+  }
+  if (d.note) data.note = d.note;
   return { data };
 }
 
