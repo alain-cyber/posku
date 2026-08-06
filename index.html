@@ -954,10 +954,10 @@ const SUPPLIERS = {
       { loc: 'AMD', type: 'A',   email: 'carmen@crdpropertyholdings.com', mode: 'percent', value: 0.09  },
       { loc: 'RIL', type: 'A',   email: 'carmen@crdpropertyholdings.com', mode: 'percent', value: 0.09  },
       { loc: 'JFL', type: 'A',   email: 'carmen@crdpropertyholdings.com', mode: 'percent', value: 0.09  },
-      // charles@delaneyauction.com
-      { loc: 'PR',  type: 'LQ',  email: 'charles@delaneyauction.com',     mode: 'percent', value: 0.075 },
-      { loc: 'PR',  type: 'S',   email: 'charles@delaneyauction.com',     mode: 'flat',    value: 1000  },
-      { loc: 'PR',  type: 'HDO', email: 'charles@delaneyauction.com',     mode: 'percent', value: 0.1075 },
+      // charles@delaneyauction.com — pays by credit card (15), not wire
+      { loc: 'PR',  type: 'LQ',  email: 'charles@delaneyauction.com',     mode: 'percent', value: 0.075,  payment: 15 },
+      { loc: 'PR',  type: 'S',   email: 'charles@delaneyauction.com',     mode: 'flat',    value: 1000,   payment: 15 },
+      { loc: 'PR',  type: 'HDO', email: 'charles@delaneyauction.com',     mode: 'percent', value: 0.1075, payment: 15 },
       // gage@shortnorthlr.com — rotating 2nd customer for the AMD/RIL/JFL combos
       { loc: 'AMD', type: 'LQ',  email: 'gage@shortnorthlr.com',          mode: 'percent', value: 0.065 },
       { loc: 'RIL', type: 'LQ',  email: 'gage@shortnorthlr.com',          mode: 'percent', value: 0.065 },
@@ -1472,6 +1472,9 @@ function applyRulesOverride() {
       }
       const pay = Number(x.payment);
       if (Number.isFinite(pay) && pay > 0) out.payment = pay;
+      // Migration: saved configs predating the payment column carry none —
+      // Charles Delaney pays by credit card (user-confirmed default).
+      if (!out.payment && email === 'charles@delaneyauction.com') out.payment = 15;
       const fee = Number(x.ccFee);
       if (Number.isFinite(fee) && fee >= 0) out.ccFee = fee;
       return out;
@@ -6432,6 +6435,8 @@ function generateInvoiceDrafts() {
       // Deal-configured payment method wins; global default (Wire Transfer) otherwise.
       payment_method_id: dealCandidates[0]?.payment || INV_DEFAULT_PAYMENT,
       cc_fee_pct:        dealCandidates[0]?.ccFee ?? 3,   // reference only — not applied to prices
+      pickup_date:       '',        // scheduled pickup — user fills before push
+      ship_from:         'Other',   // ship-from default per user request
       shipping_method_id: clubShip || INV_DEFAULT_SHIPPING[supKey] || 94,
       salesrep_id:       '',
       promo_code:        '',
@@ -6575,6 +6580,14 @@ function renderInvoiceDrafts() {
             <select data-inv-h="${idx}" data-k="shipping_method_id">
               ${INV_SHIPPING_METHODS.map(o => `<option value="${o.id}" ${d.shipping_method_id === o.id ? 'selected' : ''}>${o.id} — ${esc(o.name)}</option>`).join('')}
             </select>
+          </div>
+          <div class="inv-field">
+            <label title="Scheduled pickup — fill in before pushing. Also written into the order note.">Scheduled pickup date</label>
+            <input type="date" data-inv-h="${idx}" data-k="pickup_date" value="${esc(d.pickup_date || '')}">
+          </div>
+          <div class="inv-field">
+            <label title="Ship-from shown on the invoice. Defaults to Other; also written into the order note.">Ship from</label>
+            <input type="text" data-inv-h="${idx}" data-k="ship_from" value="${esc(d.ship_from ?? 'Other')}" placeholder="Other">
           </div>
           <div class="inv-field">
             <label>Sales rep id</label>
@@ -6939,7 +6952,13 @@ function buildInvoicePayload(d) {
     })),
     payments: [],  // always empty per current spec
   };
-  if (d.note) data.note = d.note;
+  // Scheduled pickup + ship-from: sent as fields (harmless if the ERP ignores
+  // them) AND folded into the note so they land visibly either way.
+  const extras = [];
+  if (d.pickup_date) { data.scheduled_pickup_date = d.pickup_date; extras.push(`Scheduled pickup: ${d.pickup_date}`); }
+  if (d.ship_from)   { data.ship_from = d.ship_from;               extras.push(`Ship from: ${d.ship_from}`); }
+  const note = [d.note, extras.join(' · ')].filter(Boolean).join(' — ');
+  if (note) data.note = note;
   return { data };
 }
 
