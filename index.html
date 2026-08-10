@@ -3120,6 +3120,7 @@ async function markExistingSkus() {
         const r = await checkSKUExists(withEnvSuffix(l.sku));
         if (r.error) return;   // check failed — leave the load's state unknown, retry next render
         l._skuExists = (r.exists === true);
+        if (r.exists && r.id && !l.productId) l.productId = r.id;   // POs/invoices need the ERP product id
         if (!l._skuExists && (l.status === 'done' || l.status === 'dup')) {
           l.status = 'ready';   // it was pushed once but no longer exists in the ERP
           l.erpResult = null;
@@ -3341,11 +3342,11 @@ function renderLoads() {
                <button class="btn ghost small" data-edit="${idx}">Edit</button>`
         ) : ''}
         ${(load.status === 'done' || load.status === 'dup') && (load.manifestRows?.length || load.flatPrice != null) ? `<button class="btn small" data-repush="${idx}" title="Re-push the manifest list price to this SKU in the ERP">Re-push price</button>` : ''}
-        ${load.status === 'done' && load.supplierKey === 'WYF' ? wyfRowExtraActions(load, idx) : ''}
+        ${loadIsPushed(load) && load.supplierKey === 'WYF' ? wyfRowExtraActions(load, idx) : ''}
         ${load.status === 'dup' ? `<button class="btn ghost small" data-edit="${idx}">Edit</button>` : ''}
         <button class="btn danger small" data-remove="${idx}">×</button>
       </td>`;
-    const selectCell = `<td class="select-col">${load.status === 'done' ? `<input type="checkbox" data-select="${idx}" ${load.selected ? 'checked' : ''}>` : ''}</td>`;
+    const selectCell = `<td class="select-col">${loadIsPushed(load) ? `<input type="checkbox" data-select="${idx}" ${load.selected ? 'checked' : ''}>` : ''}</td>`;
 
     if (wyfFormat) {
       // ── New Wayfair format: lifecycle + manifest file + inv/customer + PO ──
@@ -3652,8 +3653,8 @@ function renderLoads() {
 }
 
 function updatePoActionRow() {
-  const pushedCount = loads.filter(l => l.status === 'done').length;
-  const selCount = loads.filter(l => l.status === 'done' && l.selected).length;
+  const pushedCount = loads.filter(loadIsPushed).length;
+  const selCount = loads.filter(l => loadIsPushed(l) && l.selected).length;
   const row = $('po-action-row');
   if (pushedCount === 0) { row.style.display = 'none'; return; }
   row.style.display = 'flex';
@@ -3736,7 +3737,7 @@ function attachHandlers() {
   $('loads-body').querySelectorAll('[data-po-gen]').forEach(b => {
     b.onclick = () => {
       const i = +b.dataset.poGen;
-      loads.forEach((l, j) => { if (l.status === 'done') l.selected = (j === i); });
+      loads.forEach((l, j) => { if (loadIsPushed(l)) l.selected = (j === i); });
       renderLoads();
       generatePoDrafts();
     };
@@ -3744,7 +3745,7 @@ function attachHandlers() {
   $('loads-body').querySelectorAll('[data-inv-gen]').forEach(b => {
     b.onclick = () => {
       const i = +b.dataset.invGen;
-      loads.forEach((l, j) => { if (l.status === 'done') l.selected = (j === i); });
+      loads.forEach((l, j) => { if (loadIsPushed(l)) l.selected = (j === i); });
       renderLoads();
       generateInvoiceDrafts();
     };
@@ -3844,7 +3845,7 @@ function bindSelectAll() {
   if (!el) return;
   el.onchange = () => {
     const checked = el.checked;
-    loads.forEach(l => { if (l.status === 'done') l.selected = checked; });
+    loads.forEach(l => { if (loadIsPushed(l)) l.selected = checked; });
     renderLoads();
   };
 }
@@ -5022,7 +5023,7 @@ function createDraftFromLoads(loadsArr) {
 }
 
 function generatePoDrafts() {
-  const selected = loads.filter(l => l.status === 'done' && l.selected);
+  const selected = loads.filter(l => loadIsPushed(l) && l.selected);
   if (!selected.length) return;
   // Skip loads already on a draft (by load+sku across all draft line items).
   const inDraft = new Set(poDrafts.flatMap(p => (p.items || []).map(it => it.loadId + '|' + it.sku)));
@@ -6430,7 +6431,7 @@ function resolveInvoiceCustomer(load) {
 // column (default = same Sam's club + same received-day). Loads with no
 // Invoice # each become their own invoice.
 function previewInvoiceGroups() {
-  const eligible = loads.filter(l => l.status === 'done' && l.selected);
+  const eligible = loads.filter(l => loadIsPushed(l) && l.selected);
   // Group by the editable Invoice # column (default = same club + received-day).
   // Loads with no Invoice # each become their own invoice.
   const groups = [];
