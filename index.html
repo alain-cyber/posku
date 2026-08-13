@@ -3279,6 +3279,14 @@ function renderLoads() {
   const body = $('loads-body');
   body.innerHTML = '';
   let visRow = 0;   // counts visible main rows for zebra striping
+  // Duplicate detection: the same SKU on 2+ rows (duplicated emails) would
+  // create duplicate POs/invoices — flag every occurrence loudly.
+  const skuCounts = new Map();
+  loads.forEach(l => {
+    if (!l.sku) return;
+    const k = withEnvSuffix(l.sku).toUpperCase();
+    skuCounts.set(k, (skuCounts.get(k) || 0) + 1);
+  });
   loads.forEach((load, idx) => {
     // Location filter — skip rows not in the active set (idx stays the true
     // array index so all row handlers keep pointing at the right load).
@@ -3347,6 +3355,11 @@ function renderLoads() {
         <button class="btn danger small" data-remove="${idx}">×</button>
       </td>`;
     const selectCell = `<td class="select-col">${loadIsPushed(load) ? `<input type="checkbox" data-select="${idx}" ${load.selected ? 'checked' : ''}>` : ''}</td>`;
+    const dupCount = load.sku ? (skuCounts.get(withEnvSuffix(load.sku).toUpperCase()) || 0) : 0;
+    const dupMark = dupCount > 1
+      ? `<div style="display:inline-block;margin-top:2px;font-family:'DM Mono',monospace;font-size:0.6rem;font-weight:700;color:#fff;background:var(--red,#c0392b);border-radius:4px;padding:0.1rem 0.4rem;" title="This SKU appears on ${dupCount} rows — a duplicated email. Remove the extra row(s) (×) before creating POs/invoices.">⚠ DUPLICATE ×${dupCount}</div>`
+      : '';
+    if (dupCount > 1) tr.style.boxShadow = 'inset 4px 0 0 var(--red, #c0392b)';
 
     if (wyfFormat) {
       // ── New Wayfair format: lifecycle + manifest file + inv/customer + PO ──
@@ -3390,7 +3403,7 @@ function renderLoads() {
         ${selectCell}
         ${loadIdCell}
         <td><span class="mono">${esc(load.locCode || '—')}</span></td>
-        <td>${load.sku ? `<span class="mono-green">${esc(withEnvSuffix(load.sku))}</span>` : `<span class="mono-amber">—</span>`} ${typePill(load.typeCode)}</td>
+        <td>${load.sku ? `<span class="mono-green">${esc(withEnvSuffix(load.sku))}</span>` : `<span class="mono-amber">—</span>`} ${typePill(load.typeCode)}${dupMark}</td>
         <td style="font-size:0.72rem;color:var(--text2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(load.name || '')}">${esc(load.name || '—')}</td>
         <td class="mono" style="font-size:0.72rem;">${esc(load.fobName)}</td>
         <td>${fileCell}</td>
@@ -3405,7 +3418,7 @@ function renderLoads() {
       ${loadIdCell}
       <td><span class="mono">${esc(load.locCode || '—')}</span></td>
       <td>${typePill(load.typeCode)}</td>
-      <td>${load.sku ? `<span class="mono-green">${esc(withEnvSuffix(load.sku))}</span>` : `<span class="mono-amber">—</span>`}</td>
+      <td>${load.sku ? `<span class="mono-green">${esc(withEnvSuffix(load.sku))}</span>` : `<span class="mono-amber">—</span>`}${dupMark}</td>
       <td style="font-size:0.72rem;color:var(--text2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(load.name || '')}">${esc(load.name || '—')}</td>
       <td class="mono" style="font-size:0.72rem;">${esc(load.fobName)}</td>
       <td>${statusChip()}</td>
@@ -4406,8 +4419,16 @@ async function inboxFetch() {
     autoAttachFailed: allFound.filter(l => !l.manifestRows?.length).map(l => ({ sku: l.sku, loadId: l.loadId, reason: l._autoAttachReason || 'unknown' })),
   });
 
+  // Dedupe against BOTH the current list and within this batch — duplicated
+  // emails in one fetch used to sail through as duplicate load rows.
   const existing = new Set(loads.map(l => l.loadId + '|' + l.locCode + '|' + l.typeCode));
-  const added = allFound.filter(l => !existing.has(l.loadId + '|' + l.locCode + '|' + l.typeCode));
+  const added = [];
+  for (const l of allFound) {
+    const key = l.loadId + '|' + l.locCode + '|' + l.typeCode;
+    if (existing.has(key)) continue;
+    existing.add(key);
+    added.push(l);
+  }
   loads.push(...added);
   sortLoads();
   $('loads-section').style.display = '';
