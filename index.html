@@ -1908,9 +1908,12 @@ function parseSamsEmail(text, sup) {
     // Loads whose club defaults to a "Direct" shipping method (e.g. Direct
     // Truckload / Direct LTL) start inactive (active=0) so they aren't listed
     // for sale until reviewed. Resolution mirrors the invoice-draft default.
+    // EXCEPTION: a club with a per-club pricing (markup) override in the rules
+    // pushes its SKUs ACTIVE (active=1) — the override wins over the Direct rule.
     const shipId   = (code && sup.invoiceShippingByLoc) ? sup.invoiceShippingByLoc[code] : null;
     const shipName = (INV_SHIPPING_METHODS.find(o => o.id === (shipId || INV_DEFAULT_SHIPPING.SMS))?.name) || '';
-    const active   = /direct/i.test(shipName) ? 0 : 1;
+    const hasMarkupOverride = !!(code && sup.clubMarkups && sup.clubMarkups[code] && Object.keys(sup.clubMarkups[code]).length);
+    const active   = hasMarkupOverride ? 1 : (/direct/i.test(shipName) ? 0 : 1);
     return {
       id:           'load_' + Date.now() + '_' + Math.random().toString(36).slice(2),
       supplierKey:  'SMS',
@@ -5484,7 +5487,7 @@ function drawCfgUISams() {
           </div>
         `).join('')}
       </div>
-      <div class="cfg-hint" style="margin-top:0.8rem;">Per-club overrides (only the clubs that deviate from the defaults need a row).</div>
+      <div class="cfg-hint" style="margin-top:0.8rem;">Per-club overrides (only the clubs that deviate from the defaults need a row). <strong>A club listed here also pushes its SKUs as ACTIVE (active=1)</strong> — the pricing override wins over the Direct-shipping inactive default.</div>
       <div class="cfg-table-wrap">
         <table class="cfg-table">
           <thead><tr>
