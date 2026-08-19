@@ -1,14 +1,16 @@
-// Cloudflare Pages Function — Wayfair item-image master list.
+// Cloudflare Pages Function — Wayfair item-image master lookup.
 //
-// Reads the "Wayfair item id → image link" master spreadsheet and returns it
-// as a { SPRID: url } map. The client uses it to fill in missing
-// "Product Image URL" cells before pushing a manifest to the Load Center
-// sheet. Same SA + DWD auth as sheets/append.js — the impersonated user
-// (GMAIL_IMPERSONATE_USER) must have at least view access to the master
-// spreadsheet.
+// The master sheet ("Sprid" → "Picture") is ~195K rows, far too big to pull
+// wholesale into a function or the browser. Instead the client POSTs just the
+// item ids that need images and we run a FILTERED query against Google's
+// gviz endpoint (server-side WHERE at Google), returning only the matches.
+// Falls back to a full values.get + filter if gviz is unavailable.
 //
-// Request:  GET /api/sheets/images
-// Response: { ok, count, map: { "GBIG4302.143014124": "https://…jpg", … } }
+// Auth: same SA + DWD as sheets/append.js — the impersonated user must have
+// at least view access to the master spreadsheet.
+//
+// Request:  POST /api/sheets/images   body: { ids: ["GBIG4302.143014124", …] }
+// Response: { ok, requested, matched, map: { ID: url, … } }
 
 const SCOPE      = 'https://www.googleapis.com/auth/spreadsheets';
 const TOKEN_URL  = 'https://oauth2.googleapis.com/token';
@@ -16,10 +18,11 @@ const SHEETS_URL = 'https://sheets.googleapis.com/v4/spreadsheets';
 
 // Master list: columns A = Sprid (Wayfair item id), B = Picture (image URL).
 const MASTER_SPREADSHEET_ID = '12jr8MC_Smz5ERaTMQ7bBBAJsz0zAB-84iDrywPdonNg';
+const MAX_IDS = 500;
 
 export async function onRequest(context) {
   const { request, env } = context;
-  if (request.method !== 'GET') return json(405, { ok: false, error: 'Method not allowed' });
+  if (request.method !== 'POST') return json(405, { ok: false, error: 'POST { ids: [...] }' });
 
   const cfg = {
     saEmail:     env.GMAIL_SA_EMAIL,
@@ -32,29 +35,68 @@ export async function onRequest(context) {
     return json(500, { ok: false, error: `Missing env var(s): ${missing.map(k => map[k]).join(', ')}` });
   }
 
+  let body;
+  try { body = await request.json(); }
+  catch { return json(400, { ok: false, error: 'Body must be JSON { ids: [...] }' }); }
+  const ids = [...new Set((Array.isArray(body.ids) ? body.ids : [])
+    .map(s => String(s || '').trim().toUpperCase())
+    // Sprids are alphanumeric + dot — reject anything else so ids can be
+    // embedded in the gviz query safely.
+    .filter(s => s && s.length <= 40 && /^[A-Z0-9.\-]+$/.test(s)))].slice(0, MAX_IDS);
+  if (!ids.length) return json(200, { ok: true, requested: 0, matched: 0, map: {} });
+
   let token;
   try { token = await mintAccessToken(cfg); }
   catch (err) { return json(502, { ok: false, error: `Auth failed: ${err.message}` }); }
 
-  const url = `${SHEETS_URL}/${MASTER_SPREADSHEET_ID}/values/${encodeURIComponent('A:B')}?majorDimension=ROWS`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) {
-    return json(res.status, { ok: false, error: `Master sheet read ${res.status}: ${await res.text()}` });
-  }
-  const data = await res.json();
-  const rows = data.values || [];
+  // Filtered gviz query — Google evaluates the WHERE, we get only matches.
+  const where = ids.map(id => `upper(A) = '${id}'`).join(' or ');
+  const tq = `select A, B where ${where}`;
+  const gvizUrl = `https://docs.google.com/spreadsheets/d/${MASTER_SPREADSHEET_ID}/gviz/tq?tqx=out:csv&tq=${encodeURIComponent(tq)}`;
+  try {
+    const res = await fetch(gvizUrl, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) {
+      const csv = await res.text();
+      const map = parseTwoColCsv(csv, ids);
+      return json(200, { ok: true, requested: ids.length, matched: Object.keys(map).length, map, via: 'gviz' });
+    }
+  } catch {}
+
+  // Fallback: paged values.get scan (kept CPU-light by scanning in chunks and
+  // stopping once every requested id is found).
+  const want = new Set(ids);
   const map = {};
-  for (const r of rows) {
-    const id = String(r?.[0] || '').trim().toUpperCase();
-    const link = String(r?.[1] || '').trim();
-    // Skip the header row and anything that isn't an id → http(s) link pair.
-    if (!id || id === 'SPRID' || !/^https?:\/\//i.test(link)) continue;
-    map[id] = link;
+  const PAGE = 20000;
+  for (let start = 1; start <= 400000 && want.size; start += PAGE) {
+    const range = encodeURIComponent(`A${start}:B${start + PAGE - 1}`);
+    const r = await fetch(`${SHEETS_URL}/${MASTER_SPREADSHEET_ID}/values/${range}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) return json(r.status, { ok: false, error: `Master sheet read ${r.status}: ${await r.text()}` });
+    const rows = (await r.json()).values || [];
+    if (!rows.length) break;
+    for (const row of rows) {
+      const id = String(row?.[0] || '').trim().toUpperCase();
+      if (want.has(id)) {
+        const link = String(row?.[1] || '').trim();
+        if (/^https?:\/\//i.test(link)) { map[id] = link; want.delete(id); }
+      }
+    }
+    if (rows.length < PAGE) break;
   }
-  return new Response(JSON.stringify({ ok: true, count: Object.keys(map).length, map }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, max-age=600' },
-  });
+  return json(200, { ok: true, requested: ids.length, matched: Object.keys(map).length, map, via: 'scan' });
+}
+
+// Parse gviz out:csv ("A","B" quoted lines) into { ID: url } for wanted ids.
+function parseTwoColCsv(csv, ids) {
+  const want = new Set(ids);
+  const map = {};
+  for (const line of String(csv).split('\n')) {
+    const m = line.match(/^"([^"]*)","([^"]*)"/);
+    if (!m) continue;
+    const id = m[1].trim().toUpperCase();
+    const link = m[2].trim();
+    if (want.has(id) && /^https?:\/\//i.test(link)) map[id] = link;
+  }
+  return map;
 }
 
 // ── Helpers (same JWT/RS256 flow as sheets/append.js) ────────────────────────

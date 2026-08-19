@@ -2718,18 +2718,11 @@ function stashInboxDiag(payload) {
 }
 
 // ── Wayfair image master list ────────────────────────────────────────────────
-// "Sprid → picture URL" master sheet, served by /api/sheets/images. Used to
-// fill missing Product Image URL cells before a manifest goes to the Sheet.
-let _imageMasterMap = null;
-async function getImageMasterMap() {
-  if (_imageMasterMap) return _imageMasterMap;
-  try {
-    const r = await fetch('/api/sheets/images', { cache: 'no-store' });
-    const j = await r.json().catch(() => null);
-    if (r.ok && j?.ok && j.map) { _imageMasterMap = j.map; return j.map; }
-  } catch {}
-  return {};
-}
+// The "Sprid → picture URL" master sheet is ~195K rows, so we never pull it
+// whole — /api/sheets/images takes the ids that need images and returns only
+// the matches (server-side filtered at Google). Small session cache avoids
+// re-asking for the same id (null = confirmed not in the master).
+const _imageLookupCache = new Map();
 // A cell counts as missing when it's empty OR carries Wayfair's "/0/"
 // placeholder (image id 0 = no real image). Returns how many got filled.
 function imageUrlMissing(u) {
@@ -2739,10 +2732,24 @@ function imageUrlMissing(u) {
 async function fillMissingImageUrls(rows) {
   const missing = (rows || []).filter(r => r['Item ID'] && imageUrlMissing(r['Product Image URL']));
   if (!missing.length) return 0;
-  const map = await getImageMasterMap();
+  const need = [...new Set(missing.map(r => String(r['Item ID']).trim().toUpperCase()))]
+    .filter(id => !_imageLookupCache.has(id));
+  if (need.length) {
+    try {
+      const r = await fetch('/api/sheets/images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: need }),
+      });
+      const j = await r.json().catch(() => null);
+      if (r.ok && j?.ok) {
+        for (const id of need) _imageLookupCache.set(id, j.map?.[id] || null);
+      }
+    } catch {}
+  }
   let filled = 0;
   for (const r of missing) {
-    const url = map[String(r['Item ID']).trim().toUpperCase()];
+    const url = _imageLookupCache.get(String(r['Item ID']).trim().toUpperCase());
     if (url) { r['Product Image URL'] = url; filled++; }
   }
   return filled;
