@@ -2717,6 +2717,37 @@ function stashInboxDiag(payload) {
   try { localStorage.setItem('posku.inbox.diag.v1', JSON.stringify(payload)); } catch {}
 }
 
+// ── Wayfair image master list ────────────────────────────────────────────────
+// "Sprid → picture URL" master sheet, served by /api/sheets/images. Used to
+// fill missing Product Image URL cells before a manifest goes to the Sheet.
+let _imageMasterMap = null;
+async function getImageMasterMap() {
+  if (_imageMasterMap) return _imageMasterMap;
+  try {
+    const r = await fetch('/api/sheets/images', { cache: 'no-store' });
+    const j = await r.json().catch(() => null);
+    if (r.ok && j?.ok && j.map) { _imageMasterMap = j.map; return j.map; }
+  } catch {}
+  return {};
+}
+// A cell counts as missing when it's empty OR carries Wayfair's "/0/"
+// placeholder (image id 0 = no real image). Returns how many got filled.
+function imageUrlMissing(u) {
+  const s = String(u || '').trim();
+  return !s || /\/0\/default[\\_]*[a-z]*\.jpg/i.test(s);
+}
+async function fillMissingImageUrls(rows) {
+  const missing = (rows || []).filter(r => r['Item ID'] && imageUrlMissing(r['Product Image URL']));
+  if (!missing.length) return 0;
+  const map = await getImageMasterMap();
+  let filled = 0;
+  for (const r of missing) {
+    const url = map[String(r['Item ID']).trim().toUpperCase()];
+    if (url) { r['Product Image URL'] = url; filled++; }
+  }
+  return filled;
+}
+
 // ── Activity ledger ──────────────────────────────────────────────────────────
 // An uncapped, upsert-by-key record of every real operation (SKU push, PO,
 // invoice, manifest→sheet) so the standalone activity page can show the full
@@ -2948,6 +2979,13 @@ function attachSamsManifestHandlers() {
       const load = loads[idx];
       const rows = load.manifestRows || [];
       if (!rows.length) return;
+      // Fill missing image links from the master list before the push.
+      if (load.supplierKey === 'WYF') {
+        try {
+          const nImg = await fillMissingImageUrls(rows);
+          if (nImg) setStatus($('push-status'), 'info', `Filled ${nImg} missing image link(s) from the master list.`);
+        } catch {}
+      }
       // Convert each row to a Sheets-friendly array (strings; let valueInputOption=USER_ENTERED parse).
       const values = rows.map(r => LC_COLUMNS.map(col => {
         const v = r[col];
@@ -4871,6 +4909,7 @@ $('send-all-manifests-btn').onclick = async () => {
   btn.disabled = true; btn.textContent = `Sending ${pending.length} manifest(s)…`;
   let okCount = 0, failCount = 0;
   for (const { l } of pending) {
+    if (l.supplierKey === 'WYF') { try { await fillMissingImageUrls(l.manifestRows); } catch {} }
     const values = l.manifestRows.map(r => LC_COLUMNS.map(col => {
       const v = r[col]; if (v == null) return '';
       if (col === 'Your Price %' || col === '% of Load QTY' || col === '% of Load $$') return (v * 100).toFixed(2) + '%';
