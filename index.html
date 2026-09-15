@@ -1959,6 +1959,119 @@ function samsMainCategory(subcat, sup) {
   return 'General Merchandise';
 }
 
+// ── Sam's manifest → real ERP taxonomy ───────────────────────────────────────
+// Maps a Sam's raw "Category description" onto the ERP's products_segments
+// taxonomy (category id + optional subcategory id) so a load lands in the
+// category it actually is, instead of everything being Assorted Mixed Lots.
+// Ids verified against airbyte_sync.products_segments.
+// NOTE: this is deliberately SEPARATE from mainCategoryRules — that one drives
+// the markup % and is untouched here. Pricing does not change.
+// First matching rule wins, so specific patterns come before generic ones.
+const SMS_SEGMENTS = [
+  // Food / grocery first — "SPORTS NUTRITION" must not fall into Sports.
+  { re: /BEVERAGE|CHIP|SNACK|CEREAL|CANDY|PASTA|CONDIMENT|NUTRITION|GROCER|\bFOOD\b|COFFEE|DAIRY|FROZEN|PROTEIN|BAR\b/, cat: 224, sub: 225, label: 'Food' },
+  { re: /CLEAN|LAUNDRY|HOUSEHOLD CHEM|PAPER GOODS/,                    cat: 224, sub: 226, label: 'Cleaning Supplies' },
+  { re: /STATION|OFFICE SUPPL|SCHOOL SUPPL/,                           cat: 224, sub: 227, label: 'Stationery' },
+  // Fashion
+  { re: /SHOE|FOOTWEAR|SNEAKER|BOOT/,                                  cat: 193, sub: 195, label: 'Shoes' },
+  { re: /HANDBAG|PURSE|TOTE/,                                          cat: 193, sub: 196, label: 'Handbags' },
+  { re: /JEWEL/,                                                       cat: 193, sub: 198, label: 'Jewelry' },
+  { re: /WATCH/,                                                       cat: 193, sub: 199, label: 'Watches' },
+  { re: /APPAREL|CLOTHING|\bTEE?S\b|SOCK|UNDERWEAR/,                   cat: 193, sub: 194, label: 'Apparel' },
+  { re: /ACCESSORIES/,                                                 cat: 193, sub: 197, label: 'Accessories' },
+  // Health & beauty
+  { re: /SUPPLEMENT|VITAMIN/,                                          cat: 221, sub: 223, label: 'Supplements' },
+  { re: /COSMETIC|MAKE-?UP|SKIN ?CARE|FRAGRANCE|HAIR ?CARE/,           cat: 221, sub: 222, label: 'Cosmetics' },
+  { re: /HEALTH|BEAUTY|PHARMACY|\bOTC\b|PERSONAL CARE/,                cat: 221, sub: null, label: 'Health & Beauty' },
+  // Baby / pets / toys
+  { re: /BABY|INFANT|DIAPER|TODDLER|NURSERY/,                          cat: 200, sub: null, label: 'Baby' },
+  { re: /\bPET\b|PETS|DOG|CAT\b/,                                      cat: 214, sub: null, label: 'Pet Supplies' },
+  { re: /CRAFT|ART SUPPL/,                                             cat: 218, sub: 220, label: 'Arts & Crafts' },
+  { re: /\bGAME|PUZZLE|VIDEO GAME/,                                    cat: 218, sub: 219, label: 'Games' },
+  { re: /\bTOY|JUVENILE|KIDS/,                                         cat: 218, sub: null, label: 'Toys' },
+  // Seasonal
+  { re: /CHRISTMAS|HOLIDAY TRIM/,                                      cat: 202, sub: 203, label: 'Christmas' },
+  { re: /HALLOWEEN/,                                                   cat: 202, sub: 204, label: 'Halloween' },
+  { re: /PARTY/,                                                       cat: 202, sub: 205, label: 'Party Supplies' },
+  { re: /SEASONAL/,                                                    cat: 202, sub: null, label: 'Seasonal' },
+  // Appliances / electronics — "KITCHEN ELECTRICS AND FLOORCARE" is small
+  // appliances (air fryers, vacuums), so it maps to Home Appliances > Small.
+  { re: /FLOORCARE|VACUUM|KITCHEN ELECTRIC|SMALL APPLIANCE/,           cat: 188, sub: 190, label: 'Small Appliances' },
+  { re: /REFRIGERAT|WASHER|DRYER|DISHWASHER|LARGE APPLIANCE|RANGE\b/,  cat: 188, sub: 189, label: 'Large Appliances' },
+  { re: /WIRELESS|CELL ?PHONE|SMARTPHONE/,                             cat: 212, sub: 213, label: 'Wireless' },
+  { re: /ELECTRONIC|TVS?\b|SOUNDBAR|TABLET|CONNECTED|BATTER|AUDIO|COMPUTER|CAMERA|EMERGING TECH/, cat: 212, sub: null, label: 'Electronics' },
+  // Tools / auto / outdoors / sports
+  { re: /TOOL|HARDWARE|POWER EQUIP/,                                   cat: 217, sub: null, label: 'Tools & Hardware' },
+  { re: /\bAUTO|TIRE|CAR CARE|AUTOMOTIVE/,                             cat: 192, sub: null, label: 'Automotive' },
+  { re: /BICYCLE|\bBIKE/,                                              cat: 215, sub: 216, label: 'Bicycles' },
+  { re: /SPORT|FITNESS|EXERCISE|ATHLETIC/,                             cat: 215, sub: null, label: 'Sports & Fitness' },
+  { re: /GRILL|PATIO|LAWN|GARDEN|OUTDOOR/,                             cat: 207, sub: null, label: 'Outdoors' },
+  // Home
+  { re: /FURNITURE|MATTRESS|SOFA|RECLINER|DESK\b/,                     cat: 201, sub: null, label: 'Furniture' },
+  { re: /BEDDING|LINEN|COMFORTER|SHEET/,                               cat: 208, sub: 210, label: 'Bedding' },
+  { re: /LIGHTING|LAMP/,                                               cat: 208, sub: 211, label: 'Lighting' },
+  { re: /HOUSEWARE|KITCHEN|COOKWARE|BATH|DECOR|\bHOME\b|STORAGE|ORGANIZ/, cat: 208, sub: 209, label: 'Housewares' },
+];
+
+// Resolve one Sam's subcategory string to a segment. Unknown → Assorted Mixed.
+function samsSegmentFor(subcat) {
+  const up = String(subcat || '').toUpperCase().trim();
+  if (up) {
+    for (const r of SMS_SEGMENTS) if (r.re.test(up)) return r;
+  }
+  return { cat: 191, sub: null, label: 'General Merchandise' };
+}
+
+// Work out what a Sam's load actually IS from its manifest: the dominant
+// segment(s) by retail value, the ERP category ids to push, and a descriptive
+// name ("Mostly Apparel and Shoes and More"). Returns null with no rows.
+function samsLoadTaxonomy(rows) {
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const byLabel = new Map();
+  let total = 0;
+  for (const r of rows) {
+    const seg = samsSegmentFor(r.Subcategory);
+    const val = Number(r['Appx. EXT Retail']) || 0;
+    if (val <= 0) continue;
+    total += val;
+    const cur = byLabel.get(seg.label) || { ...seg, value: 0 };
+    cur.value += val;
+    byLabel.set(seg.label, cur);
+  }
+  if (!total) return null;
+  const ranked = [...byLabel.values()]
+    .map(s => ({ ...s, share: s.value / total }))
+    .sort((a, b) => b.share - a.share);
+
+  const named = ranked.filter(s => s.label !== 'General Merchandise');
+  const top = named[0], second = named[1];
+  let picks = [];
+  // A clear leader, or two strong leaders, name the load. Anything genuinely
+  // scattered stays "General Merchandise" / Assorted Mixed Lots.
+  if (top && top.share >= 0.60)                             picks = [top];
+  else if (top && second && top.share >= 0.30 && second.share >= 0.20) picks = [top, second];
+  else if (top && top.share >= 0.40)                        picks = [top];
+
+  if (!picks.length) {
+    return { name: 'General Merchandise', categoryIds: [191], ranked, generic: true };
+  }
+  const name = `Mostly ${picks.map(p => p.label).join(' and ')} and More`;
+  const categoryIds = [];
+  for (const p of picks) {
+    if (p.cat && !categoryIds.includes(p.cat)) categoryIds.push(p.cat);
+    if (p.sub && !categoryIds.includes(p.sub)) categoryIds.push(p.sub);
+  }
+  return { name, categoryIds, ranked, generic: false };
+}
+
+// Put the derived name on the load so the table (and the push) show what the
+// load actually is as soon as its manifest is attached.
+function applySamsTaxonomyName(load) {
+  if (!load || load.supplierKey !== 'SMS') return;
+  const tax = samsLoadTaxonomy(load.manifestRows);
+  if (tax && !tax.generic) { load.name = tax.name; load._taxonomy = tax; }
+}
+
 function samsMarkupFor(clubCode, mainCategory, sup) {
   const override = sup.clubMarkups?.[clubCode]?.[mainCategory];
   if (override != null) return override;
@@ -2376,6 +2489,13 @@ function buildUpdatePayload(load) {
   const totals = buildLoadTotals(load);
   if (!totals) return null;
   const data = {};
+  // Re-pushing a Sam's SKU after its manifest lands also corrects the name and
+  // category — older SKUs pushed as "General Merchandise" / Assorted Mixed get
+  // their real taxonomy on the next Reprice.
+  if (load.supplierKey === 'SMS') {
+    const tax = samsLoadTaxonomy(load.manifestRows);
+    if (tax && !tax.generic) { data.name = tax.name; data.categories = tax.categoryIds; }
+  }
   if (totals.qty)                           data.unit_qty              = totals.qty;
   if (totals.pallets_qty != null)           data.pallets_qty           = totals.pallets_qty;
   if (totals.price != null)                 data.price                 = totals.price;
@@ -2446,10 +2566,14 @@ function buildPayload(load) {
   // SEPARATE arrays. 56 ("Load Center") is a group, not a category — putting
   // it under categories was a long-standing bug that caused the saved record
   // to show categories: [] for SMS and group memberships to be missing.
-  const categories = [...(sup.categoryIds || [])];
+  let categories = [...(sup.categoryIds || [])];
   if (load.manifestTrait === 603 && Array.isArray(sup.manifestedCategoryIds)) {
     categories.push(...sup.manifestedCategoryIds);
   }
+  // Sam's: once the manifest is attached we know what the load actually is —
+  // push the real category/subcategory instead of the Assorted Mixed default.
+  const smsTax = load.supplierKey === 'SMS' ? samsLoadTaxonomy(load.manifestRows) : null;
+  if (smsTax && !smsTax.generic) categories = [...smsTax.categoryIds];
   const groups = [...(sup.groupIds || [])];
   if (load.manifestTrait === 603 && Array.isArray(sup.manifestedGroupIds)) {
     groups.push(...sup.manifestedGroupIds);
@@ -2466,7 +2590,7 @@ function buildPayload(load) {
   const data = {
     // identity
     sku:             finalSku,
-    name:            load.name,
+    name:            (smsTax && !smsTax.generic) ? smsTax.name : load.name,
     psku:            sup.psku,
     psku_type:       'regular',
     active:          load.active ?? 1,
@@ -2973,6 +3097,7 @@ function attachSamsManifestHandlers() {
           load.manifestPalletIds = result.palletIds;
           load.manifestExpanded = true;
           load.manifestError = '';
+          applySamsTaxonomyName(load);
         }
       } catch (err) {
         load.manifestError = `Could not read ${file.name}: ${err.message}`;
@@ -4444,6 +4569,7 @@ async function inboxFetch() {
           l.manifestRows = result.rows;
           l.manifestPalletIds = result.palletIds;
           l.manifestExpanded = false;  // collapse by default
+          applySamsTaxonomyName(l);
           l._autoAttachReason = `OK — ${result.rows.length} rows from "${csvSourceByManifest[l.loadId]}"`;
         } else {
           l._autoAttachReason = `parser returned 0 rows from "${csvSourceByManifest[l.loadId]}"`;
