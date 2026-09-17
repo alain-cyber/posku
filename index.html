@@ -790,6 +790,7 @@ textarea::placeholder { color: var(--text4); }
           <button class="btn ghost" id="download-loads-btn" title="Download all detected loads as CSV">Download CSV</button>
           <button class="btn ghost" id="filter-pushed-btn" style="display:none;" title="Show only loads whose SKU is already in the ERP">Pushed only</button>
           <button class="btn ghost" id="remove-pushed-btn" style="display:none;" title="Remove every already-pushed load from this list (nothing is deleted from the ERP) — prevents duplicate POs/invoices">Remove pushed</button>
+          <button class="btn ghost" id="fix-taxonomy-btn" style="display:none;" title="Re-push name + category for every Sam's load with a manifest, using the corrected taxonomy">Fix names &amp; categories</button>
           <button class="btn ghost" id="recheck-erp-btn" style="display:none;" title="Re-verify every SKU against the ERP — a deleted SKU flips back to Not pushed">Re-check ERP</button>
           <button class="btn ghost" id="wyf-legacy-toggle" style="display:none;" title="Switch between the new Wayfair table format and the legacy columns">Legacy view</button>
           <button class="btn ghost" id="clear-loads-btn">Clear loads</button>
@@ -3454,6 +3455,43 @@ function renderLoads() {
       showPushedOnly = false;
       renderLoads();
       setStatus($('push-status'), 'ok', `Removed ${n} already-pushed load(s) — remaining loads are all unpushed.`);
+    };
+  }
+  // Repair: SKUs pushed before the taxonomy fix carry a wrong name/category.
+  // Re-pushing with a manifest attached rewrites both, so do it in bulk rather
+  // than making the user hunt them down one by one.
+  const fixBtn = $('fix-taxonomy-btn');
+  if (fixBtn) {
+    const fixable = loads.filter(l => l.supplierKey === 'SMS' && l.manifestRows?.length && loadIsPushed(l));
+    fixBtn.style.display = fixable.length ? '' : 'none';
+    fixBtn.textContent = `Fix names & categories (${fixable.length})`;
+    fixBtn.onclick = async () => {
+      const list = loads
+        .map((l, i) => ({ l, i }))
+        .filter(({ l }) => l.supplierKey === 'SMS' && l.manifestRows?.length && loadIsPushed(l));
+      if (!list.length) return;
+      // Show exactly what each SKU becomes before touching the ERP.
+      const preview = list.map(({ l }) => {
+        const t = samsLoadTaxonomy(l.manifestRows);
+        return `${withEnvSuffix(l.sku)}  →  ${t && !t.generic ? t.name : 'General Merchandise'}`;
+      });
+      const head = preview.slice(0, 15).join('\n');
+      const more = preview.length > 15 ? `\n…and ${preview.length - 15} more` : '';
+      if (!confirm(`Re-push ${list.length} Sam's SKU(s) with corrected names + categories?\n\n${head}${more}\n\nPrices are recalculated from the same manifest, so nothing else changes.`)) return;
+      fixBtn.disabled = true;
+      let ok = 0, fail = 0;
+      for (let n = 0; n < list.length; n++) {
+        fixBtn.textContent = `Fixing ${n + 1}/${list.length}…`;
+        setStatus($('push-status'), 'info', `Repairing ${withEnvSuffix(list[n].l.sku)} (${n + 1}/${list.length})…`);
+        try {
+          const r = await pushLoad(list[n].l);
+          if (r.ok) ok++; else { fail++; list[n].l.erpResult = r.error; }
+        } catch (e) { fail++; list[n].l.erpResult = e.message; }
+      }
+      fixBtn.disabled = false;
+      renderLoads();
+      setStatus($('push-status'), fail ? 'warn' : 'ok',
+        `Repaired ${ok} SKU(s)${fail ? ` · ${fail} failed — see the red rows` : ''}. Names and categories now match each load's manifest.`);
     };
   }
   const recheckBtn = $('recheck-erp-btn');
