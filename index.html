@@ -1968,72 +1968,197 @@ function samsMainCategory(subcat, sup) {
 // NOTE: this is deliberately SEPARATE from mainCategoryRules — that one drives
 // the markup % and is untouched here. Pricing does not change.
 // First matching rule wins, so specific patterns come before generic ones.
+// ── Sam's Club bucket → ERP segment ──────────────────────────────────────────
+//
+// Sam's bucket names are NOT literal, so nothing here is guessed from the
+// wording. Every entry below was set by reading the actual item descriptions
+// on that bucket's manifest lines in the ERP. Two of them read backwards:
+//
+//   APPAREL > ACCESSORIES   (~193K units, the 4th largest bucket of all) is
+//     NOT handbags or fashion accessories. It is apparel: UV tees, resort
+//     swim, shackets, family sleep sets, pajamas, leggings, licensed team
+//     tees. Mapping it to Fashion > Accessories was mis-stating the single
+//     biggest apparel bucket Sam's sends us.
+//   GENERAL MERCHANDISE > ENTERTAINMENT is NOT consumer electronics. It is
+//     Monopoly, Scrabble, Clue, Connect 4, Mahjong, 1000pc puzzles, paint-
+//     your-own kits and Art 101 craft sets — board games and craft kits.
+//     Mapping it to Electronics is what named a 97%-ENTERTAINMENT load
+//     "Mostly Electronics and More".
+//
+// `label` is the wording used in the generated SKU name. It deliberately uses
+// Sam's Club's own vocabulary ("Seasonal Apparel", "Games & Puzzles",
+// "Vitamins & Supplements") rather than our ERP category names — the ERP ids
+// in `cat`/`sub` are what actually gets pushed, the label is what a buyer
+// reads. `cat`: null means the bucket can't name a load on its own.
+const SMS_BUCKETS = {
+  // ── APPAREL ────────────────────────────────────────────────────────────
+  'LADIES APPAREL':              { cat: 193, sub: 194, label: 'Ladies Apparel' },
+  'MENS APPAREL':                { cat: 193, sub: 194, label: 'Mens Apparel' },
+  'CHILDRENS APPAREL':           { cat: 193, sub: 194, label: 'Kids Apparel' },
+  'BASIC APPAREL':               { cat: 193, sub: 194, label: 'Basics & Underwear' },
+  'TEAM APPAREL':                { cat: 193, sub: 194, label: 'Team Apparel' },
+  // Swim, sleepwear, shackets, licensed tees — see note above.
+  'ACCESSORIES':                 { cat: 193, sub: 194, label: 'Seasonal Apparel' },
+
+  // ── GENERAL MERCHANDISE ────────────────────────────────────────────────
+  'DOMESTICS':                   { cat: 208, sub: 210, label: 'Towels & Bedding' },
+  'OTC':                         { cat: 221, sub: 223, label: 'Vitamins & Supplements' },
+  'HOUSEWARES':                  { cat: 208, sub: 209, label: 'Housewares' },
+  'TOYS':                        { cat: 218, sub: null, label: 'Toys' },
+  'HEALTH AND BEAUTY AIDS':      { cat: 221, sub: null, label: 'Health & Beauty' },
+  'SPORTING GOODS':              { cat: 215, sub: null, label: 'Sporting Goods' },
+  // Holiday plates, platters, cups, table covers — disposable party tableware.
+  'TABLETOP AND BAGS':           { cat: 202, sub: 205, label: 'Party & Tableware' },
+  'SEASONAL DECOR':              { cat: 202, sub: null, label: 'Seasonal Decor' },
+  // Firelogs, ice melt, snow shovels, pool chemicals, firewood.
+  'SEASONAL HARDWARE':           { cat: 207, sub: null, label: 'Seasonal Hardware' },
+  // Totes, bins, Command hooks, hangers, bulbs, water softener salt.
+  'HOME EFF AND IMPROVEMENT':    { cat: 208, sub: 209, label: 'Home Organization' },
+  // Cables, chargers, TV mounts, surge protectors, HDMI, tablet cases.
+  'CE ACCESSORIES':              { cat: 212, sub: null, label: 'Electronics Accessories' },
+  'NURSERY AND GARDENING':       { cat: 207, sub: null, label: 'Lawn & Garden' },
+  'LAUNDRY AND HOME CARE':       { cat: 224, sub: 226, label: 'Laundry & Home Care' },
+  'OUTDOOR LIVING':              { cat: 207, sub: null, label: 'Outdoor Living' },
+  'OFFICE SUPPLIES AND STAMPS':  { cat: 224, sub: 227, label: 'Office Supplies' },
+  'OUTDOOR RECREATION':          { cat: 215, sub: null, label: 'Outdoor Recreation' },
+  // Board games, puzzles, craft kits — see note above.
+  'ENTERTAINMENT':               { cat: 218, sub: 219, label: 'Games & Puzzles' },
+  'BABY CARE':                   { cat: 200, sub: null, label: 'Baby' },
+  'PET SUPPLIES':                { cat: 214, sub: null, label: 'Pet Supplies' },
+  'FURNITURE':                   { cat: 201, sub: null, label: 'Furniture' },
+  'FURNITURE AND MATTRESSES':    { cat: 201, sub: null, label: 'Furniture' },
+  'FOLDING FURNITURE':           { cat: 201, sub: null, label: 'Furniture' },
+  'MATTRESSES':                  { cat: 201, sub: null, label: 'Furniture' },
+  'OFFICE FURNITURE':            { cat: 201, sub: null, label: 'Furniture' },
+  'PAPER GOODS':                 { cat: 224, sub: 226, label: 'Paper Goods' },
+  // Cake pans, knives, food containers, catering sets.
+  'CATERING AND ENTERTAINMENT':  { cat: 208, sub: 209, label: 'Kitchen & Catering' },
+  'OPTICAL':                     { cat: 221, sub: null, label: 'Optical' },
+  'HOUSEHOLD CLEANING':          { cat: 224, sub: 226, label: 'Cleaning Supplies' },
+  'JANITORIAL':                  { cat: 224, sub: 226, label: 'Cleaning Supplies' },
+  'RESTAURANT SUPPLIES':         { cat: 208, sub: 209, label: 'Restaurant Supplies' },
+  'DIAMONDS':                    { cat: 193, sub: 198, label: 'Jewelry' },
+  'AUTOMOTIVE OIL AND CHEMICALS':{ cat: 192, sub: null, label: 'Automotive' },
+  'AUTO PARTS':                  { cat: 192, sub: null, label: 'Automotive' },
+  'AUTO BATTERY':                { cat: 192, sub: null, label: 'Automotive' },
+  // Cookies, fruit snacks, granola — food, despite the name.
+  'E-BUSINESS MISC':             { cat: 224, sub: 225, label: 'Snacks & Food' },
+  'COMMERCIAL BREAD':            { cat: 224, sub: 225, label: 'Food' },
+  'POP UP SHOPS':                { cat: null, sub: null, label: 'General Merchandise' },
+  'SUPPLIER DISPLAYS':           { cat: null, sub: null, label: 'General Merchandise' },
+
+  // ── FOOD ───────────────────────────────────────────────────────────────
+  'SEASONAL FOODS':              { cat: 224, sub: 225, label: 'Food' },
+  'OIL-RICE-FRUIT-VEG':          { cat: 224, sub: 225, label: 'Food' },
+  'BAKING AND SPICES':           { cat: 224, sub: 225, label: 'Food' },
+  'BAKING-SPICES':               { cat: 224, sub: 225, label: 'Food' },
+  'CEREAL-BARS-SPREADS':         { cat: 224, sub: 225, label: 'Food' },
+  'CAN PROTEIN-CONDIMENTS-PASTA':{ cat: 224, sub: 225, label: 'Food' },
+  'SWEET AND SALTY SNACKS':      { cat: 224, sub: 225, label: 'Snacks' },
+  'CANDY - SNACKS - BUSINESS':   { cat: 224, sub: 225, label: 'Snacks' },
+  'CHIPS':                       { cat: 224, sub: 225, label: 'Snacks' },
+  'WATER':                       { cat: 224, sub: 225, label: 'Beverages' },
+  'BEVERAGES':                   { cat: 224, sub: 225, label: 'Beverages' },
+  'SODA':                        { cat: 224, sub: 225, label: 'Beverages' },
+  'SODA - ENERGY - TEA':         { cat: 224, sub: 225, label: 'Beverages' },
+  'COFFEE AND BREAKFAST':        { cat: 224, sub: 225, label: 'Coffee & Breakfast' },
+  'COFFEE AND ADDITIVES':        { cat: 224, sub: 225, label: 'Coffee & Breakfast' },
+  'SPORTS NUTRITION':            { cat: 221, sub: 223, label: 'Sports Nutrition' },
+
+  // ── ELECTRONICS ────────────────────────────────────────────────────────
+  'KITCHEN ELECTRICS AND FLOORCARE': { cat: 188, sub: 190, label: 'Small Appliances' },
+  'KITCHEN ELECTRICS':           { cat: 188, sub: 190, label: 'Small Appliances' },
+  'MAJOR APPLIANCES':            { cat: 188, sub: 189, label: 'Large Appliances' },
+  // Screwdrivers, Dremel kits, hand tools, floor mats, tire shine, gloves.
+  'POWER EQUIP-TOOLS-AUTO':      { cat: 217, sub: null, label: 'Tools & Auto' },
+  'POWER EQUIP - TOOLS - AUTO':  { cat: 217, sub: null, label: 'Tools & Auto' },
+  'TOOLS-AUTO':                  { cat: 217, sub: null, label: 'Tools & Auto' },
+  // JBL / Monster / ION speakers and headphones.
+  'BATTERIES AND EMERGING TECH': { cat: 212, sub: null, label: 'Audio & Electronics' },
+  'CONNECTED LIFE':              { cat: 212, sub: null, label: 'Smart Home' },
+  'TVS SOUNDBARS':               { cat: 212, sub: null, label: 'TVs & Soundbars' },
+  'OFFICE ELECTRONICS':          { cat: 212, sub: null, label: 'Office Electronics' },
+  'TABLETS AND CONNECTED DEVICES': { cat: 212, sub: null, label: 'Tablets & Devices' },
+  'PRINTERS AND INK':            { cat: 212, sub: null, label: 'Printers & Ink' },
+  'MOBILE HARDWARE':             { cat: 212, sub: 213, label: 'Wireless' },
+  'HEARING AID CENTERS':         { cat: 221, sub: null, label: 'Health & Beauty' },
+};
+
+// When the manifest line has no subcategory at all, fall back to Sam's
+// top-level "Main Category". General Merchandise stays undetermined.
+const SMS_MAIN_FALLBACK = {
+  'APPAREL':     { cat: 193, sub: 194, label: 'Apparel' },
+  'FOOD':        { cat: 224, sub: 225, label: 'Food' },
+  'ELECTRONICS': { cat: 212, sub: null, label: 'Electronics' },
+};
+
+// Loose fallback for bucket names we have not seen before. The exact table
+// above always wins, so these only fire on new Sam's vocabulary. Note there is
+// deliberately no /ACCESSORIES/ or /ENTERTAINMENT/ rule here — in Sam's
+// vocabulary neither word means what it says.
 const SMS_SEGMENTS = [
   // Food / grocery first — "SPORTS NUTRITION" must not fall into Sports.
   { re: /BEVERAGE|CHIP|SNACK|CEREAL|CANDY|PASTA|CONDIMENT|NUTRITION|GROCER|\bFOOD\b|COFFEE|DAIRY|FROZEN|PROTEIN|BAR\b/, cat: 224, sub: 225, label: 'Food' },
-  { re: /CLEAN|LAUNDRY|HOUSEHOLD CHEM|PAPER GOODS/,                    cat: 224, sub: 226, label: 'Cleaning Supplies' },
-  { re: /STATION|OFFICE SUPPL|SCHOOL SUPPL/,                           cat: 224, sub: 227, label: 'Stationery' },
+  { re: /OIL-RICE|FRUIT|VEG\b|SODA|BAKING|SPICE|BREAD|\bDELI\b|MEAT|SEAFOOD/, cat: 224, sub: 225, label: 'Food' },
+  { re: /CLEAN|LAUNDRY|HOUSEHOLD CHEM|PAPER GOODS|JANITORIAL/,        cat: 224, sub: 226, label: 'Cleaning Supplies' },
+  { re: /STATION|OFFICE SUPPL|SCHOOL SUPPL/,                          cat: 224, sub: 227, label: 'Stationery' },
   // Fashion
-  { re: /SHOE|FOOTWEAR|SNEAKER|BOOT/,                                  cat: 193, sub: 195, label: 'Shoes' },
-  { re: /HANDBAG|PURSE|TOTE/,                                          cat: 193, sub: 196, label: 'Handbags' },
-  { re: /JEWEL/,                                                       cat: 193, sub: 198, label: 'Jewelry' },
-  { re: /WATCH/,                                                       cat: 193, sub: 199, label: 'Watches' },
-  { re: /APPAREL|CLOTHING|\bTEE?S\b|SOCK|UNDERWEAR/,                   cat: 193, sub: 194, label: 'Apparel' },
-  { re: /ACCESSORIES/,                                                 cat: 193, sub: 197, label: 'Accessories' },
+  { re: /SHOE|FOOTWEAR|SNEAKER|BOOT/,                                 cat: 193, sub: 195, label: 'Shoes' },
+  { re: /HANDBAG|PURSE|\bTOTE\b/,                                     cat: 193, sub: 196, label: 'Handbags' },
+  { re: /JEWEL|DIAMOND/,                                              cat: 193, sub: 198, label: 'Jewelry' },
+  { re: /WATCH/,                                                      cat: 193, sub: 199, label: 'Watches' },
+  { re: /APPAREL|CLOTHING|\bTEE?S\b|SOCK|UNDERWEAR|HOSIERY|INTIMATE|SLEEPWEAR|OUTERWEAR/, cat: 193, sub: 194, label: 'Apparel' },
+  { re: /LUGGAGE|BACKPACK/,                                           cat: 193, sub: 197, label: 'Bags & Luggage' },
   // Health & beauty
-  { re: /SUPPLEMENT|VITAMIN/,                                          cat: 221, sub: 223, label: 'Supplements' },
-  { re: /COSMETIC|MAKE-?UP|SKIN ?CARE|FRAGRANCE|HAIR ?CARE/,           cat: 221, sub: 222, label: 'Cosmetics' },
-  { re: /HEALTH|BEAUTY|PHARMACY|\bOTC\b|PERSONAL CARE/,                cat: 221, sub: null, label: 'Health & Beauty' },
+  { re: /SUPPLEMENT|VITAMIN/,                                         cat: 221, sub: 223, label: 'Vitamins & Supplements' },
+  { re: /COSMETIC|MAKE-?UP|SKIN ?CARE|FRAGRANCE|HAIR ?CARE/,          cat: 221, sub: 222, label: 'Cosmetics' },
+  { re: /HEALTH|BEAUTY|PHARMACY|\bOTC\b|PERSONAL CARE|OPTICAL|EYEWEAR|\bHBA\b/, cat: 221, sub: null, label: 'Health & Beauty' },
   // Baby / pets / toys
-  { re: /BABY|INFANT|DIAPER|TODDLER|NURSERY/,                          cat: 200, sub: null, label: 'Baby' },
-  { re: /\bPET\b|PETS|DOG|CAT\b/,                                      cat: 214, sub: null, label: 'Pet Supplies' },
-  { re: /CRAFT|ART SUPPL/,                                             cat: 218, sub: 220, label: 'Arts & Crafts' },
-  { re: /\bGAME|PUZZLE|VIDEO GAME/,                                    cat: 218, sub: 219, label: 'Games' },
-  { re: /\bTOY|JUVENILE|KIDS/,                                         cat: 218, sub: null, label: 'Toys' },
+  { re: /BABY|INFANT|DIAPER|TODDLER/,                                 cat: 200, sub: null, label: 'Baby' },
+  { re: /\bPET\b|PETS|DOG|CAT\b/,                                     cat: 214, sub: null, label: 'Pet Supplies' },
+  { re: /CRAFT|ART SUPPL/,                                            cat: 218, sub: 220, label: 'Arts & Crafts' },
+  { re: /\bGAME|PUZZLE|VIDEO GAME/,                                   cat: 218, sub: 219, label: 'Games & Puzzles' },
+  { re: /\bTOY|JUVENILE|KIDS/,                                        cat: 218, sub: null, label: 'Toys' },
   // Seasonal
-  { re: /CHRISTMAS|HOLIDAY TRIM/,                                      cat: 202, sub: 203, label: 'Christmas' },
-  { re: /HALLOWEEN/,                                                   cat: 202, sub: 204, label: 'Halloween' },
-  { re: /PARTY/,                                                       cat: 202, sub: 205, label: 'Party Supplies' },
-  { re: /SEASONAL/,                                                    cat: 202, sub: null, label: 'Seasonal' },
-  // Appliances / electronics — "KITCHEN ELECTRICS AND FLOORCARE" is small
-  // appliances (air fryers, vacuums), so it maps to Home Appliances > Small.
-  { re: /FLOORCARE|VACUUM|KITCHEN ELECTRIC|SMALL APPLIANCE/,           cat: 188, sub: 190, label: 'Small Appliances' },
-  { re: /REFRIGERAT|WASHER|DRYER|DISHWASHER|LARGE APPLIANCE|RANGE\b/,  cat: 188, sub: 189, label: 'Large Appliances' },
-  { re: /WIRELESS|CELL ?PHONE|SMARTPHONE/,                             cat: 212, sub: 213, label: 'Wireless' },
-  { re: /ELECTRONIC|\bTVS?\b|SOUNDBAR|\bTABLETS?\b|CONNECTED|BATTER|AUDIO|COMPUTER|CAMERA|EMERGING TECH|ENTERTAINMENT|\bMEDIA\b|\bDVD\b/, cat: 212, sub: null, label: 'Electronics' },
+  { re: /CHRISTMAS|HOLIDAY TRIM/,                                     cat: 202, sub: 203, label: 'Christmas' },
+  { re: /HALLOWEEN/,                                                  cat: 202, sub: 204, label: 'Halloween' },
+  { re: /PARTY/,                                                      cat: 202, sub: 205, label: 'Party Supplies' },
+  { re: /SEASONAL/,                                                   cat: 202, sub: null, label: 'Seasonal' },
+  // Appliances / electronics
+  { re: /FLOORCARE|VACUUM|KITCHEN ELECTRIC|SMALL APPLIANCE/,          cat: 188, sub: 190, label: 'Small Appliances' },
+  { re: /REFRIGERAT|WASHER|DRYER|DISHWASHER|LARGE APPLIANCE|MAJOR APPLIANCE|RANGE\b/, cat: 188, sub: 189, label: 'Large Appliances' },
+  { re: /WIRELESS|CELL ?PHONE|SMARTPHONE|MOBILE HARDWARE/,            cat: 212, sub: 213, label: 'Wireless' },
+  { re: /ELECTRONIC|\bTVS?\b|SOUNDBAR|\bTABLETS?\b|CONNECTED|BATTER|AUDIO|COMPUTER|CAMERA|EMERGING TECH|PRINTER|\bINK\b|\bMEDIA\b|\bDVD\b/, cat: 212, sub: null, label: 'Electronics' },
   // Tools / auto / outdoors / sports
-  { re: /TOOL|HARDWARE|POWER EQUIP/,                                   cat: 217, sub: null, label: 'Tools & Hardware' },
-  { re: /\bAUTO|TIRE|CAR CARE|AUTOMOTIVE/,                             cat: 192, sub: null, label: 'Automotive' },
-  { re: /BICYCLE|\bBIKE/,                                              cat: 215, sub: 216, label: 'Bicycles' },
-  { re: /SPORT|FITNESS|EXERCISE|ATHLETIC/,                             cat: 215, sub: null, label: 'Sports & Fitness' },
-  { re: /GRILL|PATIO|LAWN|GARDEN|OUTDOOR/,                             cat: 207, sub: null, label: 'Outdoors' },
-  // Found by auditing all 353 active SMS SKUs — these were still unmapped.
-  { re: /OIL-RICE|FRUIT|VEG\b|SODA|BAKING|SPICE|BREAD|\bDELI\b|MEAT|SEAFOOD/,  cat: 224, sub: 225, label: 'Food' },
-  { re: /DIAMOND/,                                                     cat: 193, sub: 198, label: 'Jewelry' },
-  { re: /PRINTER|\bINK\b/,                                            cat: 212, sub: null, label: 'Electronics' },
-  { re: /MAJOR APPLIANCE/,                                             cat: 188, sub: 189, label: 'Large Appliances' },
-  // Sam's buckets that were falling through to General Merchandise and both
-  // misnaming loads and diluting the real leader.
-  { re: /DOMESTIC|TOWEL|\bBATH\b/,                                     cat: 208, sub: 210, label: 'Bedding' },
-  { re: /TABLETOP|GLASSWARE|DINNERWARE|FLATWARE/,                      cat: 208, sub: 209, label: 'Housewares' },
-  { re: /OPTICAL|EYEWEAR|\bHBA\b/,                                     cat: 221, sub: null, label: 'Health & Beauty' },
-  { re: /HOSIERY|INTIMATE|SLEEPWEAR|OUTERWEAR/,                        cat: 193, sub: 194, label: 'Apparel' },
-  { re: /LUGGAGE|BACKPACK/,                                            cat: 193, sub: 197, label: 'Accessories' },
-  { re: /FLORAL|CANDLE/,                                               cat: 208, sub: 209, label: 'Housewares' },
+  { re: /TOOL|HARDWARE|POWER EQUIP/,                                  cat: 217, sub: null, label: 'Tools & Hardware' },
+  { re: /\bAUTO|TIRE|CAR CARE|AUTOMOTIVE/,                            cat: 192, sub: null, label: 'Automotive' },
+  { re: /BICYCLE|\bBIKE/,                                             cat: 215, sub: 216, label: 'Bicycles' },
+  { re: /SPORT|FITNESS|EXERCISE|ATHLETIC|RECREATION/,                 cat: 215, sub: null, label: 'Sporting Goods' },
+  { re: /GRILL|PATIO|LAWN|GARDEN|OUTDOOR|NURSERY/,                    cat: 207, sub: null, label: 'Outdoors' },
   // Home
-  { re: /FURNITURE|MATTRESS|SOFA|RECLINER|DESK\b/,                     cat: 201, sub: null, label: 'Furniture' },
-  { re: /BEDDING|LINEN|COMFORTER|SHEET/,                               cat: 208, sub: 210, label: 'Bedding' },
-  { re: /LIGHTING|LAMP/,                                               cat: 208, sub: 211, label: 'Lighting' },
-  { re: /HOUSEWARE|KITCHEN|COOKWARE|BATH|DECOR|\bHOME\b|STORAGE|ORGANIZ/, cat: 208, sub: 209, label: 'Housewares' },
+  { re: /FURNITURE|MATTRESS|SOFA|RECLINER|DESK\b/,                    cat: 201, sub: null, label: 'Furniture' },
+  { re: /DOMESTIC|TOWEL|BEDDING|LINEN|COMFORTER|SHEET|\bBATH\b/,      cat: 208, sub: 210, label: 'Towels & Bedding' },
+  { re: /LIGHTING|LAMP/,                                              cat: 208, sub: 211, label: 'Lighting' },
+  { re: /TABLETOP|GLASSWARE|DINNERWARE|FLATWARE|FLORAL|CANDLE/,       cat: 208, sub: 209, label: 'Housewares' },
+  { re: /HOUSEWARE|KITCHEN|COOKWARE|DECOR|\bHOME\b|STORAGE|ORGANIZ|RESTAURANT/, cat: 208, sub: 209, label: 'Housewares' },
 ];
 
-// Resolve one Sam's subcategory string to a segment. Unknown → Assorted Mixed.
-function samsSegmentFor(subcat) {
-  const up = String(subcat || '').toUpperCase().trim();
+const SMS_UNMAPPED = { cat: 191, sub: null, label: 'General Merchandise' };
+
+// Resolve one Sam's manifest line to a segment. Exact bucket name first (that
+// table was built from real item descriptions), then the Main Category when
+// the line has no subcategory, then the loose patterns. Unknown → undetermined,
+// which can never name a load.
+function samsSegmentFor(subcat, mainCat) {
+  const up = String(subcat || '').toUpperCase().trim().replace(/\s+/g, ' ');
   if (up) {
+    const hit = SMS_BUCKETS[up];
+    if (hit) return hit.cat ? hit : SMS_UNMAPPED;
     for (const r of SMS_SEGMENTS) if (r.re.test(up)) return r;
+    return SMS_UNMAPPED;
   }
-  return { cat: 191, sub: null, label: 'General Merchandise' };
+  const main = String(mainCat || '').toUpperCase().trim();
+  return SMS_MAIN_FALLBACK[main] || SMS_UNMAPPED;
 }
 
 // Work out what a Sam's load actually IS from its manifest: the dominant
@@ -2049,7 +2174,7 @@ function samsLoadTaxonomy(rows) {
   const byCat   = new Map();   // category level — used to decide dominance
   let total = 0;
   for (const r of rows) {
-    const seg = samsSegmentFor(r.Subcategory);
+    const seg = samsSegmentFor(r.Subcategory, r['Main Category']);
     const qty = Number(r.Quantity) || 0;
     if (qty <= 0) continue;
     total += qty;
@@ -2090,8 +2215,11 @@ function samsLoadTaxonomy(rows) {
 
   const categoryIds = [];
   const add = id => { if (id && !categoryIds.includes(id)) categoryIds.push(id); };
-  for (const p of picks) { add(p.cat); add(p.sub); }
-  return { name: `Mostly ${picks.map(p => p.label).join(' and ')} and More`, categoryIds, ranked, generic: false };
+  for (const p of picks) { if (!p) continue; add(p.cat); add(p.sub); }
+  // Two buckets can share a label (several Sam's food buckets are all "Food").
+  const labels = [...new Set(picks.filter(Boolean).map(p => p.label))];
+  if (!labels.length) return { name: 'General Merchandise', categoryIds: [191], ranked, generic: true };
+  return { name: `Mostly ${labels.join(' and ')} and More`, categoryIds, ranked, generic: false };
 }
 
 function applySamsTaxonomyName(load) {
