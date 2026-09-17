@@ -2007,6 +2007,11 @@ const SMS_SEGMENTS = [
   { re: /BICYCLE|\bBIKE/,                                              cat: 215, sub: 216, label: 'Bicycles' },
   { re: /SPORT|FITNESS|EXERCISE|ATHLETIC/,                             cat: 215, sub: null, label: 'Sports & Fitness' },
   { re: /GRILL|PATIO|LAWN|GARDEN|OUTDOOR/,                             cat: 207, sub: null, label: 'Outdoors' },
+  // Found by auditing all 353 active SMS SKUs — these were still unmapped.
+  { re: /OIL-RICE|FRUIT|VEG\b|SODA|BAKING|SPICE|BREAD|\bDELI\b|MEAT|SEAFOOD/,  cat: 224, sub: 225, label: 'Food' },
+  { re: /DIAMOND/,                                                     cat: 193, sub: 198, label: 'Jewelry' },
+  { re: /PRINTER|\bINK\b/,                                            cat: 212, sub: null, label: 'Electronics' },
+  { re: /MAJOR APPLIANCE/,                                             cat: 188, sub: 189, label: 'Large Appliances' },
   // Sam's buckets that were falling through to General Merchandise and both
   // misnaming loads and diluting the real leader.
   { re: /DOMESTIC|TOWEL|\bBATH\b/,                                     cat: 208, sub: 210, label: 'Bedding' },
@@ -3000,6 +3005,13 @@ async function pushLoad(load) {
     const full = buildPayload(load);
     const merged = { data: { ...full.data, ...upd.data } };
     delete merged.data.active;
+    // If the manifest can't tell us what the load is, keep whatever name and
+    // categories the ERP already has — re-pushing must never overwrite a
+    // human-set category with the Assorted Mixed Lots default.
+    if (load.supplierKey === 'SMS') {
+      const t = samsLoadTaxonomy(load.manifestRows);
+      if (!t || t.generic) { delete merged.data.name; delete merged.data.categories; }
+    }
     console.log('[Posku] PUT /api/products/' + dup.id + ' payload:', JSON.stringify(merged, null, 2));
     const ur = await erpRequest('PUT', `/api/products/${dup.id}`, merged);
     console.log('[Posku] PUT response:', JSON.stringify(ur, null, 2));
