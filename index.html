@@ -1999,13 +1999,21 @@ const SMS_SEGMENTS = [
   { re: /FLOORCARE|VACUUM|KITCHEN ELECTRIC|SMALL APPLIANCE/,           cat: 188, sub: 190, label: 'Small Appliances' },
   { re: /REFRIGERAT|WASHER|DRYER|DISHWASHER|LARGE APPLIANCE|RANGE\b/,  cat: 188, sub: 189, label: 'Large Appliances' },
   { re: /WIRELESS|CELL ?PHONE|SMARTPHONE/,                             cat: 212, sub: 213, label: 'Wireless' },
-  { re: /ELECTRONIC|TVS?\b|SOUNDBAR|TABLET|CONNECTED|BATTER|AUDIO|COMPUTER|CAMERA|EMERGING TECH/, cat: 212, sub: null, label: 'Electronics' },
+  { re: /ELECTRONIC|\bTVS?\b|SOUNDBAR|\bTABLETS?\b|CONNECTED|BATTER|AUDIO|COMPUTER|CAMERA|EMERGING TECH|ENTERTAINMENT|\bMEDIA\b|\bDVD\b/, cat: 212, sub: null, label: 'Electronics' },
   // Tools / auto / outdoors / sports
   { re: /TOOL|HARDWARE|POWER EQUIP/,                                   cat: 217, sub: null, label: 'Tools & Hardware' },
   { re: /\bAUTO|TIRE|CAR CARE|AUTOMOTIVE/,                             cat: 192, sub: null, label: 'Automotive' },
   { re: /BICYCLE|\bBIKE/,                                              cat: 215, sub: 216, label: 'Bicycles' },
   { re: /SPORT|FITNESS|EXERCISE|ATHLETIC/,                             cat: 215, sub: null, label: 'Sports & Fitness' },
   { re: /GRILL|PATIO|LAWN|GARDEN|OUTDOOR/,                             cat: 207, sub: null, label: 'Outdoors' },
+  // Sam's buckets that were falling through to General Merchandise and both
+  // misnaming loads and diluting the real leader.
+  { re: /DOMESTIC|TOWEL|\bBATH\b/,                                     cat: 208, sub: 210, label: 'Bedding' },
+  { re: /TABLETOP|GLASSWARE|DINNERWARE|FLATWARE/,                      cat: 208, sub: 209, label: 'Housewares' },
+  { re: /OPTICAL|EYEWEAR|\bHBA\b/,                                     cat: 221, sub: null, label: 'Health & Beauty' },
+  { re: /HOSIERY|INTIMATE|SLEEPWEAR|OUTERWEAR/,                        cat: 193, sub: 194, label: 'Apparel' },
+  { re: /LUGGAGE|BACKPACK/,                                            cat: 193, sub: 197, label: 'Accessories' },
+  { re: /FLORAL|CANDLE/,                                               cat: 208, sub: 209, label: 'Housewares' },
   // Home
   { re: /FURNITURE|MATTRESS|SOFA|RECLINER|DESK\b/,                     cat: 201, sub: null, label: 'Furniture' },
   { re: /BEDDING|LINEN|COMFORTER|SHEET/,                               cat: 208, sub: 210, label: 'Bedding' },
@@ -2027,45 +2035,59 @@ function samsSegmentFor(subcat) {
 // name ("Mostly Apparel and Shoes and More"). Returns null with no rows.
 function samsLoadTaxonomy(rows) {
   if (!Array.isArray(rows) || !rows.length) return null;
-  const byLabel = new Map();
+  // Rank by UNITS, not retail value. The storefront's manifest pie chart is
+  // "% OF UNITS" and that's what a buyer sees when the pallet is opened —
+  // ranking by value made a half-apparel pallet read "Mostly Electronics"
+  // off the back of a few expensive pieces.
+  const byLabel = new Map();   // subcategory level — used for the name
+  const byCat   = new Map();   // category level — used to decide dominance
   let total = 0;
   for (const r of rows) {
     const seg = samsSegmentFor(r.Subcategory);
-    const val = Number(r['Appx. EXT Retail']) || 0;
-    if (val <= 0) continue;
-    total += val;
-    const cur = byLabel.get(seg.label) || { ...seg, value: 0 };
-    cur.value += val;
-    byLabel.set(seg.label, cur);
+    const qty = Number(r.Quantity) || 0;
+    if (qty <= 0) continue;
+    total += qty;
+    const lcur = byLabel.get(seg.label) || { ...seg, units: 0 };
+    lcur.units += qty;
+    byLabel.set(seg.label, lcur);
+    const ccur = byCat.get(seg.cat) || { cat: seg.cat, units: 0, labels: new Map() };
+    ccur.units += qty;
+    ccur.labels.set(seg.label, (ccur.labels.get(seg.label) || 0) + qty);
+    byCat.set(seg.cat, ccur);
   }
   if (!total) return null;
+
   const ranked = [...byLabel.values()]
-    .map(s => ({ ...s, share: s.value / total }))
+    .map(s => ({ ...s, share: s.units / total }))
+    .sort((a, b) => b.share - a.share);
+  // Dominance is judged at CATEGORY level so LADIES/MENS/CHILDRENS APPAREL
+  // count as one Fashion block instead of three losing subcategories.
+  const cats = [...byCat.values()]
+    .map(c => ({ ...c, share: c.units / total }))
+    .filter(c => c.cat !== 191)          // unmapped can never name a load
     .sort((a, b) => b.share - a.share);
 
-  const named = ranked.filter(s => s.label !== 'General Merchandise');
-  const top = named[0], second = named[1];
-  let picks = [];
-  // A clear leader, or two strong leaders, name the load. Anything genuinely
-  // scattered stays "General Merchandise" / Assorted Mixed Lots.
-  if (top && top.share >= 0.60)                             picks = [top];
-  else if (top && second && top.share >= 0.30 && second.share >= 0.20) picks = [top, second];
-  else if (top && top.share >= 0.40)                        picks = [top];
-
-  if (!picks.length) {
+  const lead = cats[0], second = cats[1];
+  if (!lead || lead.share < 0.35) {
     return { name: 'General Merchandise', categoryIds: [191], ranked, generic: true };
   }
-  const name = `Mostly ${picks.map(p => p.label).join(' and ')} and More`;
+  const topLabels = c => [...c.labels.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, units]) => ({ ...byLabel.get(label), units, inCat: units / c.units }));
+
+  const leadLabels = topLabels(lead);
+  const picks = [leadLabels[0]];
+  // Two strong sub-buckets inside the leader ("Apparel and Shoes"), otherwise
+  // a strong runner-up category ("Food and Toys").
+  if (leadLabels[1] && leadLabels[1].inCat >= 0.30) picks.push(leadLabels[1]);
+  else if (second && second.share >= 0.20 && lead.share < 0.60) picks.push(topLabels(second)[0]);
+
   const categoryIds = [];
-  for (const p of picks) {
-    if (p.cat && !categoryIds.includes(p.cat)) categoryIds.push(p.cat);
-    if (p.sub && !categoryIds.includes(p.sub)) categoryIds.push(p.sub);
-  }
-  return { name, categoryIds, ranked, generic: false };
+  const add = id => { if (id && !categoryIds.includes(id)) categoryIds.push(id); };
+  for (const p of picks) { add(p.cat); add(p.sub); }
+  return { name: `Mostly ${picks.map(p => p.label).join(' and ')} and More`, categoryIds, ranked, generic: false };
 }
 
-// Put the derived name on the load so the table (and the push) show what the
-// load actually is as soon as its manifest is attached.
 function applySamsTaxonomyName(load) {
   if (!load || load.supplierKey !== 'SMS') return;
   const tax = samsLoadTaxonomy(load.manifestRows);
