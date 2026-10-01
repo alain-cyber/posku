@@ -526,6 +526,8 @@ textarea::placeholder { color: var(--text4); }
 .cfg-table td { padding: 0.28rem 0.4rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .cfg-table input { background: var(--surface); border: 1px solid var(--border2); border-radius: 5px; padding: 0.32rem 0.5rem; font-family: 'DM Mono', monospace; font-size: 0.74rem; color: var(--text); width: 100%; }
 .cfg-table input:focus { outline: none; border-color: var(--green); }
+/* The width:100% above is for text inputs — a checkbox must stay a checkbox. */
+.cfg-table input[type="checkbox"] { width: 16px; height: 16px; padding: 0; accent-color: var(--green); cursor: pointer; vertical-align: middle; }
 .cfg-table .narrow { max-width: 80px; }
 .cfg-table .x-col { width: 30px; text-align: center; }
 .cfg-table .x-btn { background: transparent; border: none; color: var(--red); cursor: pointer; font-size: 1.1rem; padding: 0; line-height: 1; }
@@ -1086,6 +1088,10 @@ const SUPPLIERS = {
     // Empty = derive it from the club city (UPPERCASE, part before the comma).
     // Fill a code here only when the ERP facility spelling differs from the city.
     clubFacilities: {},
+
+    // Per-club ERP "active" flag for newly created SKUs. Absent = active (1);
+    // only clubs the user has unticked in the rules appear here, as 0.
+    clubActive: {},
     // Optional per-club PO shipping method (shipping_method_id). Empty = the
     // supplier default (64 Truckload). { LB: 65, IF: 66, ... }
     poShippingByLoc: {},
@@ -1569,7 +1575,7 @@ function applySamsRulesOverride(s) {
     sms.clubMarkups = cleaned;
   }
   if (Array.isArray(s.clubs) && s.clubs.length) {
-    sms.fobIds = {}; sms.fobNames = {}; sms.clubCities = {}; sms.clubByManifest = {}; sms.clubFacilities = {}; sms.poShippingByLoc = {};
+    sms.fobIds = {}; sms.fobNames = {}; sms.clubCities = {}; sms.clubByManifest = {}; sms.clubFacilities = {}; sms.poShippingByLoc = {}; sms.clubActive = {};
     s.clubs.forEach(c => {
       if (!c.code) return;
       sms.fobIds[c.code]      = Number(c.fobId) || null;
@@ -1579,6 +1585,9 @@ function applySamsRulesOverride(s) {
       if (fac) sms.clubFacilities[c.code] = fac;   // blank = derive from city
       const ship = Number(c.poShip);
       if (Number.isFinite(ship) && ship > 0) sms.poShippingByLoc[c.code] = ship;  // blank = supplier default
+      // Only store the exception — absent means active, so a club added
+      // outside the editor still defaults to active.
+      if (c.active === false || c.active === 0 || c.active === '0') sms.clubActive[c.code] = 0;
       if (c.manifestPrefix)   sms.clubByManifest[String(c.manifestPrefix)] = c.code;
     });
   }
@@ -1625,6 +1634,7 @@ function currentSamsRulesAsEditable() {
     poShip:   s.poShippingByLoc?.[code] || '',
     fobId:    s.fobIds[code]   ?? '',
     fobName:  s.fobNames[code] ?? '',
+    active:   s.clubActive?.[code] !== 0,
   }));
   return {
     skuTemplate:           s.skuTemplate,
@@ -1906,15 +1916,10 @@ function parseSamsEmail(text, sup) {
     const code    = sup.clubByManifest[clubNum] || null;
     const flags   = [];
     if (!code) flags.push(`Unknown Sam's Club #${clubNum} — add to clubByManifest`);
-    // Loads whose club defaults to a "Direct" shipping method (e.g. Direct
-    // Truckload / Direct LTL) start inactive (active=0) so they aren't listed
-    // for sale until reviewed. Resolution mirrors the invoice-draft default.
-    // EXCEPTION: a club with a per-club pricing (markup) override in the rules
-    // pushes its SKUs ACTIVE (active=1) — the override wins over the Direct rule.
-    const shipId   = (code && sup.invoiceShippingByLoc) ? sup.invoiceShippingByLoc[code] : null;
-    const shipName = (INV_SHIPPING_METHODS.find(o => o.id === (shipId || INV_DEFAULT_SHIPPING.SMS))?.name) || '';
-    const hasMarkupOverride = !!(code && sup.clubMarkups && sup.clubMarkups[code] && Object.keys(sup.clubMarkups[code]).length);
-    const active   = hasMarkupOverride ? 1 : (/direct/i.test(shipName) ? 0 : 1);
+    // Whether a new SKU is created active is a plain per-club setting, ticked
+    // in the "Sam's Club locations" rules table. Clubs default to active; only
+    // an explicitly unticked club carries a 0. Still overridable per load.
+    const active = (code && sup.clubActive?.[code] === 0) ? 0 : 1;
     return {
       id:           'load_' + Date.now() + '_' + Math.random().toString(36).slice(2),
       supplierKey:  'SMS',
@@ -5859,7 +5864,7 @@ function drawCfgUISams() {
           </div>
         `).join('')}
       </div>
-      <div class="cfg-hint" style="margin-top:0.8rem;">Per-club overrides (only the clubs that deviate from the defaults need a row). <strong>A club listed here also pushes its SKUs as ACTIVE (active=1)</strong> — the pricing override wins over the Direct-shipping inactive default.</div>
+      <div class="cfg-hint" style="margin-top:0.8rem;">Per-club overrides (only the clubs that deviate from the defaults need a row). Pricing overrides no longer affect whether a SKU is created active — that is now the <strong>Active</strong> tickbox in the Sam's Club locations table below.</div>
       <div class="cfg-table-wrap">
         <table class="cfg-table">
           <thead><tr>
@@ -5910,7 +5915,7 @@ function drawCfgUISams() {
 
     <div class="cfg-block">
       <h3>Sam's Club locations</h3>
-      <div class="cfg-hint">First 4 digits of the manifest # determine the club. Add/edit rows here when a new Sam's Club starts liquidating. <strong>Code</strong> is the 2-4 letter abbreviation that goes into the SKU.</div>
+      <div class="cfg-hint">First 4 digits of the manifest # determine the club. Add/edit rows here when a new Sam's Club starts liquidating. <strong>Code</strong> is the 2-4 letter abbreviation that goes into the SKU. <strong>Active</strong> decides whether this club's SKUs are created live in the ERP — ticked by default; untick a club to have its SKUs created inactive. You can still flip it on any individual load before pushing.</div>
       <div class="cfg-table-wrap">
         <table class="cfg-table">
           <thead><tr>
@@ -5921,6 +5926,7 @@ function drawCfgUISams() {
             <th title="Default shipping method (title) for this club's POs. Blank = LTL.">Ship title (PO)</th>
             <th class="narrow">FOB state id</th>
             <th>FOB state name</th>
+            <th class="narrow" title="Ticked = SKUs for this club are created ACTIVE in the ERP (listed for sale). Untick to create them inactive. Still overridable per load before pushing.">Active</th>
             <th class="x-col"></th>
           </tr></thead>
           <tbody id="cfg-sms-club-body">
@@ -5956,6 +5962,7 @@ function samsClubRow(c, i) {
     </select></td>
     <td class="narrow"><input data-sck="fobId" type="number" value="${esc(c.fobId)}"></td>
     <td><input data-sck="fobName" value="${esc(c.fobName)}" placeholder="Idaho"></td>
+    <td class="narrow" style="text-align:center;"><input data-sck="active" type="checkbox" ${c.active === false ? '' : 'checked'} title="SKUs for this club are created active in the ERP"></td>
     <td class="x-col"><button class="x-btn" data-sms-club-del="${i}" title="Remove">×</button></td>
   </tr>`;
 }
@@ -6049,7 +6056,7 @@ function bindCfgHandlersSams() {
   $('cfg-sms-club-body').querySelectorAll('input[data-sck], select[data-sck]').forEach(el => {
     el.oninput = el.onchange = () => {
       const i = +el.closest('tr').dataset.sci;
-      cfgDraft.clubs[i][el.dataset.sck] = el.value;
+      cfgDraft.clubs[i][el.dataset.sck] = el.type === 'checkbox' ? el.checked : el.value;
     };
   });
   $('cfg-sms-club-body').querySelectorAll('[data-sms-club-del]').forEach(b => {
@@ -6059,7 +6066,7 @@ function bindCfgHandlersSams() {
     };
   });
   $('cfg-sms-add-club').onclick = () => {
-    cfgDraft.clubs.push({ manifestPrefix: '', code: '', city: '', facility: '', poShip: '', fobId: '', fobName: '' });
+    cfgDraft.clubs.push({ manifestPrefix: '', code: '', city: '', facility: '', poShip: '', fobId: '', fobName: '', active: true });
     drawCfgUI();
   };
 
